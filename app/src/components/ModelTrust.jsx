@@ -31,7 +31,7 @@ export default function ModelTrust({ data }) {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat value={m.blended.auc_macro.toFixed(2)} label="Ranking quality (AUC)" hint="macro across the three product models" />
-        <Stat value={`${m.blended.prec_curve.find((p) => p.budget === 0.05)?.lift.toFixed(0)}×`} label="Lift @ top 5%" hint="vs random cold-calling" tone="text-signal-amber" />
+        <Stat value={`${m.blended.prec_curve.find((p) => p.budget === 0.02)?.lift.toFixed(0)}×`} label="Lift @ top 2%" hint="vs random cold-calling" tone="text-signal-amber" />
         <Stat value={pct(m.blended.baseline, 1)} label="Cold-call baseline" hint="random-contact conversion in the book" tone="text-signal-rose" />
         <Stat value="grouped + temporal" label="Leakage-safe testing" hint="no customer in both train & test; scored on future months" tone="text-txt-hi" />
       </div>
@@ -86,7 +86,7 @@ export default function ModelTrust({ data }) {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-          <p className="text-[11px] text-txt-lo">AUC 0.5 = coin-flip, 1.0 = perfect. Scores in the low-to-mid 0.8s are the honest, realistic band for propensity models.</p>
+          <p className="text-[11px] text-txt-lo">AUC 0.5 = coin-flip, 1.0 = perfect. Scores from 0.80 to the mid-0.9s reflect how clearly each product telegraphs itself in account behaviour — personal-loan stress is the loudest signal.</p>
         </section>
 
         <section className="bg-ink-700 border border-line rounded-xl p-5">
@@ -110,8 +110,8 @@ export default function ModelTrust({ data }) {
         <h3 className="font-bold text-signal-amber text-sm">Why we don't promise “30% conversion, guaranteed”</h3>
         <p className="text-sm text-txt-mid mt-2 leading-relaxed">
           The demo book is synthetic, engineered to the bank-stated ~1% cold-call baseline. What we claim is the <b>machinery</b>:
-          a ranking measured at <b>{pct(m.blended.prec_curve.find((p) => p.budget === 0.05)?.precision ?? 0, 1)} precision at a top-5% calling budget</b> on
-          held-out customers — a {m.blended.prec_curve.find((p) => p.budget === 0.05)?.lift.toFixed(0)}× lift. On real IDBI data in the sandbox,
+          a ranking measured at <b>{pct(m.blended.prec_curve.find((p) => p.budget === 0.02)?.precision ?? 0, 1)} precision at a top-2% calling budget</b> on
+          held-out customers — a {m.blended.prec_curve.find((p) => p.budget === 0.02)?.lift.toFixed(0)}× lift. On real IDBI data in the sandbox,
           the numbers recalibrate; the queue, reasons, consent screening and measurement stay exactly as you see them.
         </p>
       </section>

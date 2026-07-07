@@ -19,7 +19,7 @@ export default function MissionControl({ data, goQueue }) {
   const m = data.metrics.blended
   const meta = data.meta
   const counts = data.counts
-  const [budget, setBudget] = useState(0.05)
+  const [budget, setBudget] = useState(0.02)
 
   const point = useMemo(() => {
     let best = m.prec_curve[0]
