@@ -1,0 +1,19 @@
+# dependencies & build output
+node_modules/
+app/dist/
+.DS_Store
+.vercel
+
+# python bytecode
+__pycache__/
+*.pyc
+
+# large regenerable data (rebuild: python3 src/make_book.py && python3 src/score_and_pack.py)
+data/customer_book.csv
+data/customer_panel.csv
+
+# NEVER commit licensed raw financial data (lives outside this repo; guard anyway)
+**/msme_fin_data.csv
+**/msme_ratings_movement.csv
+**/msme_identifiers.csv
+**/msme_list.csv

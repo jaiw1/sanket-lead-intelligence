@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-ink-900 text-txt-hi font-sans antialiased;
+}
+
+/* thin dark scrollbars */
+.scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+.scroll-thin::-webkit-scrollbar-thumb { @apply bg-ink-500 rounded; }
+.scroll-thin::-webkit-scrollbar-track { @apply bg-ink-800; }
+
+/* range slider accent */
+input[type='range'] { accent-color: #F5A623; }
