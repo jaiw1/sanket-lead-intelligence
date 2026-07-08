@@ -96,8 +96,8 @@ export default function MissionControl({ data, goQueue }) {
             <Tooltip contentStyle={{ background: '#151C3B', border: '1px solid #26304F', borderRadius: 8, fontSize: 12 }}
                      labelFormatter={(l) => `top ${l}% of book`} formatter={(v, n) => [`${v}%`, n]} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <ReferenceLine y={+(m.baseline * 100).toFixed(1)} stroke="#FB7185" strokeDasharray="4 4"
-                           label={{ value: `cold-call baseline ${(m.baseline * 100).toFixed(1)}%`, fontSize: 10, fill: '#FB7185', position: 'insideBottomRight' }} />
+            <ReferenceLine y={+(m.baseline * 100).toFixed(1)} stroke="#FB7185" strokeWidth={1.5} strokeDasharray="5 4"
+                           label={{ value: `↓ cold-call baseline  ${(m.baseline * 100).toFixed(1)}%`, fontSize: 11, fontWeight: 600, fill: '#FB7185', position: 'insideTopLeft' }} />
             <ReferenceLine x={+(budget * 100).toFixed(0)} stroke="#F5A623" strokeDasharray="5 3" />
             <Area type="monotone" dataKey="precPct" name="Conversion rate at budget" stroke="#2DD4BF" strokeWidth={2.5}
                   fill="#2DD4BF" fillOpacity={0.08} isAnimationActive={false} />

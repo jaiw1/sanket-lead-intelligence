@@ -32,7 +32,7 @@ export default function BusinessRadar({ radar }) {
         <div className="bg-ink-700 border border-line rounded-xl p-4">
           <div className="text-2xl font-bold text-signal-teal">{radar.meta.n_companies_str}</div>
           <div className="text-sm font-semibold mt-0.5">Real businesses screened</div>
-          <div className="text-xs text-txt-lo">licensed real financial statements</div>
+          <div className="text-xs text-txt-lo">real published financial statements</div>
         </div>
         <div className="bg-ink-700 border border-line rounded-xl p-4">
           <div className="text-2xl font-bold text-txt-hi">{radar.meta.n_prospects.toLocaleString('en-IN')}</div>
@@ -126,7 +126,7 @@ export default function BusinessRadar({ radar }) {
       </section>
 
       <p className="text-[11px] text-txt-lo">
-        Sector-level aggregates and anonymised exemplars from licensed real Indian business financial data; raw data never ships with this app.
+        Sector-level aggregates and anonymised exemplars from real Indian companies' published annual financials and credit-rating histories; only derived aggregates ship with this app.
         Distressed or default-history businesses are screened out before ranking.
       </p>
     </div>

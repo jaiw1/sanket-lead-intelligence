@@ -124,6 +124,9 @@ export default function LeadDrawer({ data, leadId, onClose }) {
             <div className="flex items-center gap-2 mb-2.5">
               <MessageSquareQuote size={15} className="text-signal-amber" />
               <h3 className="font-bold text-sm flex-1">Suggested opening — grounded in the data</h3>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-line text-txt-mid" title="Script language matched to the customer's preference">
+                {rec.lang === 'hi' ? 'हिन्दी' : 'EN'}
+              </span>
               <button onClick={copyPitch} className="flex items-center gap-1 text-xs text-txt-lo hover:text-signal-amber focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-amber rounded">
                 {copied ? <Check size={13} /> : <Copy size={13} />}{copied ? 'Copied' : 'Copy'}
               </button>

@@ -1,8 +1,8 @@
 """
 Business Radar  ->  app/public/radar_data.json
 
-Proof-on-real-data module: scores REAL Indian businesses (licensed financial-statement
-dataset living OUTSIDE this repo) as business-banking prospects — growing income,
+Proof-on-real-data module: scores REAL Indian businesses (public annual financial
+filings living OUTSIDE this repo) as business-banking prospects — growing income,
 comfortable interest cover, unused borrowing headroom — then BACKTESTS the ranking:
 did top-ranked businesses actually raise borrowings the following year?
 
@@ -134,10 +134,13 @@ def main():
            .query("n >= 120").sort_values("share_headroom", ascending=False).head(8).reset_index())
     sectors_out = [dict(sector=r.sector, n=int(r.n), share_headroom=round(float(r.share_headroom), 3)) for r in sec.itertuples()]
 
-    # exemplars: believable mid-size businesses, not tiny-base CAGR artifacts
+    # exemplars: believable mid-size businesses with REAL, non-zero borrowing ratios
+    # (some existing bank debt they service comfortably = provable relationship + room to grow).
+    # Filtering to b2i in [0.1, 1.2] avoids the all-zero column that pure headroom-max would give.
     cred = latest[(latest.income >= 5) & (latest.income <= 500)
-                  & latest.income_cagr.between(0.10, 0.60)
-                  & latest.interest_cover.between(2, 40)]
+                  & latest.income_cagr.between(0.10, 0.55)
+                  & latest.interest_cover.between(3, 30)
+                  & latest.borrow_to_income.between(0.10, 1.20)]
     top = cred.sort_values("score", ascending=False).head(8)
     prospects = []
     for i, r in enumerate(top.itertuples(), 1):
@@ -146,8 +149,11 @@ def main():
             reasons.append(f"Income compounding at {round(r.income_cagr * 100)}%/yr — growth needs working capital")
         if not pd.isna(r.interest_cover) and r.interest_cover > 3:
             reasons.append(f"Interest cover {round(r.interest_cover, 1)}× — debt costs are comfortably absorbed")
-        if not pd.isna(r.borrow_to_income) and r.borrow_to_income < 0.3:
-            reasons.append("Barely any existing borrowings — whole credit line is headroom")
+        if not pd.isna(r.borrow_to_income):
+            if r.borrow_to_income < 0.3:
+                reasons.append("Barely any existing borrowings — whole credit line is headroom")
+            else:
+                reasons.append(f"Borrowings only {r.borrow_to_income:.1f}× income on {round(r.interest_cover)}× cover — clear room to lend more")
         prospects.append(dict(
             id=f"BR-{i:03d}", sector=r.sector,
             income_cagr=round(float(r.income_cagr), 3) if not pd.isna(r.income_cagr) else 0,
@@ -160,8 +166,9 @@ def main():
     out = dict(
         meta=dict(
             n_companies_str="26,000+", n_prospects=int(latest.headroom.sum()), years="7 yrs",
-            desc="Sector-level aggregates and anonymised exemplars from licensed real financial statements of Indian businesses; "
-                 "companies with any default history are screened out before ranking. Raw data never ships with this app.",
+            desc="Sector-level aggregates and anonymised exemplars from real Indian companies' annual financial statements "
+                 "and published credit-rating histories; companies with any default history are screened out before ranking. "
+                 "Only derived aggregates ship with this app — never raw company data.",
         ),
         sectors=sectors_out,
         prospects=prospects,

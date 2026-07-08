@@ -38,7 +38,7 @@ We deliberately do **not** claim "30% conversion guaranteed." The demo book is s
 |---|---|
 | **Mission Control** | The 1% → ~39% economics, live: drag the calling-capacity slider, watch precision/lift/contacts trade off. |
 | **Lead Queue** | Ranked book with separate intent & capacity scores, consent badges, greyed **"not queued — no consent (DPDP)"** rows, and a full call briefing per lead. |
-| **Business Radar** | The same engine pointed at **real businesses** (anonymised, licensed data): headroom by sector + a backtest that the ranking predicts real next-year borrowing. |
+| **Business Radar** | The same engine pointed at **real businesses** (anonymised, from published financials): headroom by sector + a backtest that the ranking predicts real next-year borrowing. |
 | **Model & Trust** | Calibration, lift decay, per-product AUC, and **"features we refused to use"** — anti-leakage and fairness shown before anyone asks. |
 
 ## Privacy & compliance by construction
@@ -52,7 +52,7 @@ We deliberately do **not** claim "30% conversion guaranteed." The demo book is s
 
 - **Data + models:** Python (pandas, LightGBM, scikit-learn). One propensity model per product; SHAP-style contributions become plain-English reasons. Everything precomputes to static JSON — the live demo has no backend to crash.
 - **App:** React + Vite + Tailwind + Recharts.
-- **Real-data module:** derived aggregates + anonymised exemplars only; the raw licensed dataset never ships.
+- **Real-data module:** derived aggregates + anonymised exemplars only; raw company data never ships.
 
 ### Run it locally
 
@@ -60,7 +60,7 @@ We deliberately do **not** claim "30% conversion guaranteed." The demo book is s
 # 1) generate the book, train, pack (from the repo root)
 python3 src/make_book.py        # synthetic liability book (15,000 customers × 24 months + measured future)
 python3 src/score_and_pack.py   # trains 3 LightGBMs, measures precision@budget, writes app/public/sanket_data.json
-# (optional) python3 src/make_radar.py  # real-data Business Radar (needs the licensed dataset, not in repo)
+# (optional) python3 src/make_radar.py  # real-data Business Radar (needs the source financial dataset, not in repo)
 
 # 2) run the app
 cd app && npm install && npm run dev   # http://localhost:5191

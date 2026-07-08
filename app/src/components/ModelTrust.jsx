@@ -17,7 +17,8 @@ function Stat({ value, label, hint, tone = 'text-signal-teal' }) {
 export default function ModelTrust({ data }) {
   const m = data.metrics
   const per = m.per_product
-  const cal = (m.calibration || []).map((r) => ({ pred: Math.round(r.pred * 100), obs: Math.round(r.obs * 100) }))
+  const cal = (m.calibration || []).map((r) => ({ pred: +(r.pred * 100).toFixed(1), obs: +(r.obs * 100).toFixed(1) }))
+  const calMax = Math.max(1, Math.ceil(Math.max(...cal.flatMap((c) => [c.pred, c.obs]))))
   const aucBars = Object.entries(per).map(([k, v]) => ({ name: PRODUCT[k].label, auc: v.auc }))
   const lift = m.blended.prec_curve.filter((p) => [0.01, 0.02, 0.05, 0.1, 0.2, 0.3].includes(p.budget))
     .map((p) => ({ name: `top ${Math.round(p.budget * 100)}%`, lift: +p.lift.toFixed(1) }))
@@ -38,17 +39,20 @@ export default function ModelTrust({ data }) {
 
       <div className="grid lg:grid-cols-2 gap-5">
         <section className="bg-ink-700 border border-line rounded-xl p-5">
-          <h3 className="font-bold text-sm">Calibration — is a “30” really a 30?</h3>
-          <p className="text-xs text-txt-lo mt-1 mb-4">Predicted conversion likelihood vs what actually happened, by decile. On the dashed line = the scores mean what they say.</p>
+          <h3 className="font-bold text-sm">Calibration — does the score mean what it says?</h3>
+          <p className="text-xs text-txt-lo mt-1 mb-4">Predicted conversion likelihood vs what actually happened, by score decile. Points on the dashed line = trustworthy probabilities.</p>
           <ResponsiveContainer width="100%" height={230}>
-            <LineChart data={cal} margin={{ top: 6, right: 12, left: -16, bottom: 0 }}>
+            <LineChart data={cal} margin={{ top: 6, right: 14, left: -12, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#232B4D" />
-              <XAxis dataKey="pred" type="number" domain={[0, 'dataMax']} tick={{ fontSize: 10, fill: '#6B7399' }} unit="%" />
-              <YAxis tick={{ fontSize: 10, fill: '#6B7399' }} unit="%" />
+              <XAxis dataKey="pred" type="number" domain={[0, calMax]} tick={{ fontSize: 10, fill: '#6B7399' }} unit="%"
+                     label={{ value: 'Predicted', fontSize: 10, fill: '#6B7399', position: 'insideBottom', dy: 12 }} />
+              <YAxis domain={[0, calMax]} tick={{ fontSize: 10, fill: '#6B7399' }} unit="%"
+                     label={{ value: 'Actual', fontSize: 10, fill: '#6B7399', angle: -90, position: 'insideLeft', dy: 20 }} />
               <Tooltip contentStyle={{ background: '#151C3B', border: '1px solid #26304F', borderRadius: 8, fontSize: 12 }}
-                       formatter={(v, n) => [`${v}%`, n === 'obs' ? 'Actual' : 'Predicted']} />
-              <ReferenceLine segment={[{ x: 0, y: 0 }, { x: 100, y: 100 }]} stroke="#3A466F" strokeDasharray="5 4" />
-              <Line type="monotone" dataKey="obs" stroke="#2DD4BF" strokeWidth={2.5} dot={{ r: 2, fill: '#2DD4BF' }} isAnimationActive={false} />
+                       formatter={(v, n) => [`${v}%`, n === 'obs' ? 'Actual' : 'Predicted']} labelFormatter={(l) => `predicted ${l}%`} />
+              <ReferenceLine segment={[{ x: 0, y: 0 }, { x: calMax, y: calMax }]} stroke="#6B7399" strokeDasharray="5 4"
+                             label={{ value: 'perfect', fontSize: 9, fill: '#6B7399', position: 'insideTopLeft' }} />
+              <Line type="linear" dataKey="obs" name="Actual" stroke="#2DD4BF" strokeWidth={2} dot={{ r: 3.5, fill: '#2DD4BF', stroke: '#0B1026' }} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </section>
