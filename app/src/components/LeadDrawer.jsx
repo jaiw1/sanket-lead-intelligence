@@ -44,6 +44,25 @@ export default function LeadDrawer({ data, leadId, onClose }) {
         </div>
 
         <div className="p-5 space-y-4">
+          {/* persuadability */}
+          {rec.uplift_tag && rec.uplift_tag !== 'neutral' && (
+            <div className={`flex items-start gap-2.5 rounded-xl border px-3.5 py-2.5 text-sm ${
+              rec.uplift_tag === 'persuadable' ? 'bg-signal-teal/10 border-signal-teal/40 text-signal-teal'
+              : rec.uplift_tag === 'converts-anyway' ? 'bg-signal-amber/10 border-signal-amber/40 text-signal-amber'
+              : 'bg-signal-rose/10 border-signal-rose/40 text-signal-rose'}`}>
+              <span className="font-bold shrink-0">
+                {rec.uplift_tag === 'persuadable' ? '◎ Persuadable' : rec.uplift_tag === 'converts-anyway' ? '◎ Converts anyway' : '◎ Handle with care'}
+              </span>
+              <span className="text-txt-mid">
+                {rec.uplift_tag === 'persuadable'
+                  ? 'Uplift model says the call itself creates this sale — prioritise a personal conversation.'
+                  : rec.uplift_tag === 'converts-anyway'
+                    ? 'Likely to convert organically — a light-touch nudge protects margin and RM time.'
+                    : 'Contact may hurt: profile matches customers who walk away when pushed. Prefer a soft in-app prompt.'}
+              </span>
+            </div>
+          )}
+
           {/* two scores */}
           <div className="grid grid-cols-2 gap-3">
             {[['Intent', rec.intent, 'does the need exist?'], ['Capacity', rec.capacity, 'can they repay comfortably?']].map(([label, v, hint]) => (

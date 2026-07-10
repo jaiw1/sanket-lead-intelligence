@@ -67,7 +67,8 @@ def build_features(panel, book):
     for p in PRODUCTS:
         df[f"dwell_{p}_3m"] = roll(f"dwell_{p}", 3, "sum")
 
-    df = df.merge(book[["cust_id", "segment", "age", "city_tier", "tenure_m", "consent", "product", "event_month"]], on="cust_id")
+    df = df.merge(book[["cust_id", "segment", "age", "city_tier", "tenure_m", "consent", "product", "event_month",
+                        "dnd", "persuadable", "p_win_start", "p_win_end", "true_income", "inc_drift"]], on="cust_id")
     for p in PRODUCTS:
         df[f"y_{p}"] = ((df["product"] == p) & (df.event_month > df.month) & (df.event_month <= df.month + 3)).astype(int)
     df["y_any"] = df[[f"y_{p}" for p in PRODUCTS]].max(axis=1)
@@ -208,6 +209,92 @@ def main():
 
     auc_macro = float(np.mean([per_product[p]["auc"] for p in PRODUCTS]))
 
+    # ================= UPLIFT / PERSUADABILITY =================
+    # Ground truth gives every customer two potential outcomes: y0 (converts organically)
+    # and y1 (converts if contacted). We simulate a randomized monthly campaign (T ~ 50/50),
+    # observe only y_obs = T ? y1 : y0 (like a real bank experiment), train a two-model
+    # uplift estimator, and evaluate a Qini-style incremental-conversion curve on held-out
+    # customers. Propensity says WHO WILL CONVERT; uplift says WHO CONVERTS BECAUSE YOU CALLED.
+    def campaign(custset, months):
+        rows = df[df.cust_id.isin(custset) & df.month.isin(months) & (df.consent == 1)].copy()
+        y0 = ((rows.event_month > rows.month) & (rows.event_month <= rows.month + 3)).astype(int).values
+        receptive = ((rows.persuadable == 1) & (rows.p_win_start <= rows.month) & (rows.month < rows.p_win_end + 2)).values
+        y1 = (((y0 == 1) & (rows.dnd.values == 0)) | receptive).astype(int)
+        T = RNG.random(len(rows)) < 0.5
+        return rows, T, np.where(T, y1, y0), y0, y1
+
+    train_set = set(custs) - heldout
+    tr_rows, T_tr, y_tr, _, _ = campaign(train_set, [18, 19, 20])
+    up_kw = dict(n_estimators=300, learning_rate=0.05, num_leaves=31, min_child_samples=60,
+                 subsample=0.8, colsample_bytree=0.8, random_state=7, n_jobs=-1, verbose=-1)
+    mT = LGBMClassifier(**up_kw).fit(tr_rows[FEATS][T_tr], y_tr[T_tr], categorical_feature=CAT)
+    mC = LGBMClassifier(**up_kw).fit(tr_rows[FEATS][~T_tr], y_tr[~T_tr], categorical_feature=CAT)
+
+    ev_rows, T_ev, y_ev, y0e, y1e = campaign(heldout, [21, 22, 23])
+    u_ev = mT.predict_proba(ev_rows[FEATS])[:, 1] - mC.predict_proba(ev_rows[FEATS])[:, 1]
+    order_u = np.argsort(-u_ev)
+    Tv, yv = T_ev[order_u], y_ev[order_u]
+    qini_curve, n = [], len(order_u)
+    for frac in [x / 20 for x in range(1, 21)]:
+        k = int(n * frac)
+        t_mask, c_mask = Tv[:k], ~Tv[:k]
+        yt, yc = yv[:k][t_mask].sum(), yv[:k][c_mask].sum()
+        nt, nc = max(t_mask.sum(), 1), max(c_mask.sum(), 1)
+        inc = float(yt - yc * nt / nc)                      # incremental conversions among treated
+        qini_curve.append(dict(frac=frac, inc=round(inc, 1), inc_per_1000=round(1000 * inc / nt, 1)))
+    # random-targeting endpoint for the chart's reference line
+    t_all, c_all = Tv, ~Tv
+    inc_total = float(yv[t_all].sum() - yv[c_all].sum() * t_all.sum() / max(c_all.sum(), 1))
+    top20 = qini_curve[3]  # frac=0.20
+    pers_share_top = float(ev_rows.persuadable.values[order_u][: int(n * 0.2)].mean())
+    uplift_out = dict(
+        curve=qini_curve, inc_total=round(inc_total, 1),
+        inc_per_1000_all=round(1000 * inc_total / max(int(t_all.sum()), 1), 1),
+        inc_per_1000_top20=top20["inc_per_1000"],
+        persuadable_share_top20=round(pers_share_top, 3),
+        persuadable_share_book=round(float(df[df.month == SNAP].persuadable.mean()), 3),
+        dnd_share_book=round(float(df[df.month == SNAP].dnd.mean()), 3),
+    )
+    print(f"UPLIFT: top-20% uplift-ranked -> {top20['inc_per_1000']} incremental conversions per 1,000 calls "
+          f"(vs {round(1000 * inc_total / max(t_all.sum(),1), 1)} if you call everyone)")
+
+    # snapshot uplift scores for the queue (who is persuadable TODAY)
+    u_snap = (mT.predict_proba(snap_all[FEATS])[:, 1] - mC.predict_proba(snap_all[FEATS])[:, 1])
+    snap_all["uplift"] = u_snap
+    snap_all["uplift_pct"] = pd.Series(u_snap, index=snap_all.index).rank(pct=True)
+
+    # ================= FAIRNESS — the 80% rule =================
+    # Disparate impact of the top-2% calling queue across segment / city tier / age band:
+    # selection_rate(group) / selection_rate(most-selected group) must be >= 0.8.
+    cons_f = snap_all[snap_all.consent == 1].copy()
+    cons_f["selected"] = cons_f.score_raw >= cons_f.score_raw.quantile(0.98)
+    cons_f["age_band"] = pd.cut(cons_f.age, [20, 30, 45, 63], labels=["21-30", "31-45", "46+"])
+    fairness = []
+    for dim, col in [("Segment", "segment"), ("City tier", "city_tier"), ("Age band", "age_band")]:
+        rates = cons_f.groupby(col, observed=True).selected.mean()
+        ref = rates.max()
+        for g, r in rates.items():
+            fairness.append(dict(dim=dim, group=str(g), sel_rate=round(float(r), 4),
+                                 ratio=round(float(r / ref), 2), passes=bool(r / ref >= 0.8)))
+    n_fail = sum(1 for f in fairness if not f["passes"])
+    print(f"FAIRNESS: {len(fairness)} group ratios, {n_fail} below the 0.8 threshold")
+
+    # ================= INCOME-ESTIMATION ACCURACY =================
+    # The generator knows each customer's true income; our behavioural estimate is the
+    # 6-month median of credits. Measured on held-out customers at the snapshot.
+    ho_inc = snap_all[snap_all.held]
+    true_inc = ho_inc.true_income * (1 + ho_inc.inc_drift) ** SNAP
+    err = (ho_inc.credits_med_6m - true_inc).abs() / true_inc
+    gig_err = err[ho_inc.segment == "gig"]
+    income_acc = dict(
+        within10=round(float((err <= 0.10).mean()), 3),
+        within15=round(float((err <= 0.15).mean()), 3),
+        gig_within15=round(float((gig_err <= 0.15).mean()), 3),
+        median_err=round(float(err.median()), 3),
+    )
+    print(f"INCOME: {income_acc['within10']:.0%} within ±10%, {income_acc['within15']:.0%} within ±15% "
+          f"(gig: {income_acc['gig_within15']:.0%} within ±15%)")
+
     # ---- tiers over the consented book ----
     cons = snap_all[snap_all.consent == 1].copy()
     q_hot, q_warm = cons.score_raw.quantile([0.975, 0.90])
@@ -245,9 +332,18 @@ def main():
         lang = "hi" if (int(cid.split("-")[1]) % 5) < 2 else "en"
         opener, why, obj_q, obj_a = (PITCH_HI if lang == "hi" else PITCH_EN)[p]
         emi = int(r.safe_emi) if r.safe_emi > 0 else TYPICAL_EMI[p]
+        # persuadability tag: uplift percentile vs propensity
+        if r.uplift < 0:
+            utag = "handle-with-care"          # contact may kill an organic sale
+        elif r.uplift_pct >= 0.85:
+            utag = "persuadable"               # the call creates the sale
+        elif r.intent >= 0.9 and r.uplift_pct < 0.5:
+            utag = "converts-anyway"           # light-touch nudge is enough
+        else:
+            utag = "neutral"
         leads.append(dict(
             id=cid, segment=r.segment, age=int(r.age), city_tier=int(r.city_tier), tenure_m=int(r.tenure_m),
-            consent=True, product=p, tier=r.tier, lang=lang,
+            consent=True, product=p, tier=r.tier, lang=lang, uplift_tag=utag, uplift_pct=round(float(r.uplift_pct), 2),
             intent=round(float(r.intent), 3), capacity=round(float(r.capacity), 3), score=round(float(r.blend), 3),
             salary_m=int(r.credits_med_6m), retained_income=int(r.retained), safe_emi=int(r.safe_emi),
             reasons=rs,
@@ -272,6 +368,9 @@ def main():
             per_product=per_product,
             blended=dict(baseline=round(baseline, 4), auc_macro=round(auc_macro, 3), prec_curve=prec_curve),
             calibration=calib,
+            uplift=uplift_out,
+            fairness=fairness,
+            income_acc=income_acc,
             excluded_features=EXCLUDED_FEATURES,
         ),
         gig_case_id=str(gig_id),

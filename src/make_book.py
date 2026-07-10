@@ -70,6 +70,15 @@ def main():
     sig_strength = np.where(RNG.random(N) < 0.12, 0.0, RNG.uniform(0.45, 1.0, N))   # 12% silent converters
     browses = RNG.random(N) < 0.60                                                   # only 60% research in-app
 
+    # ---- treatment-effect archetypes (ground truth for uplift/persuadability) ----
+    # organic converters (is_conv): convert on their own (y0=1). If contacted, most still
+    # convert (sure things) but ~12% are "do-not-disturb" — a pushy call kills the sale.
+    # persuadables: convert ONLY if contacted during their active-signal window — they live
+    # among the lookalikes (near-misses and red-herrings), which is exactly where the
+    # incremental value of calling hides. Everyone else is a lost cause (call changes nothing).
+    dnd = is_conv & (RNG.random(N) < 0.12)
+    persuadable = (near_miss & (RNG.random(N) < 0.55)) | (red_herring & (RNG.random(N) < 0.18))
+
     rent_base = np.where(RNG.random(N) < 0.55, base_inc * RNG.uniform(0.12, 0.30, N), 0.0)  # 55% rent
     ext_emi_base = np.where(RNG.random(N) < 0.38, base_inc * RNG.uniform(0.06, 0.22, N), 0.0)
     has_auto_emi = (RNG.random(N) < 0.22)
@@ -77,10 +86,13 @@ def main():
     fd_base = np.where(RNG.random(N) < 0.45, base_inc * RNG.uniform(1.5, 8.0, N), 0.0)
 
     rows = []
+    drifts = np.zeros(N)
+    pw_start, pw_end, pw_prod = np.full(N, -1), np.full(N, -1), np.array([""] * N, dtype=object)
     for i in range(N):
         inc = base_inc[i]
         vol = {"salaried": 0.05, "self-employed": 0.16, "gig": 0.30}[seg[i]]
         drift = RNG.normal(0.004, 0.003)                      # gentle income growth
+        drifts[i] = drift
         bal = inc * RNG.uniform(0.5, 2.2)
         fd = fd_base[i]
         rent = rent_base[i]
@@ -107,6 +119,12 @@ def main():
         rh_start = RNG.integers(6, 20) if red_herring[i] else -1
         rh_kind = RNG.choice(PRODUCTS) if red_herring[i] else ""
         rh_len = RNG.integers(4, 9) if red_herring[i] else 0
+        # persuadable ground truth: they convert IF contacted during their active-signal window
+        if persuadable[i]:
+            if near_miss[i]:
+                pw_start[i], pw_end[i], pw_prod[i] = ramp_start, ev_like, pr
+            else:
+                pw_start[i], pw_end[i], pw_prod[i] = rh_start, rh_start + rh_len, rh_kind
 
         for m in range(M):
             credits = inc * (1 + drift) ** m * max(0.25, 1 + RNG.normal(0, vol))
@@ -180,15 +198,21 @@ def main():
         "segment": seg, "age": age, "city_tier": city, "tenure_m": tenure, "consent": consent.astype(int),
         "product": prod, "event_month": event_m,
         "window_shopper": window_shopper.astype(int), "dormant_rich": dormant_rich.astype(int),
+        # uplift ground truth + income truth (for held-out measurement only — never features)
+        "dnd": dnd.astype(int), "persuadable": persuadable.astype(int),
+        "p_win_start": pw_start, "p_win_end": pw_end, "p_prod": pw_prod,
+        "true_income": base_inc.round(0), "inc_drift": drifts.round(5),
     })
 
     panel.to_csv(f"{ROOT}/data/customer_panel.csv", index=False)
     book.to_csv(f"{ROOT}/data/customer_book.csv", index=False)
 
     conv3 = ((book.event_month > SNAP) & (book.event_month <= SNAP + 3)).mean()
+    pers_active = (persuadable & (pw_start <= SNAP) & (pw_end > SNAP)).mean()
     print(f"{N:,} customers x {M} months -> {len(panel):,} rows")
     print(f"eventual converters: {is_conv.mean():.1%} | product mix: {pd.Series(prod[prod != '']).value_counts().to_dict()}")
     print(f"random-contact 3m conversion at snapshot: {conv3:.2%}  (bank-stated baseline ~1%)")
+    print(f"archetypes: persuadable {persuadable.mean():.1%} (active at snapshot {pers_active:.1%}) | do-not-disturb {dnd.mean():.1%}")
     print(f"consent: {consent.mean():.0%}")
 
 

@@ -4,13 +4,14 @@ import LeadQueue from './components/LeadQueue'
 import BusinessRadar from './components/BusinessRadar'
 import ModelTrust from './components/ModelTrust'
 import LeadDrawer from './components/LeadDrawer'
-import { Antenna, Gauge, ListOrdered, Radar as RadarIcon, ScanEye, ShieldCheck, TriangleAlert, RefreshCw } from 'lucide-react'
+import Guide from './components/Guide'
+import { Antenna, Gauge, ListOrdered, Radar as RadarIcon, ScanEye, ShieldCheck, TriangleAlert, RefreshCw, Compass } from 'lucide-react'
 
 const TABS = [
-  { key: 'mission', label: 'Mission Control', icon: Gauge },
-  { key: 'queue', label: 'Lead Queue', icon: ListOrdered },
-  { key: 'radar', label: 'Business Radar', icon: RadarIcon, badge: 'REAL' },
-  { key: 'trust', label: 'Model & Trust', icon: ScanEye },
+  { key: 'mission', label: 'Mission Control', short: 'Mission', icon: Gauge },
+  { key: 'queue', label: 'Lead Queue', short: 'Queue', icon: ListOrdered },
+  { key: 'radar', label: 'Business Radar', short: 'Radar', icon: RadarIcon, badge: 'REAL' },
+  { key: 'trust', label: 'Model & Trust', short: 'Trust', icon: ScanEye },
 ]
 
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
   const [radar, setRadar] = useState(null)
   const [error, setError] = useState(false)
   const [lead, setLead] = useState(params.get('lead') || null)
+  const [guide, setGuide] = useState(false)
 
   const load = () => {
     setError(false)
@@ -32,7 +34,14 @@ export default function App() {
     // radar module is optional — the app degrades gracefully without it
     fetch(`${b}radar_data.json`).then((r) => r.json()).then(setRadar).catch(() => {})
   }
-  useEffect(load, [])
+  useEffect(() => {
+    load()
+    // auto-show tour on first visit; ?tour=0 suppresses (screenshots, deep-links)
+    if (!localStorage.getItem('sanket_seen_tour') && params.get('tour') !== '0') setGuide(true)
+  }, [])
+
+  const closeGuide = () => { setGuide(false); setLead(null); localStorage.setItem('sanket_seen_tour', '1') }
+  const hindiLeadId = data?.leads.find((l) => l.lang === 'hi' && l.consent && l.tier === 'hot')?.id
 
   if (error) return (
     <div className="min-h-screen grid place-items-center px-6">
@@ -75,9 +84,15 @@ export default function App() {
               </button>
             ))}
           </nav>
-          <div className="ml-auto hidden md:flex items-center gap-2 text-[11px] text-txt-lo">
-            <ShieldCheck size={13} className="text-signal-teal" />
-            consent-first · synthetic demo book · IDBI Innovate 2026 · Track 2
+          <div className="ml-auto flex items-center gap-3">
+            <button onClick={() => setGuide(true)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-signal-amber bg-signal-amber/10 hover:bg-signal-amber/20 rounded-lg px-3 py-1.5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-amber">
+              <Compass size={13} /> Tour
+            </button>
+            <div className="hidden lg:flex items-center gap-2 text-[11px] text-txt-lo">
+              <ShieldCheck size={13} className="text-signal-teal" />
+              consent-first · synthetic demo book · IDBI Innovate 2026 · Track 2
+            </div>
           </div>
         </div>
       </header>
@@ -89,11 +104,22 @@ export default function App() {
         {tab === 'trust' && <ModelTrust data={data} />}
       </main>
 
-      <footer className="border-t border-line py-3 text-center text-[11px] text-txt-lo">
+      <footer className="border-t border-line py-3 pb-16 md:pb-3 text-center text-[11px] text-txt-lo">
         SANKET advises — the relationship manager decides. Demo runs on a synthetic liability book; bank data connects post-shortlisting.
       </footer>
 
+      {/* mobile bottom nav */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-ink-800 border-t border-line flex pb-[env(safe-area-inset-bottom)]">
+        {TABS.map((t) => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-[10px] font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-signal-amber ${tab === t.key ? 'text-signal-amber bg-ink-600/60' : 'text-txt-lo'}`}>
+            <t.icon size={17} /> {t.short}
+          </button>
+        ))}
+      </nav>
+
       {lead && <LeadDrawer data={data} leadId={lead} onClose={() => setLead(null)} />}
+      {guide && <Guide setTab={setTab} setLead={setLead} hindiLeadId={hindiLeadId} onClose={closeGuide} />}
     </div>
   )
 }
