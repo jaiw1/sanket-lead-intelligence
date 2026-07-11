@@ -4,7 +4,7 @@
 
 **🟠 Live demo:** **https://sanket-leads.vercel.app** — no login, no backend.
 
-**One line:** Every transaction is a signal. SANKET reads a bank's own liability-side accounts — salary rhythm, rent step-ups, fuel spend, balance build-ups — and turns them into a **ranked, explained, consent-clean loan pipeline**: from ~1% cold-calling to a **measured ~39% conversation rate at a top-2% calling budget**.
+**One line:** Every transaction is a signal. SANKET reads a bank's own liability-side accounts — salary rhythm, rent step-ups, fuel spend, balance build-ups — and turns them into a **ranked, explained, consent-clean loan pipeline**: from ~1% cold-calling to a **measured 36% conversation rate at a top-2% calling budget** — and, beyond propensity, an **uplift model** that finds who converts *because* you call.
 
 ---
 
@@ -15,9 +15,10 @@ Banks sit on their best lead list — their own savings and current accounts —
 ## What SANKET does
 
 1. **Reads signals** from account behaviour: salary/credit rhythm, rent step-ups, fuel + cab surges, pre-salary balance dips, FD breaks, product-page dwell.
-2. **Scores two things separately** — the two axes the bank's own PM framed:
+2. **Scores three things** — the two axes the bank's own PM framed, plus one they'll wish they had:
    - **Intent** — does the need exist *right now*?
    - **Capacity** — can they repay comfortably? (behavioural **retained-income** estimate, not just declared salary)
+   - **Uplift** — does the call change the outcome? Persuadable customers get prioritised; likely organic converters get a light-touch nudge; **do-not-disturb** profiles are protected from pushy calls.
 3. **Ranks a queue** (Hot / Warm / Cold, next-best-product) — after screening out every customer without marketing consent. They're never scored at all.
 4. **Briefs the RM**: plain-English reasons, a data-grounded opening script (every claim traceable to a signal chip), the likely objection with its answer, retained-income → safe-EMI headroom, and a next-best-action with timing.
 
@@ -26,8 +27,11 @@ Banks sit on their best lead list — their own savings and current accounts —
 | What | Value | How it's measured |
 |---|---|---|
 | Cold-call baseline | **1.3%** | random-contact conversion in the book (engineered to the bank-stated ~1%) |
-| Top-2% queue precision | **~39%** (**30× lift**) | held-out customers, outcomes 3 months forward |
-| Ranking quality | AUC **0.83 / 0.89 / 0.97** (home / auto / PL) | customer-grouped split, temporally forward test |
+| Top-2% queue precision | **36.0%** (**28× lift**) | held-out customers, outcomes 3 months forward |
+| Uplift targeting (Qini) | **30.3 vs 11.4** incremental conversions per 1,000 calls | simulated randomized campaigns (contact vs hold-out), two-model estimator, held-out evaluation |
+| Ranking quality | AUC **0.85 / 0.88 / 0.95** (home / auto / PL) | customer-grouped split, temporally forward test |
+| Income estimation | **95% within ±15%** of true income (gig: 73%) | behavioural estimate vs ground truth, held-out customers |
+| Fairness (80% rule) | **8 of 9 group ratios pass** — gig fails at 0.51, shown honestly with mitigation | disparate-impact selection rates on the top-2% queue |
 | Real-data proof | **2.0× backtest lift** | on **26,000+ real Indian businesses**: top-decile radar prospects actually raised borrowings next FY at 2× the rate of the rest |
 
 We deliberately do **not** claim "30% conversion guaranteed." The demo book is synthetic (bank data arrives post-shortlisting); what we claim is the **machinery** — ranking, explanation, consent screening and honest measurement — shown working end-to-end, plus a real-data backtest proving the prospecting logic holds outside toy data.
@@ -39,7 +43,7 @@ We deliberately do **not** claim "30% conversion guaranteed." The demo book is s
 | **Mission Control** | The 1% → ~39% economics, live: drag the calling-capacity slider, watch precision/lift/contacts trade off. |
 | **Lead Queue** | Ranked book with separate intent & capacity scores, consent badges, greyed **"not queued — no consent (DPDP)"** rows, and a full call briefing per lead. |
 | **Business Radar** | The same engine pointed at **real businesses** (anonymised, from published financials): headroom by sector + a backtest that the ranking predicts real next-year borrowing. |
-| **Model & Trust** | Calibration, lift decay, per-product AUC, and **"features we refused to use"** — anti-leakage and fairness shown before anyone asks. |
+| **Model & Trust** | Uplift/Qini exhibit, fairness 80%-rule panel (including the one segment that fails, shown honestly), income-estimation accuracy, calibration, lift decay, per-product AUC, and **"features we refused to use"**. |
 
 ## Privacy & compliance by construction
 
