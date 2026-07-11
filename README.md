@@ -40,7 +40,7 @@ We deliberately do **not** claim "30% conversion guaranteed." The demo book is s
 
 | Tab | What it proves |
 |---|---|
-| **Mission Control** | The 1% → ~39% economics, live: drag the calling-capacity slider, watch precision/lift/contacts trade off. |
+| **Mission Control** | The 1% → 36% economics, live: drag the calling-capacity slider, watch precision/lift/contacts trade off. |
 | **Lead Queue** | Ranked book with separate intent & capacity scores, consent badges, greyed **"not queued — no consent (DPDP)"** rows, and a full call briefing per lead. |
 | **Business Radar** | The same engine pointed at **real businesses** (anonymised, from published financials): headroom by sector + a backtest that the ranking predicts real next-year borrowing. |
 | **Model & Trust** | Uplift/Qini exhibit, fairness 80%-rule panel (including the one segment that fails, shown honestly), income-estimation accuracy, calibration, lift decay, per-product AUC, and **"features we refused to use"**. |
