@@ -1,0 +1,199 @@
+{
+  "provenance": {
+    "description": "Summary of the pre-SD-S1 row-loop generator's output at the default seed.",
+    "source_file": "src/make_book.py",
+    "git_blob": "26454a5128aafcd8a94b43a6f1e6e3e909dca171",
+    "git_commit": "435263f21deccf1771c84d4626f66180f1fbbc6b",
+    "restore_with": "git show 26454a5128aafcd8a94b43a6f1e6e3e909dca171 > /tmp/old_make_book.py",
+    "seed": 20260709,
+    "generated_on": "2026-09-16"
+  },
+  "n": 15000,
+  "months": 27,
+  "rows": 405000,
+  "panel_columns": [
+    "cust_id",
+    "month",
+    "date",
+    "credits",
+    "bal_avg",
+    "bal_min",
+    "rent",
+    "fuel_cab",
+    "school_fees",
+    "ecommerce",
+    "ext_emi",
+    "has_auto_emi",
+    "fd_bal",
+    "dwell_home",
+    "dwell_auto",
+    "dwell_pl"
+  ],
+  "book_columns": [
+    "cust_id",
+    "segment",
+    "age",
+    "city_tier",
+    "tenure_m",
+    "consent",
+    "product",
+    "event_month",
+    "window_shopper",
+    "dormant_rich",
+    "dnd",
+    "persuadable",
+    "p_win_start",
+    "p_win_end",
+    "p_prod",
+    "true_income",
+    "inc_drift"
+  ],
+  "columns": {
+    "credits": {
+      "quantiles": {
+        "0.1": 32360.0,
+        "0.25": 46039.0,
+        "0.5": 63199.0,
+        "0.75": 84462.25,
+        "0.9": 110103.10000000003
+      },
+      "mean": 68729.66549135803,
+      "nonzero_share": 1.0
+    },
+    "bal_avg": {
+      "quantiles": {
+        "0.1": 67012.0,
+        "0.25": 103576.0,
+        "0.5": 162912.0,
+        "0.75": 250709.0,
+        "0.9": 362744.9000000003
+      },
+      "mean": 196172.34782469136,
+      "nonzero_share": 1.0
+    },
+    "bal_min": {
+      "quantiles": {
+        "0.1": 17665.0,
+        "0.25": 28824.0,
+        "0.5": 48379.0,
+        "0.75": 79280.5,
+        "0.9": 121205.10000000003
+      },
+      "mean": 61720.43027901235,
+      "nonzero_share": 1.0
+    },
+    "rent": {
+      "quantiles": {
+        "0.1": 0.0,
+        "0.25": 0.0,
+        "0.5": 5782.5,
+        "0.75": 12986.0,
+        "0.9": 19336.0
+      },
+      "mean": 7578.205812345679,
+      "nonzero_share": 0.5506666666666666
+    },
+    "fuel_cab": {
+      "quantiles": {
+        "0.1": 825.0,
+        "0.25": 1219.0,
+        "0.5": 1822.0,
+        "0.75": 2638.0,
+        "0.9": 3616.0
+      },
+      "mean": 2080.6685679012344,
+      "nonzero_share": 1.0
+    },
+    "school_fees": {
+      "quantiles": {
+        "0.1": 0.0,
+        "0.25": 0.0,
+        "0.5": 0.0,
+        "0.75": 2587.0,
+        "0.9": 5265.0
+      },
+      "mean": 1434.0076444444444,
+      "nonzero_share": 0.3035333333333333
+    },
+    "ecommerce": {
+      "quantiles": {
+        "0.1": 1255.0,
+        "0.25": 1903.0,
+        "0.5": 2968.0,
+        "0.75": 4433.0,
+        "0.9": 6149.100000000035
+      },
+      "mean": 3435.977975308642,
+      "nonzero_share": 1.0
+    },
+    "ext_emi": {
+      "quantiles": {
+        "0.1": 0.0,
+        "0.25": 0.0,
+        "0.5": 0.0,
+        "0.75": 6257.0,
+        "0.9": 11418.0
+      },
+      "mean": 3511.5541259259257,
+      "nonzero_share": 0.3917679012345679
+    },
+    "fd_bal": {
+      "quantiles": {
+        "0.1": 0.0,
+        "0.25": 0.0,
+        "0.5": 0.0,
+        "0.75": 239064.0,
+        "0.9": 420051.0
+      },
+      "mean": 137385.8176765432,
+      "nonzero_share": 0.4492
+    },
+    "dwell_home": {
+      "quantiles": {
+        "0.1": 0.0,
+        "0.25": 0.0,
+        "0.5": 0.0,
+        "0.75": 0.0,
+        "0.9": 0.0
+      },
+      "mean": 0.12490962962962963,
+      "nonzero_share": 0.048560493827160496
+    },
+    "dwell_auto": {
+      "quantiles": {
+        "0.1": 0.0,
+        "0.25": 0.0,
+        "0.5": 0.0,
+        "0.75": 0.0,
+        "0.9": 0.0
+      },
+      "mean": 0.1269335802469136,
+      "nonzero_share": 0.049760493827160496
+    },
+    "dwell_pl": {
+      "quantiles": {
+        "0.1": 0.0,
+        "0.25": 0.0,
+        "0.5": 0.0,
+        "0.75": 0.0,
+        "0.9": 0.0
+      },
+      "mean": 0.12624123456790123,
+      "nonzero_share": 0.04992345679012346
+    }
+  },
+  "shares": {
+    "converters": 0.087,
+    "contact_conversion_3m": 0.013666666666666667,
+    "consent": 0.8499333333333333,
+    "window_shopper": 0.08086666666666667,
+    "dormant_rich": 0.06186666666666667,
+    "persuadable": 0.03613333333333334,
+    "dnd": 0.0108
+  },
+  "product_mix": {
+    "pl": 0.42375478927203064,
+    "auto": 0.3578544061302682,
+    "home": 0.21839080459770116
+  }
+}
