@@ -217,6 +217,14 @@ criteria:
       θ to land in this band). Asserting it here as well means a generator change
       that drifts the baseline cannot pass silently.
 
+      AMENDED 2026-09-16 — see `amendments` at the foot of this file. The BAND IS
+      UNCHANGED at [0.08, 0.10]; the scoring population is now written down as
+      the drop-off population (consented, contactable, an abandoned attempt in
+      the trailing 12 months, no disbursement in flight) at the (customer, month)
+      grain, and this metric is the disbursement rate among a uniformly random
+      10% contact sample of it. Source table: `data/labels.csv`
+      (`eligible_for_contact = 1`, column `label_disbursed_in_window`).
+
   - id: SK-02
     runner: "01_holdout"
     metric: precision_at_10pct_budget
@@ -232,7 +240,18 @@ criteria:
       matters as much as the lower: a synthetic book that yields 60% precision
       has leaked its own generative structure and no bank reviewer would believe
       it.
-    note: "Band is on the point estimate; the 95% CI is reported beside it."
+    note: >-
+      Band is on the point estimate; the 95% CI is reported beside it.
+
+      AMENDED 2026-09-16 — see `amendments` at the foot of this file. The BAND IS
+      UNCHANGED at [0.25, 0.35]; the scoring population is the same drop-off
+      population as SK-01, model-ranked at the same 10% contact budget, so the
+      "9 → 30 per 100 RM calls" headline is two numbers over one denominator.
+      The generator (§B L6 SD-S4) tunes a single signal-to-noise knob so that an
+      ORACLE ranker — one that sees the latent index the label was drawn from —
+      reaches ~0.32. That is a ceiling on this criterion, not a prediction of it:
+      the model reads those latents only through noisy observables and will land
+      below it.
 
   - id: SK-03
     runner: "01_holdout"
@@ -648,4 +667,69 @@ criteria:
 # Amendments — append only. Loosening a registered band requires an entry here
 # with a date and a reason, and the reason has to survive a bank reviewer.
 # -----------------------------------------------------------------------------
-amendments: []
+amendments:
+  - at: "2026-09-16T00:00:00+05:30"
+    by: "RR Squad — architect ruling"
+    criteria: ["SK-01", "SK-02", "SK-17", "SK-18"]
+    loosening: false
+    change: >-
+      SCOPING, NOT THRESHOLDS. No band moves. SK-01 stays [0.08, 0.10], SK-02
+      stays [0.25, 0.35], SK-18 stays [0.48, 0.52], SK-17 stays 0 — all `fail`,
+      all with their ceilings. What is amended is the SCORING POPULATION SK-01
+      and SK-02 are computed over, which was under-specified at registration
+      because this file was written before the application-journey layer (plan
+      §B L6 SD-S2) existed and so before there was a drop-off population to
+      name. The same entry re-points runner 07 at the files that layer actually
+      emitted; SK-17 and SK-18 are listed only because that runner answers them,
+      and neither band changes.
+
+
+      ORIGINAL WORDING (registered 2026-09-16T10:47:14+05:30).
+      `label_definition.observation_unit`: "One (cust_id, month) row of the
+      liability book at a snapshot month m. The model scores a consented
+      customer as at m using only information available at or before m."
+      `label_definition.primary.description`: "CONVERSION MEANS DISBURSEMENT,
+      not lead creation and not application start (mentor mandate). 1 if, after
+      being contacted at month m, the customer's application for the offered
+      product reaches the Disburse stage within that product's pre-registered
+      window; 0 otherwise, including applications that start and then abandon."
+      `splits.holdout.scoring_population`: "Held-out, consented customers at the
+      snapshot month. Precision-at-budget is computed on this population; the
+      cockpit queue is built over the whole book but is never a measurement
+      surface." `validation/runners/07_leakage.py` INPUTS:
+      "data/application_journeys.csv  (PLANNED — plan §B L6 SD-S2)".
+
+
+      NEW WORDING. The scoring unit is a (customer, month) row for customers in
+      the DROP-OFF POPULATION — consented, contactable customers with at least
+      one abandoned application attempt in the trailing 12 months and no
+      disbursement in flight — and the label is disbursement of any product
+      within that product's decision window after an RM contact (windows in
+      days: personal 1, gold 1, auto 3, education 7, home 14, lap 14 —
+      unchanged, and unchanged from `conversion_windows_days` above).
+      `random_contact_disbursement_rate` (SK-01) is the disbursement rate among
+      a uniformly random 10% contact sample of that population.
+      `precision_at_10pct_budget` (SK-02) is the same population, model-ranked
+      at the same 10% contact budget. Runner 07's data path becomes
+      `data/journeys.csv` + `data/journey_events.csv` (the alias columns SD-S2
+      emitted for the pre-registered spelling — cust_id, stage_reached,
+      start_ts, abandon_ts, disburse_ts, blank_ratio, income_refused,
+      revisit_count — stay); only the path and the column mapping change, not
+      the leakage logic.
+    rationale: >-
+      The mentors defined conversion as disbursement and said in terms that "the
+      population that matters is the drop-offs". The RM-call baseline of 8-10%
+      is a statement about CALLED PROSPECTS, not about every consented
+      customer-month: on the whole book that rate is ~0.1% at a snapshot month
+      (1.35% even at the three-month horizon the old pipeline measured), which
+      would force the contact effect theta to a value no bank reviewer would
+      accept in order to reach 8%. The business action being priced is an RM
+      working a lead list, not ringing 60,000 savings customers, so the
+      denominator has to be the lead list. Recorded as an amendment rather than
+      applied as a reinterpretation because the population is part of what a
+      pre-registered metric means, and changing it quietly — even without
+      touching a threshold — is exactly the move pre-registration exists to
+      prevent. Generator side: plan §B L6 SD-S4 solves theta against this
+      population and asserts both bands in-script (`src/journeys/labels.py`,
+      `check()`), across five seeds; `DATA_CARD.md` §12 documents the label,
+      the two solved knobs and the known unrealisms that come with them.

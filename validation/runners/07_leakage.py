@@ -16,11 +16,22 @@ Consumes
         dwell_auto, dwell_pl, plus the SD-S1 additions upi_p2m,
         salary_credit_day, emi_outflow_to_other_bank, card_spend,
         insurance_premium
-* ``data/application_journeys.csv  (PLANNED — plan §B L6 SD-S2)``
-      - one row per application attempt: cust_id, product, attempt_id,
-        channel, start_ts, stage_reached, abandon_ts, disburse_ts,
-        fee_paid, fee_balk, doc_refusal, income_refused, blank_ratio,
-        revisit_count
+* ``data/journeys.csv``
+      - one row per application attempt. AMENDED 2026-09-16 (see the
+        `amendments` entry in validation/criteria.yaml): registered here as
+        ``data/application_journeys.csv``, which the generator lane never
+        emitted. SD-S2 writes ``data/journeys.csv`` and carries the
+        pre-registered column spelling as aliases beside its own, so the
+        columns named at registration resolve unchanged: cust_id, product,
+        attempt_id, channel, start_ts, stage_reached, abandon_ts,
+        disburse_ts, fee_paid, fee_balk, doc_refusal, income_refused,
+        blank_ratio, revisit_count
+* ``data/journey_events.csv``
+      - one row per stage transition: attempt_id, customer_id, seq,
+        from_stage, to_stage, event, occurred_at, days_in_from_stage. This
+        is the table that says *when* each fact became knowable, and is
+        therefore the one the timestamp audit reads; the per-attempt file
+        above only says what the final state was.
 
 Produces
 --------
@@ -54,14 +65,30 @@ from validation.criteria import Criterion, Result, RunnerContext
 INPUTS: tuple[str, ...] = (
     "data/liability_book.csv",
     "data/customer_panel.csv",
-    "data/application_journeys.csv",
+    "data/journeys.csv",
+    "data/journey_events.csv",
 )
+
+#: Pre-registered column name -> the name SD-S2 actually writes. The generator
+#: emits BOTH spellings, so this map is documentation of the equivalence rather
+#: than a rename this runner has to perform.
+JOURNEY_COLUMN_ALIASES: dict[str, str] = {
+    "cust_id": "customer_id",
+    "stage_reached": "last_stage",
+    "start_ts": "started_at",
+    "abandon_ts": "abandoned_at",
+    "disburse_ts": "disbursed_at",
+    "blank_ratio": "answers_blank_ratio",
+    "revisit_count": "revisits_30d",
+    "income_refused": "income_shared (inverted)",
+}
 
 
 def run(criteria: list[Criterion], ctx: RunnerContext) -> list[Result]:
     """Measure; do not grade. See validation/runners/__init__.py for the contract."""
     raise NotImplementedError(
-        "runner 07 pending: needs data/application_journeys.csv (start_ts, "
-        "abandon_ts, disburse_ts), data/customer_panel.csv (month), plus the "
-        "feature-definition table from src/score_and_pack.py FEATS"
+        "runner 07 pending: needs data/journeys.csv (start_ts, abandon_ts, "
+        "disburse_ts) and data/journey_events.csv (occurred_at), "
+        "data/customer_panel.csv (month), plus the feature-definition table "
+        "from src/score_and_pack.py FEATS"
     )
