@@ -141,7 +141,7 @@ describe('isInsecureContext', () => {
     [{ protocol: 'https:', hostname: 'innobox.idbi.bank.in' }, false],
     [{ protocol: 'http:', hostname: 'localhost' }, false],
     [{ protocol: 'http:', hostname: '127.0.0.1' }, false],
-    [{ protocol: 'http:', hostname: '172.16.8.60' }, true],
+    [{ protocol: 'http:', hostname: '192.0.2.10' }, true],
     [{ protocol: 'http:', hostname: 'drishti.example.com' }, true],
   ])('%o -> %s', (location, expected) => {
     expect(isInsecureContext(location)).toBe(expected)

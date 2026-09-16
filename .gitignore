@@ -39,3 +39,4 @@ data/model_metrics.json
 data/realism_report.json
 data/bank/pulled.json
 data/export/
+data/validation_panel_cache/
