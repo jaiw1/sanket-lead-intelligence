@@ -6,7 +6,7 @@
 
 These 25 acceptance bands were registered at **2026-09-16T10:47:14+05:30** by RR Squad, before any model result for SANKET existed.
 
-`validation/criteria.yaml` first entered git at **2026-09-16T11:06:09+05:30** — that commit timestamp, not this file, is the evidence. This report was generated at 2026-09-17T00:22:48+05:30 from commit `4263d8e2d1a4`.
+`validation/criteria.yaml` first entered git at **2026-09-16T11:06:09+05:30** — that commit timestamp, not this file, is the evidence. This report was generated at 2026-09-17T02:51:34+05:30 from commit `adcf1d33f5b8`.
 
 **Amendments after registration:**
 - *2026-09-16T00:00:00+05:30* (RR Squad — architect ruling) — SCOPING, NOT THRESHOLDS. No band moves. SK-01 stays [0.08, 0.10], SK-02 stays [0.25, 0.35], SK-18 stays [0.48, 0.52], SK-17 stays 0 — all `fail`, all with their ceilings. What is amended is the SCORING POPULATION SK-01 and SK-02 are computed over, which was under-specified at registration because this file was written before the application-journey layer (plan §B L6 SD-S2) existed and so before there was a drop-off population to name. The same entry re-points runner 07 at the files that layer actually emitted; SK-17 and SK-18 are listed only because that runner answers them, and neither band changes.
