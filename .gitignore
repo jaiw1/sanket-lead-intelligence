@@ -17,3 +17,15 @@ data/customer_panel.csv
 **/msme_ratings_movement.csv
 **/msme_identifiers.csv
 **/msme_list.csv
+
+# sandbox / secrets
+**/atlas*.env
+*.env
+!app/.env.example
+data/bank/raw/
+data/bank/enriched.csv
+data/bank/provenance.json
+scratch/
+state-*.json
+data/liability_book_truth.csv
+validation/report/
