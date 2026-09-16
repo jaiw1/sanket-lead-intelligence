@@ -5,61 +5,116 @@ Pre-registered criteria this runner answers: SK-25
 
 Consumes
 --------
-* ``data/liability_book.csv``
-      - cust_id, segment (occupation), age, city_tier, tenure_m, consent,
-        dnd, product, event_month, channel, true_income — today's file is
-        data/customer_book.csv; plan §B L6 SD-S1 renames and extends it to
-        60k customers x 30 months x 6 products
-* ``data/customer_panel.csv``
-      - cust_id, month, date, credits, bal_avg, bal_min, rent, fuel_cab,
-        school_fees, ecommerce, ext_emi, has_auto_emi, fd_bal, dwell_home,
-        dwell_auto, dwell_pl, plus the SD-S1 additions upi_p2m,
-        salary_credit_day, emi_outflow_to_other_bank, card_spend,
-        insurance_premium
-* ``data/application_journeys.csv  (PLANNED — plan §B L6 SD-S2)``
-      - one row per application attempt: cust_id, product, attempt_id,
-        channel, start_ts, stage_reached, abandon_ts, disburse_ts,
-        fee_paid, fee_balk, doc_refusal, income_refused, blank_ratio,
-        revisit_count
+* ``data/model_metrics.json`` — ``metrics.baseline_ladder`` (`src/model/pack.py`
+  ``baseline_ladder()``): four rungs on the SAME held-out book at the SAME
+  10% budget — random contact, balance-ranked contact (`bal_avg`, "what a
+  branch does today"), a logistic scorecard (`LADDER_FEATURES`, 16 columns,
+  standardised, `sklearn.linear_model.LogisticRegression`), and SANKET itself
+  — each with a Wilson precision CI and n. Skipped under `--quick`
+  (`ladder = [] if cfg.quick else baseline_ladder(...)`), which the one run
+  this lane was given did not use.
 
 Produces
 --------
-* ``figures/baseline_ladder.png``
-* one Result per criterion above: value, 95% CI, n (and `breakdown`
-  with one dict per cell for the per-cut / per-portfolio / per-product ones)
+* ``figures/baseline_ladder.png`` — precision@10% per rung, with CIs.
+* One `Result` for SK-25: `value` is `[{rung, precision, ci, n}, ...]` in the
+  pre-registered rung order; `breakdown` carries the same four cells.
 
 Method, as pre-registered
--------------------------
-Four rungs on the same held-out book with the same CIs: random contact,
-balance-ranked contact (what a branch does today), a logistic scorecard, and
-the production LightGBM. Report precision@10% per rung. The rungs are
-pre-registered so the comparison set cannot be chosen after the fact.
-
-Status
-------
-STUB. Raises NotImplementedError, which the harness records as `pending` for
-every criterion above — never as a pass. The interface is written down now, ahead
-of the first model result, while the data lanes are still changing the shape of
-these files; implementing against a shape that is mid-flight would be worse than
-documenting it.
+--------------------------
+"Four rungs on the same held-out book with the same CIs ... Report
+precision@10% per rung. The rungs are pre-registered so the comparison set
+cannot be chosen after the fact" (`criteria.yaml` SK-25 note). The rungs and
+their order are `src/model/pack.py baseline_ladder()`'s own — not
+re-ordered, re-selected or recomputed here.
 """
 
 from __future__ import annotations
 
-from validation.criteria import Criterion, Result, RunnerContext
+import matplotlib.pyplot as plt
 
-#: Files this runner will read, relative to the repository root.
-INPUTS: tuple[str, ...] = (
-    "data/liability_book.csv",
-    "data/customer_panel.csv",
-    "data/application_journeys.csv",
-)
+from validation.criteria import Criterion, Result, RunnerContext
+from validation.runners import _shared as sh
+
+INPUTS: tuple[str, ...] = ("data/model_metrics.json",)
+
+#: The pre-registered rung order (`criteria.yaml` SK-25 note / rationale).
+_RUNG_ORDER = ("random contact", "balance-ranked (what a branch does today)",
+              "logistic scorecard", "SANKET (one LightGBM, six products)")
 
 
 def run(criteria: list[Criterion], ctx: RunnerContext) -> list[Result]:
     """Measure; do not grade. See validation/runners/__init__.py for the contract."""
-    raise NotImplementedError(
-        "runner 12 pending: needs data/liability_book.csv (bal_avg via "
-        "data/customer_panel.csv for the balance rung), "
-        "data/application_journeys.csv (disburse_ts)"
-    )
+    m = sh.metrics(ctx)
+    if m is None:
+        return sh.missing_metrics_results(criteria)
+
+    ladder = m.get("baseline_ladder")
+    if not ladder:
+        return [Result("SK-25", status="pending",
+                       detail="metrics.baseline_ladder not present — the one run this lane was "
+                              "given must not have used --quick, which skips this exhibit "
+                              "(src/model/pack.py: `ladder = [] if cfg.quick else "
+                              "baseline_ladder(...)`)")]
+
+    by_rung = {r["rung"]: r for r in ladder}
+    ordered = [by_rung[r] for r in _RUNG_ORDER if r in by_rung]
+    extra = [r for r in ladder if r["rung"] not in _RUNG_ORDER]
+    ordered += extra  # never silently drop a rung the run actually produced
+
+    cells = [dict(level=r["rung"], value=round(float(r["precision"]), 4), n=r.get("n"),
+                 ci=[r.get("ci_low"), r.get("ci_high")])
+            for r in ordered]
+
+    model_p = next((r["precision"] for r in ordered
+                    if r["rung"] == "SANKET (one LightGBM, six products)"), None)
+    random_p = next((r["precision"] for r in ordered if r["rung"] == "random contact"), None)
+    balance_p = next((r["precision"] for r in ordered
+                      if r["rung"] == "balance-ranked (what a branch does today)"), None)
+    logistic_p = next((r["precision"] for r in ordered if r["rung"] == "logistic scorecard"), None)
+
+    gaps = []
+    if balance_p is not None and random_p is not None:
+        gaps.append(f"balance-ranking over random: {(balance_p - random_p) * 100:+.2f} pp")
+    if logistic_p is not None and balance_p is not None:
+        gaps.append(f"logistic over balance-ranking: {(logistic_p - balance_p) * 100:+.2f} pp")
+    if model_p is not None and logistic_p is not None:
+        gaps.append(f"SANKET over logistic: {(model_p - logistic_p) * 100:+.2f} pp")
+
+    detail = (f"four rungs, same held-out book, same 10% budget: "
+             f"{[(c['level'], c['value']) for c in cells]}. Rung-to-rung gaps: "
+             f"{'; '.join(gaps) if gaps else 'not computable — a rung is missing'}. "
+             f"If a rung is within noise of the next, that is the honest finding "
+             f"(criteria.yaml SK-25 rationale: 'If balance-ranking is within noise of the "
+             f"model, that is the honest finding and the deck says so').")
+
+    value = cells
+    result = Result("SK-25", value=value, breakdown=cells, detail=detail)
+
+    try:
+        fig = _figure(ctx, cells)
+        if fig:
+            result.figures.append(fig)
+    except Exception:
+        pass
+
+    return [result]
+
+
+def _figure(ctx: RunnerContext, cells: list[dict]) -> str | None:
+    labels = [c["level"].replace(" (", "\n(") for c in cells]
+    ys = [c["value"] for c in cells]
+    los = [c["ci"][0] if c["ci"][0] is not None else y for c, y in zip(cells, ys)]
+    his = [c["ci"][1] if c["ci"][1] is not None else y for c, y in zip(cells, ys)]
+    err = [[y - lo for y, lo in zip(ys, los)], [hi - y for y, hi in zip(ys, his)]]
+
+    fig, ax = plt.subplots(figsize=(6.5, 3.8))
+    xs = range(len(labels))
+    ax.bar(xs, ys, yerr=err, capsize=5, color=["#94A3B8", "#94A3B8", "#F59E0B", "#2563EB"][:len(labels)])
+    ax.set_xticks(list(xs))
+    ax.set_xticklabels(labels, fontsize=7)
+    ax.set_ylabel("precision @ 10% budget")
+    ax.set_title("SK-25 baseline ladder: how much of 9-to-30 is the model")
+    ax.grid(axis="y", alpha=0.25)
+    plt.tight_layout()
+    return sh.savefig(fig, ctx, "baseline_ladder.png")

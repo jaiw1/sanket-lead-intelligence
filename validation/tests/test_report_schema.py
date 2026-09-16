@@ -26,11 +26,14 @@ from validation import report as report_mod
 from validation.run import execute
 
 #: `execute()` with `only=None` runs every runner `criteria.yaml` references —
-#: this lane's six real ones plus the six still-`NotImplementedError` stubs
-#: (07-12), exactly what `python3 -m validation.run` does. Using the real
-#: public entry point here (rather than hand-dispatching just this lane's
-#: runners) is what makes `report.json`'s full 25-criterion shape — and the
-#: "some criteria pending" mix — a faithful test rather than a re-derivation.
+#: all twelve, now that 07-12 (SK-17..SK-25) are implemented alongside 01-06's
+#: six — exactly what `python3 -m validation.run` does. Using the real public
+#: entry point here (rather than hand-dispatching just this lane's runners) is
+#: what makes `report.json`'s full 25-criterion shape a faithful test rather
+#: than a re-derivation. Against `small_metrics_root` (a `--quick` run), a
+#: handful of criteria still grade `pending` for real reasons (e.g. SK-18's
+#: permuted-label retrain and SK-25's baseline ladder are both skipped under
+#: `--quick`) — that mix is real behaviour, not unimplemented runners.
 def _execute_all(repo_root, doc, out_dir):
     return execute(doc, repo_root, out_dir)
 

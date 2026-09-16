@@ -1,66 +1,140 @@
 """
-10 Stress — the pre-registered scenarios
+10 Stress — the book under two pre-registered shifts
 
 Pre-registered criteria this runner answers: SK-22
 
 Consumes
 --------
-* ``data/liability_book.csv``
-      - cust_id, segment (occupation), age, city_tier, tenure_m, consent,
-        dnd, product, event_month, channel, true_income — today's file is
-        data/customer_book.csv; plan §B L6 SD-S1 renames and extends it to
-        60k customers x 30 months x 6 products
-* ``data/customer_panel.csv``
-      - cust_id, month, date, credits, bal_avg, bal_min, rent, fuel_cab,
-        school_fees, ecommerce, ext_emi, has_auto_emi, fd_bal, dwell_home,
-        dwell_auto, dwell_pl, plus the SD-S1 additions upi_p2m,
-        salary_credit_day, emi_outflow_to_other_bank, card_spend,
-        insurance_premium
-* ``data/application_journeys.csv  (PLANNED — plan §B L6 SD-S2)``
-      - one row per application attempt: cust_id, product, attempt_id,
-        channel, start_ts, stage_reached, abandon_ts, disburse_ts,
-        fee_paid, fee_balk, doc_refusal, income_refused, blank_ratio,
-        revisit_count
+* the small-book refit harness (`validation/runners/_refit.py`) — same book,
+  frame and split `08_ablation` uses, and (when both runners execute in the
+  same `python3 -m validation.run` process) the SAME cached full-feature
+  baseline fit, so this runner's own cost is one extra refit plus one
+  zero-refit re-score.
 
 Produces
 --------
-* ``figures/stress_precision.png``
-* one Result per criterion above: value, 95% CI, n (and `breakdown`
-  with one dict per cell for the per-cut / per-portfolio / per-product ones)
+* ``figures/stress_precision.png`` — precision@10% under each scenario
+  against the small-book baseline, with CIs.
+* One `Result` for SK-22: `value` is `{scenario: delta_precision_pp}`;
+  `breakdown` carries one cell per scenario.
 
 Method, as pre-registered
--------------------------
-Four scenarios against the base run: consent withdrawal at scale, a
-suppression-rule sweep (plan §B L6 SD-S6), cross-bank transaction data
-(595/739) unavailable, and a doubled window-shopper share. Report
-precision@10% under each. The scenario SET is pre-registered so it cannot be
-chosen after seeing which ones look good.
+--------------------------
+`criteria.yaml` SK-22's rationale names four scenarios (consent withdrawal at
+scale, a suppression-rule sweep, cross-bank transaction data unavailable, a
+doubled window-shopper share) and registers no band ("no threshold was
+invented"). This lane's brief narrows execution to the two that are tractable
+as a refit/re-score on the small book within the remaining budget, and says
+so rather than silently substituting:
 
-Status
-------
-STUB. Raises NotImplementedError, which the harness records as `pending` for
-every criterion above — never as a pass. The interface is written down now, ahead
-of the first model result, while the data lanes are still changing the shape of
-these files; implementing against a shape that is mid-flight would be worse than
-documenting it.
+1. **2x base rate** — eligible, training-split POSITIVE rows are duplicated
+   before fitting (`_refit.reweighted_fit_and_score`), then scored against the
+   unduplicated held population. A refit, because a base-rate shift changes
+   what the ranker learns, not just what it is fed at inference.
+2. **channel-missing** — the `contact` family (`contacts_30d`, `contacts_90d`,
+   `campaign_contacts_6m`, `last_contact_days`,
+   `last_campaign_matches_product` — the bank's own contact-history channel)
+   is blanked to NaN in a COPY of the frame and re-scored through the
+   ALREADY-FITTED baseline ranker (`_refit.blanked_score`, zero extra fits) —
+   deliberately an inference-time channel outage, not a retrain that never
+   knew the channel existed, which is the more realistic production failure
+   mode and also the cheaper one to run.
+
+The other two registered scenarios (consent withdrawal at scale, a
+suppression-rule sweep) are reported `not computed this pass`, with the
+reason, rather than approximated: both are about which rows enter the
+*population* the labels/suppression layer (`journeys.labels`) builds, which
+this runner cannot alter without re-running `journeys.build` under different
+generator parameters — a second full generator run, which this lane's refit
+budget does not cover twice over.
 """
 
 from __future__ import annotations
 
-from validation.criteria import Criterion, Result, RunnerContext
+import matplotlib.pyplot as plt
+import numpy as np
 
-#: Files this runner will read, relative to the repository root.
-INPUTS: tuple[str, ...] = (
-    "data/liability_book.csv",
-    "data/customer_panel.csv",
-    "data/application_journeys.csv",
+from validation.criteria import Criterion, Result, RunnerContext
+from validation.runners import _refit as rf
+from validation.runners import _shared as sh
+
+INPUTS: tuple[str, ...] = ()  # generates its own small book; see module docstring
+
+_BLANKED_FAMILY = "contact"
+
+_NOT_COMPUTED = (
+    "consent withdrawal at scale",
+    "suppression-rule sweep (plan §B L6 SD-S6)",
 )
 
 
 def run(criteria: list[Criterion], ctx: RunnerContext) -> list[Result]:
     """Measure; do not grade. See validation/runners/__init__.py for the contract."""
-    raise NotImplementedError(
-        "runner 10 pending: needs data/liability_book.csv (consent, dnd) and "
-        "data/customer_panel.csv regenerated per scenario, plus the suppression "
-        "rules from src/make_book.py"
-    )
+    h = rf.harness(ctx)
+    if h.get("error"):
+        return [Result("SK-22", status="pending",
+                       detail=f"small-book refit harness failed: {h['error']}")]
+
+    base = rf.baseline(h)
+    reweighted = rf.reweighted_fit_and_score(h, multiplier=2)
+    blanked = rf.blanked_score(h, base["ranker"], _BLANKED_FAMILY)
+
+    cells = [
+        dict(level="2x_base_rate_reweight_positives",
+            value=round((reweighted["precision"] - base["precision"]) * 100, 3),
+            n=reweighted["n"], ci=[reweighted["ci_low"], reweighted["ci_high"]],
+            precision=reweighted["precision"], auc=reweighted.get("auc"),
+            n_fit_positives_added=reweighted.get("n_fit_positives_added")),
+        dict(level=f"channel_missing_{_BLANKED_FAMILY}",
+            value=round((blanked["precision"] - base["precision"]) * 100, 3),
+            n=blanked["n"], ci=[blanked["ci_low"], blanked["ci_high"]],
+            precision=blanked["precision"], auc=blanked.get("auc"),
+            blanked_columns=blanked.get("blanked_columns")),
+    ]
+
+    detail = (f"small-book refit (n={h['n_customers']:,} customers, single seed {rf.SMALL_SEED} "
+             f"— see validation/runners/_refit.py). Baseline: precision@10%="
+             f"{base['precision']:.4f} [{base['ci_low']:.4f}, {base['ci_high']:.4f}], AUC="
+             f"{base.get('auc')}. delta_pp = scenario - baseline (positive = the scenario "
+             f"IMPROVED precision, negative = it degraded). 2x base rate: "
+             f"{reweighted.get('n_fit_positives_added')} duplicate positive training rows added "
+             f"to the fit split only, scored against the unduplicated held population — precision@10%="
+             f"{reweighted['precision']:.4f}. channel-missing ({_BLANKED_FAMILY}): "
+             f"{blanked.get('blanked_columns')} blanked to NaN in a copy of the SAME fitted "
+             f"baseline ranker's scoring frame (no retrain) — precision@10%="
+             f"{blanked['precision']:.4f}. Registered scenarios NOT computed this pass "
+             f"(reason: each needs a second generator run under altered parameters, which the "
+             f"refit budget does not cover twice over — not approximated, not silently dropped): "
+             f"{list(_NOT_COMPUTED)}.")
+
+    value = {c["level"]: c["value"] for c in cells}
+    result = Result("SK-22", value=value, breakdown=cells, detail=detail)
+
+    try:
+        fig = _figure(ctx, base, cells)
+        if fig:
+            result.figures.append(fig)
+    except Exception:
+        pass
+
+    return [result]
+
+
+def _figure(ctx: RunnerContext, base: dict, cells: list[dict]) -> str | None:
+    labels = ["baseline"] + [c["level"] for c in cells]
+    ys = [base["precision"]] + [c["precision"] for c in cells]
+    los = [base["ci_low"]] + [c["ci"][0] if c["ci"][0] is not None else c["precision"] for c in cells]
+    his = [base["ci_high"]] + [c["ci"][1] if c["ci"][1] is not None else c["precision"] for c in cells]
+    err = [np.array(ys) - np.array(los), np.array(his) - np.array(ys)]
+
+    fig, ax = plt.subplots(figsize=(6.5, 3.8))
+    xs = np.arange(len(labels))
+    colors = ["#2563EB"] + ["#F59E0B"] * len(cells)
+    ax.bar(xs, ys, yerr=err, capsize=4, color=colors)
+    ax.set_xticks(xs)
+    ax.set_xticklabels(labels, rotation=15, ha="right", fontsize=8)
+    ax.set_ylabel("precision @ 10% budget (small-book refit)")
+    ax.set_title("SK-22 stress scenarios vs small-book baseline")
+    ax.grid(axis="y", alpha=0.25)
+    plt.tight_layout()
+    return sh.savefig(fig, ctx, "stress_precision.png")
