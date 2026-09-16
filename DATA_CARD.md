@@ -852,15 +852,20 @@ The latent index (all weights `assumed`): commitment 1.00 · eligibility-weighte
 
 **Realised, and across the five registered seeds (7, 8, 9, 10, 11) on the 60,000 × 30 book:**
 
-| Quantity | Band | Seed 20260709 | min | max | mean |
+| Quantity | Band | Default seed 20260709 | seeds 7-11 min | max | mean |
 |---|---|---|---|---|---|
-| θ | — (solved) | 1.2832 | 1.2765 | 1.3024 | 1.2881 |
-| S/N knob | — (solved) | 0.6013 | 0.5895 | 0.6024 | 0.5976 |
-| `random_contact_disbursement_rate` (SK-01) | **[0.08, 0.10]** | **0.0906** | 0.0881 | 0.0918 | 0.0899 |
-| `oracle_precision_at_10pct` (SK-02 ceiling) | **[0.25, 0.35]** | **0.3236** | 0.3144 | 0.3244 | 0.3212 |
-| `window_respect_rate` (SK-04) | **≥ 0.90** | **0.9331** | 0.9272 | 0.9309 | 0.9293 |
+| θ | — (solved) | 1.2832 | 1.2743 | 1.3007 | 1.2863 |
+| S/N knob | — (solved) | 0.6013 | 0.5859 | 0.5990 | 0.5944 |
+| `random_contact_disbursement_rate` (SK-01) | **[0.08, 0.10]** | **0.0906** | 0.0888 | 0.0906 | 0.0895 |
+| `oracle_precision_at_10pct` (SK-02 ceiling) | **[0.25, 0.35]** | **0.3236** | 0.3145 | 0.3239 | 0.3211 |
+| `window_respect_rate` (SK-04) | **≥ 0.90** | **0.9331** | 0.9293 | 0.9334 | 0.9319 |
 | `suppressed_share` | — | 0.2384 | 0.2351 | 0.2428 | 0.2400 |
-| contact lift θ / spontaneous | — | 26.2× | 24.0× | 26.5× | 25.3× |
+| contact lift θ / spontaneous | — | 26.2× | 23.9× | 26.4× | 25.2× |
+
+The default seed is a sixth draw, not one of the five; every column is inside its
+band on all six. Reproduce the sweep with
+`python3 src/make_journeys.py --seeds 7,8,9,10,11`, which re-solves both knobs
+per seed and writes nothing.
 
 The band is asserted on the **estimand** — the rate over the whole eligible population — because a
 uniformly random 10% sample estimates exactly that without bias, and a generator gate that could
