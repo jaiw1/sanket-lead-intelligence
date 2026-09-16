@@ -2,7 +2,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList, Cell,
 } from 'recharts'
 import { Radar as RadarIcon, BadgeCheck, TrendingUp } from 'lucide-react'
-import { pct } from '../lib/fmt'
+
 
 export default function BusinessRadar({ radar }) {
   if (!radar) return (
