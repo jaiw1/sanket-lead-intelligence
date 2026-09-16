@@ -1,0 +1,1772 @@
+{
+  "product": "SANKET",
+  "schema_version": "1.0.0",
+  "registered_at": "2026-09-16T10:47:14+05:30",
+  "registered_by": "RR Squad",
+  "provenance": {
+    "generated_at": "2026-09-17T00:22:48+05:30",
+    "python": "3.12.4",
+    "git_commit": "4263d8e2d1a41a3ae46f750a100d1217aa99733c",
+    "git_dirty": true,
+    "criteria_registered_at": "2026-09-16T10:47:14+05:30",
+    "criteria_first_committed_at": "2026-09-16T11:06:09+05:30"
+  },
+  "verdict": "PASS",
+  "strict": false,
+  "counts": {
+    "fail": 0,
+    "error": 0,
+    "warn": 0,
+    "pending": 0,
+    "skipped_low_n": 0,
+    "report": 9,
+    "pass": 16
+  },
+  "criteria": [
+    {
+      "id": "SK-01",
+      "runner": "01_holdout",
+      "metric": "random_contact_disbursement_rate",
+      "scope": "overall",
+      "cut": null,
+      "op": "between",
+      "threshold": [
+        0.08,
+        0.1
+      ],
+      "min_n": 0,
+      "severity": "fail",
+      "rationale": "The denominator of the entire pitch. \"9 → 30 disbursements per 100 RM calls\" is only meaningful if the 9 is real, so the untargeted random-contact disbursement rate is pre-registered as a band in its own right rather than being read off whatever the generator happened to produce.",
+      "source": "plan §B L9 bands (\"baseline 8–10% (asserted)\"); §D gate G3",
+      "note": "Also asserted inside the generator (§B L6 SD-S4 solves the contact-effect θ to land in this band). Asserting it here as well means a generator change that drifts the baseline cannot pass silently.\nAMENDED 2026-09-16 — see `amendments` at the foot of this file. The BAND IS UNCHANGED at [0.08, 0.10]; the scoring population is now written down as the drop-off population (consented, contactable, an abandoned attempt in the trailing 12 months, no disbursement in flight) at the (customer, month) grain, and this metric is the disbursement rate among a uniformly random 10% contact sample of it. Source table: `data/labels.csv` (`eligible_for_contact = 1`, column `label_disbursed_in_window`).",
+      "result": {
+        "criterion_id": "SK-01",
+        "value": 0.0948,
+        "ci": [
+          0.0894,
+          0.0944
+        ],
+        "n": 29154,
+        "status": "pass",
+        "detail": "population: drop-off population (consented, contactable customers with an abandoned application in the trailing 365 days and no disbursement in flight), amended 2026-09-16. 95% CI is the cross-seed 2.5-97.5 percentile spread over 5 registered seeds (criteria.yaml confidence.cross_seed), mean 0.0910",
+        "breakdown": [],
+        "figures": [
+          "precision_curve.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-02",
+      "runner": "01_holdout",
+      "metric": "precision_at_10pct_budget",
+      "scope": "overall",
+      "cut": null,
+      "op": "between",
+      "threshold": [
+        0.25,
+        0.35
+      ],
+      "min_n": 0,
+      "severity": "fail",
+      "rationale": "The headline claim. Contact the top 10% of the consented held-out book and roughly 30 in 100 of those calls end in a disbursement. The upper bound matters as much as the lower: a synthetic book that yields 60% precision has leaked its own generative structure and no bank reviewer would believe it.",
+      "source": "plan §B L9 bands (\"precision@10% 25–35%\"); §D gate G3",
+      "note": "Band is on the point estimate; the 95% CI is reported beside it.\nAMENDED 2026-09-16 — see `amendments` at the foot of this file. The BAND IS UNCHANGED at [0.25, 0.35]; the scoring population is the same drop-off population as SK-01, model-ranked at the same 10% contact budget, so the \"9 → 30 per 100 RM calls\" headline is two numbers over one denominator. The generator (§B L6 SD-S4) tunes a single signal-to-noise knob so that an ORACLE ranker — one that sees the latent index the label was drawn from — reaches ~0.32. That is a ceiling on this criterion, not a prediction of it: the model reads those latents only through noisy observables and will land below it.",
+      "result": {
+        "criterion_id": "SK-02",
+        "value": 0.2906,
+        "ci": [
+          0.275,
+          0.2896
+        ],
+        "n": 2915,
+        "status": "pass",
+        "detail": "population: drop-off population (consented, contactable customers with an abandoned application in the trailing 365 days and no disbursement in flight), amended 2026-09-16. 95% CI is the cross-seed 2.5-97.5 percentile spread over 5 registered seeds (criteria.yaml confidence.cross_seed), mean 0.2811",
+        "breakdown": [],
+        "figures": [
+          "precision_curve.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-03",
+      "runner": "01_holdout",
+      "metric": "precision_at_5pct_and_20pct_budget",
+      "scope": "overall",
+      "cut": null,
+      "op": "report",
+      "threshold": null,
+      "min_n": 0,
+      "severity": "report",
+      "rationale": "The shape of the precision curve either side of the operating budget, with CIs. A curve that is flat between 5% and 20% would mean the ranking is not doing much, whatever the single headline number says.",
+      "source": "plan §B L9 bands (\"+ @5/@20 w/ CI\")",
+      "note": "REPORTED, NO TARGET — the plan pre-registers a band at 10% only.",
+      "result": {
+        "criterion_id": "SK-03",
+        "value": {
+          "precision_at_5pct": 0.358,
+          "precision_at_20pct": 0.2301
+        },
+        "ci": null,
+        "n": null,
+        "status": "report",
+        "detail": "side budgets either side of the 10% operating point",
+        "breakdown": [
+          {
+            "level": "precision_at_5pct",
+            "value": 0.358,
+            "ci": [
+              0.3069,
+              0.3549
+            ],
+            "n": 1458,
+            "status": "report"
+          },
+          {
+            "level": "precision_at_20pct",
+            "value": 0.2301,
+            "ci": [
+              0.2133,
+              0.2291
+            ],
+            "n": 5831,
+            "status": "report"
+          }
+        ],
+        "figures": [
+          "precision_curve.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-04",
+      "runner": "01_holdout",
+      "metric": "window_respect_rate",
+      "scope": "overall",
+      "cut": null,
+      "op": "ge",
+      "threshold": 0.9,
+      "min_n": 0,
+      "severity": "fail",
+      "rationale": "Per-product windows are a mentor mandate: a gold-loan lead is worthless on day three, a home-loan lead is alive for a fortnight. The model's positives must respect that timing or the RM queue's SLA is fiction.",
+      "source": "plan §B L9 bands (\"window respect ≥ 90% (new)\")",
+      "note": "INTERPRETATION. The plan introduces \"window respect\" without defining it. We registered it as: of the held-out customers inside the contact budget who do disburse, the share whose disbursement falls within the pre-registered window of the product the model offered them (see label_definition.conversion_windows_days). A conversion that lands outside the offered product's window counts against this criterion even though it is a real disbursement.",
+      "result": {
+        "criterion_id": "SK-04",
+        "value": 0.9009,
+        "ci": [
+          0.8697,
+          0.899
+        ],
+        "n": 908,
+        "status": "pass",
+        "detail": "95% CI is the cross-seed 2.5-97.5 percentile spread over 5 registered seeds (criteria.yaml confidence.cross_seed), mean 0.8813 | packed seed (0.9009) passes this band; the 5-seed mean (0.8813) fails it — reported, not hidden.",
+        "breakdown": [],
+        "figures": [
+          "window_respect.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-05",
+      "runner": "01_holdout",
+      "metric": "window_shopper_auc",
+      "scope": "overall",
+      "cut": null,
+      "op": "ge",
+      "threshold": 0.7,
+      "min_n": 0,
+      "severity": "fail",
+      "rationale": "Window-shopper detection is the feature that keeps RM time away from tyre-kickers. Deliberately a modest floor: the generator makes the signal informative but NOT deterministic (§B L6 SD-S3 — some genuine buyers balk at the fee once), so a high AUC here would mean the synthetic data had made the problem too easy.",
+      "source": "plan §B L9 bands (\"shopper AUC ≥ 0.70\")",
+      "note": "AUC against the generator's latent window_shopper flag on the held-out book.",
+      "result": {
+        "criterion_id": "SK-05",
+        "value": 0.847,
+        "ci": [
+          0.8416,
+          0.8525
+        ],
+        "n": 29154,
+        "status": "pass",
+        "detail": "95% CI is the packed seed's hanley-mcneil interval (row-level; no cross-seed spread computed for this metric)",
+        "breakdown": [],
+        "figures": []
+      }
+    },
+    {
+      "id": "SK-06",
+      "runner": "01_holdout",
+      "metric": "baseline_ladder_headline_uplift",
+      "scope": "overall",
+      "cut": null,
+      "op": "report",
+      "threshold": null,
+      "min_n": 0,
+      "severity": "report",
+      "rationale": "The exact two numbers that go on the deck and in the README, emitted from the same run as everything else so they cannot drift apart from the evidence. Replaces the retired \"28×\" claim everywhere.",
+      "source": "plan §B L7 SM-2 (\"9 → 30 disbursements per 100 RM calls\")",
+      "note": "Derived from SK-01 and SK-02; reported, no separate band.",
+      "result": {
+        "criterion_id": "SK-06",
+        "value": "9 → 29 disbursements per 100 RM calls",
+        "ci": null,
+        "n": null,
+        "status": "report",
+        "detail": "baseline 9/100 -> precision 29/100 at a 10% contact budget; derived from SK-01 and SK-02 over the same drop-off population, eligible for contact, never typed",
+        "breakdown": [],
+        "figures": []
+      }
+    },
+    {
+      "id": "SK-07",
+      "runner": "02_oot",
+      "metric": "oot_precision_at_10pct_degradation_pp",
+      "scope": "overall",
+      "cut": null,
+      "op": "le",
+      "threshold": 5.0,
+      "min_n": 0,
+      "severity": "fail",
+      "rationale": "A prospecting model is retrained on a cadence but used continuously. Losing more than 5 percentage points of precision on later months means the queue goes stale faster than the bank can refresh it.",
+      "source": "plan §B L9 bands (\"OOT degradation ≤ 5 pp\")",
+      "note": "Measured in PERCENTAGE POINTS (holdout precision@10% minus out-of-time precision@10%), not as a ratio. Improvement is reported as a negative degradation and passes.",
+      "result": {
+        "criterion_id": "SK-07",
+        "value": -0.7982,
+        "ci": null,
+        "n": 11017,
+        "status": "pass",
+        "detail": "cut month 24; in-time precision@10% 0.2906 vs OOT 0.2985 (OOT 95% CI (0.2723, 0.3262)); OOT baseline 0.094763, OOT row AUC 0.732816. Negative degradation means the OOT window did better than in-time.",
+        "breakdown": [],
+        "figures": [
+          "oot_precision.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-08",
+      "runner": "03_by_cut",
+      "metric": "auc",
+      "scope": "per_product",
+      "cut": null,
+      "op": "ge",
+      "threshold": 0.75,
+      "min_n": 0,
+      "severity": "fail",
+      "rationale": "This is what licenses the 3-models-to-1 collapse (§B L7 SM-1). One model with `product` as a categorical is only defensible if it holds its own on every product, including the two thin ones.",
+      "source": "plan §B L9 bands (\"per-product AUC ≥ 0.75\"); §D gate G3 (\"×6\")",
+      "note": "All six products, with CI. min_n is 0 deliberately: \"×6\" means all six, so a thin product is a generator problem to fix, not a cell to exempt.",
+      "result": {
+        "criterion_id": "SK-08",
+        "value": 0.804,
+        "ci": [
+          0.8002,
+          0.8135
+        ],
+        "n": 29154,
+        "status": "pass",
+        "detail": "binding product: personal (n_pos=858); CI is the cross-seed spread where available, else Hanley-McNeil",
+        "breakdown": [
+          {
+            "level": "home",
+            "value": 0.9307,
+            "ci": [
+              0.9263,
+              0.9419
+            ],
+            "n": 29154,
+            "n_pos": 426,
+            "status": "pass"
+          },
+          {
+            "level": "lap",
+            "value": 0.8466,
+            "ci": [
+              0.8482,
+              0.9041
+            ],
+            "n": 29154,
+            "n_pos": 169,
+            "status": "pass"
+          },
+          {
+            "level": "gold",
+            "value": 0.8428,
+            "ci": [
+              0.8254,
+              0.8522
+            ],
+            "n": 29154,
+            "n_pos": 371,
+            "status": "pass"
+          },
+          {
+            "level": "auto",
+            "value": 0.8923,
+            "ci": [
+              0.8831,
+              0.8945
+            ],
+            "n": 29154,
+            "n_pos": 505,
+            "status": "pass"
+          },
+          {
+            "level": "education",
+            "value": 0.8721,
+            "ci": [
+              0.8546,
+              0.8709
+            ],
+            "n": 29154,
+            "n_pos": 435,
+            "status": "pass"
+          },
+          {
+            "level": "personal",
+            "value": 0.804,
+            "ci": [
+              0.8002,
+              0.8135
+            ],
+            "n": 29154,
+            "n_pos": 858,
+            "status": "pass"
+          }
+        ],
+        "figures": [
+          "auc_by_product.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-09",
+      "runner": "03_by_cut",
+      "metric": "macro_auc",
+      "scope": "overall",
+      "cut": null,
+      "op": "ge",
+      "threshold": 0.78,
+      "min_n": 0,
+      "severity": "fail",
+      "rationale": "Unweighted mean of the six per-product AUCs, so a large product cannot carry the average while a small one is being failed.",
+      "source": "plan §B L9 bands (\"macro ≥ 0.78\")",
+      "note": null,
+      "result": {
+        "criterion_id": "SK-09",
+        "value": 0.8648,
+        "ci": [
+          0.8637,
+          0.8714
+        ],
+        "n": 29154,
+        "status": "pass",
+        "detail": "95% CI is the cross-seed 2.5-97.5 percentile spread over 5 registered seeds (criteria.yaml confidence.cross_seed), mean 0.8670",
+        "breakdown": [],
+        "figures": [
+          "auc_by_product.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-10",
+      "runner": "03_by_cut",
+      "metric": "auc_and_precision_at_10pct",
+      "scope": "per_cut",
+      "cut": "all",
+      "op": "report",
+      "threshold": null,
+      "min_n": 500,
+      "severity": "report",
+      "rationale": "AUC and precision@10% with CI and n for every level of all seven cuts. Only the product cut carries a pre-registered floor, so the remaining six are reported in full and read by a human — including the cells that look bad.",
+      "source": "plan §B L9 (12 runners, cut list); owner direction 7 (\"validated across every cut\")",
+      "note": "min_n of 500 is carried over from the calibration cell-size convention used on the DRISHTi side rather than inventing a second number. Cells below 500 are listed with their n and marked skipped_low_n.",
+      "result": {
+        "criterion_id": "SK-10",
+        "value": "33 cells across 7 registered cuts",
+        "ci": null,
+        "n": null,
+        "status": "report",
+        "detail": "report only, per criteria.yaml; cells below min_n=500 are skipped_low_n, never silently dropped",
+        "breakdown": [
+          {
+            "level": "product:home",
+            "value": "AUC 0.9307 · precision@10% 0.1187",
+            "ci": null,
+            "n": 29154,
+            "auc": 0.9307,
+            "precision_at_10pct": 0.1187,
+            "status": "report"
+          },
+          {
+            "level": "product:lap",
+            "value": "AUC 0.8466 · precision@10% 0.0367",
+            "ci": null,
+            "n": 29154,
+            "auc": 0.8466,
+            "precision_at_10pct": 0.0367,
+            "status": "report"
+          },
+          {
+            "level": "product:gold",
+            "value": "AUC 0.8428 · precision@10% 0.0652",
+            "ci": null,
+            "n": 29154,
+            "auc": 0.8428,
+            "precision_at_10pct": 0.0652,
+            "status": "report"
+          },
+          {
+            "level": "product:auto",
+            "value": "AUC 0.8923 · precision@10% 0.1087",
+            "ci": null,
+            "n": 29154,
+            "auc": 0.8923,
+            "precision_at_10pct": 0.1087,
+            "status": "report"
+          },
+          {
+            "level": "product:education",
+            "value": "AUC 0.8721 · precision@10% 0.0892",
+            "ci": null,
+            "n": 29154,
+            "auc": 0.8721,
+            "precision_at_10pct": 0.0892,
+            "status": "report"
+          },
+          {
+            "level": "product:personal",
+            "value": "AUC 0.804 · precision@10% 0.1341",
+            "ci": null,
+            "n": 29154,
+            "auc": 0.804,
+            "precision_at_10pct": 0.1341,
+            "status": "report"
+          },
+          {
+            "level": "channel:app",
+            "value": "AUC 0.7105 · precision@10% 0.2207",
+            "ci": [
+              0.6886,
+              0.7324
+            ],
+            "n": 8877,
+            "auc": 0.7105,
+            "precision_at_10pct": 0.2207,
+            "n_pos": 714,
+            "status": "report"
+          },
+          {
+            "level": "channel:branch-walk-in",
+            "value": "AUC 0.7443 · precision@10% 0.3388",
+            "ci": [
+              0.7228,
+              0.7657
+            ],
+            "n": 6049,
+            "auc": 0.7443,
+            "precision_at_10pct": 0.3388,
+            "n_pos": 724,
+            "status": "report"
+          },
+          {
+            "level": "channel:dsa",
+            "value": "AUC 0.6817 · precision@10% 0.1873",
+            "ci": [
+              0.6441,
+              0.7194
+            ],
+            "n": 3311,
+            "auc": 0.6817,
+            "precision_at_10pct": 0.1873,
+            "n_pos": 250,
+            "status": "report"
+          },
+          {
+            "level": "channel:rm-call",
+            "value": "AUC 0.7616 · precision@10% 0.3667",
+            "ci": [
+              0.7395,
+              0.7836
+            ],
+            "n": 5397,
+            "auc": 0.7616,
+            "precision_at_10pct": 0.3667,
+            "n_pos": 658,
+            "status": "report"
+          },
+          {
+            "level": "channel:web",
+            "value": "AUC 0.7272 · precision@10% 0.2156",
+            "ci": [
+              0.6989,
+              0.7554
+            ],
+            "n": 5520,
+            "auc": 0.7272,
+            "precision_at_10pct": 0.2156,
+            "n_pos": 418,
+            "status": "report"
+          },
+          {
+            "level": "occupation_segment:gig",
+            "value": "AUC 0.7368 · precision@10% 0.2883",
+            "ci": [
+              0.7076,
+              0.766
+            ],
+            "n": 4437,
+            "auc": 0.7368,
+            "precision_at_10pct": 0.2883,
+            "n_pos": 388,
+            "status": "report"
+          },
+          {
+            "level": "occupation_segment:salaried",
+            "value": "AUC 0.7368 · precision@10% 0.2805",
+            "ci": [
+              0.7229,
+              0.7507
+            ],
+            "n": 17611,
+            "auc": 0.7368,
+            "precision_at_10pct": 0.2805,
+            "n_pos": 1712,
+            "status": "report"
+          },
+          {
+            "level": "occupation_segment:self-employed",
+            "value": "AUC 0.737 · precision@10% 0.3108",
+            "ci": [
+              0.7147,
+              0.7594
+            ],
+            "n": 7106,
+            "auc": 0.737,
+            "precision_at_10pct": 0.3108,
+            "n_pos": 664,
+            "status": "report"
+          },
+          {
+            "level": "income_band:Q1",
+            "value": "AUC 0.7419 · precision@10% 0.2899",
+            "ci": [
+              0.7162,
+              0.7676
+            ],
+            "n": 5831,
+            "auc": 0.7419,
+            "precision_at_10pct": 0.2899,
+            "n_pos": 496,
+            "status": "report"
+          },
+          {
+            "level": "income_band:Q2",
+            "value": "AUC 0.7533 · precision@10% 0.2985",
+            "ci": [
+              0.7305,
+              0.776
+            ],
+            "n": 5831,
+            "auc": 0.7533,
+            "precision_at_10pct": 0.2985,
+            "n_pos": 623,
+            "status": "report"
+          },
+          {
+            "level": "income_band:Q3",
+            "value": "AUC 0.7172 · precision@10% 0.2487",
+            "ci": [
+              0.6918,
+              0.7427
+            ],
+            "n": 5830,
+            "auc": 0.7172,
+            "precision_at_10pct": 0.2487,
+            "n_pos": 529,
+            "status": "report"
+          },
+          {
+            "level": "income_band:Q4",
+            "value": "AUC 0.7277 · precision@10% 0.2933",
+            "ci": [
+              0.703,
+              0.7524
+            ],
+            "n": 5831,
+            "auc": 0.7277,
+            "precision_at_10pct": 0.2933,
+            "n_pos": 553,
+            "status": "report"
+          },
+          {
+            "level": "income_band:Q5",
+            "value": "AUC 0.7345 · precision@10% 0.3087",
+            "ci": [
+              0.7102,
+              0.7589
+            ],
+            "n": 5831,
+            "auc": 0.7345,
+            "precision_at_10pct": 0.3087,
+            "n_pos": 563,
+            "status": "report"
+          },
+          {
+            "level": "tenure_band:6-12m",
+            "value": "AUC 0.7305 · precision@10% 0.2113",
+            "ci": [
+              0.6498,
+              0.8112
+            ],
+            "n": 712,
+            "auc": 0.7305,
+            "precision_at_10pct": 0.2113,
+            "n_pos": 51,
+            "status": "report"
+          },
+          {
+            "level": "tenure_band:12-24m",
+            "value": "AUC 0.7252 · precision@10% 0.3039",
+            "ci": [
+              0.6848,
+              0.7656
+            ],
+            "n": 2043,
+            "auc": 0.7252,
+            "precision_at_10pct": 0.3039,
+            "n_pos": 209,
+            "status": "report"
+          },
+          {
+            "level": "tenure_band:24-36m",
+            "value": "AUC 0.7204 · precision@10% 0.2476",
+            "ci": [
+              0.6805,
+              0.7602
+            ],
+            "n": 2096,
+            "auc": 0.7204,
+            "precision_at_10pct": 0.2476,
+            "n_pos": 216,
+            "status": "report"
+          },
+          {
+            "level": "tenure_band:36m+",
+            "value": "AUC 0.7391 · precision@10% 0.2951",
+            "ci": [
+              0.727,
+              0.7511
+            ],
+            "n": 24303,
+            "auc": 0.7391,
+            "precision_at_10pct": 0.2951,
+            "n_pos": 2288,
+            "status": "report"
+          },
+          {
+            "level": "stage_reached:accept",
+            "value": "AUC 0.6909 · precision@10% 0.3762",
+            "ci": [
+              0.6569,
+              0.7249
+            ],
+            "n": 2021,
+            "auc": 0.6909,
+            "precision_at_10pct": 0.3762,
+            "n_pos": 322,
+            "status": "report"
+          },
+          {
+            "level": "stage_reached:docs",
+            "value": "AUC 0.7367 · precision@10% 0.2179",
+            "ci": [
+              0.7101,
+              0.7632
+            ],
+            "n": 6700,
+            "auc": 0.7367,
+            "precision_at_10pct": 0.2179,
+            "n_pos": 466,
+            "status": "report"
+          },
+          {
+            "level": "stage_reached:eligibility",
+            "value": "AUC 0.7138 · precision@10% 0.2281",
+            "ci": [
+              0.6786,
+              0.7491
+            ],
+            "n": 3989,
+            "auc": 0.7138,
+            "precision_at_10pct": 0.2281,
+            "n_pos": 273,
+            "status": "report"
+          },
+          {
+            "level": "stage_reached:fee",
+            "value": "AUC 0.7077 · precision@10% 0.2673",
+            "ci": [
+              0.6836,
+              0.7318
+            ],
+            "n": 5654,
+            "auc": 0.7077,
+            "precision_at_10pct": 0.2673,
+            "n_pos": 602,
+            "status": "report"
+          },
+          {
+            "level": "stage_reached:kyc",
+            "value": "AUC 0.7164 · precision@10% 0.2318",
+            "ci": [
+              0.6788,
+              0.754
+            ],
+            "n": 3024,
+            "auc": 0.7164,
+            "precision_at_10pct": 0.2318,
+            "n_pos": 241,
+            "status": "report"
+          },
+          {
+            "level": "stage_reached:offer",
+            "value": "AUC 0.7244 · precision@10% 0.3985",
+            "ci": [
+              0.6958,
+              0.753
+            ],
+            "n": 2658,
+            "auc": 0.7244,
+            "precision_at_10pct": 0.3985,
+            "n_pos": 434,
+            "status": "report"
+          },
+          {
+            "level": "stage_reached:start",
+            "value": "AUC 0.7161 · precision@10% 0.2779",
+            "ci": [
+              0.6878,
+              0.7444
+            ],
+            "n": 5108,
+            "auc": 0.7161,
+            "precision_at_10pct": 0.2779,
+            "n_pos": 426,
+            "status": "report"
+          },
+          {
+            "level": "city_tier:1",
+            "value": "AUC 0.7229 · precision@10% 0.2681",
+            "ci": [
+              0.7051,
+              0.7407
+            ],
+            "n": 11080,
+            "auc": 0.7229,
+            "precision_at_10pct": 0.2681,
+            "n_pos": 1080,
+            "status": "report"
+          },
+          {
+            "level": "city_tier:2",
+            "value": "AUC 0.7457 · precision@10% 0.3119",
+            "ci": [
+              0.7287,
+              0.7626
+            ],
+            "n": 12116,
+            "auc": 0.7457,
+            "precision_at_10pct": 0.3119,
+            "n_pos": 1133,
+            "status": "report"
+          },
+          {
+            "level": "city_tier:3",
+            "value": "AUC 0.7443 · precision@10% 0.2919",
+            "ci": [
+              0.7199,
+              0.7687
+            ],
+            "n": 5958,
+            "auc": 0.7443,
+            "precision_at_10pct": 0.2919,
+            "n_pos": 551,
+            "status": "report"
+          }
+        ],
+        "figures": [
+          "auc_by_cut_grid.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-11",
+      "runner": "04_calibration",
+      "metric": "ece",
+      "scope": "overall",
+      "cut": null,
+      "op": "le",
+      "threshold": 0.03,
+      "min_n": 0,
+      "severity": "fail",
+      "rationale": "The lead drawer shows a probability to an RM who will act on it. If a \"40%\" lead converts at 15%, the RM stops trusting the queue within a week.",
+      "source": "plan §B L9 bands (\"ECE ≤ 0.03 overall\")",
+      "note": null,
+      "result": {
+        "criterion_id": "SK-11",
+        "value": 0.0074,
+        "ci": [
+          0.0054,
+          0.0094
+        ],
+        "n": 29154,
+        "status": "pass",
+        "detail": "95% CI is the cross-seed 2.5-97.5 percentile spread over 5 registered seeds (criteria.yaml confidence.cross_seed), mean 0.0074",
+        "breakdown": [],
+        "figures": [
+          "reliability_overall.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-12",
+      "runner": "04_calibration",
+      "metric": "ece",
+      "scope": "per_product",
+      "cut": null,
+      "op": "le",
+      "threshold": 0.03,
+      "min_n": 0,
+      "severity": "fail",
+      "rationale": "One model across six products can be well calibrated on average while being systematically over-confident on the products it saw least.",
+      "source": "plan §B L9 bands (\"ECE ≤ 0.03 overall + per product\")",
+      "note": "The plan states a single figure (0.03) for both the overall and the per-product clause, so the same 0.03 is registered here — NOT a looser per-cell band. min_n is 0 for the same reason as SK-08.",
+      "result": {
+        "criterion_id": "SK-12",
+        "value": 0.00267,
+        "ci": null,
+        "n": 29154,
+        "status": "pass",
+        "detail": "binding (worst) product: education; no CI computed for ECE by src/model/metrics.py",
+        "breakdown": [
+          {
+            "level": "home",
+            "value": 0.00168,
+            "n": 29154,
+            "ci": null,
+            "status": "pass"
+          },
+          {
+            "level": "lap",
+            "value": 0.00098,
+            "n": 29154,
+            "ci": null,
+            "status": "pass"
+          },
+          {
+            "level": "gold",
+            "value": 0.00203,
+            "n": 29154,
+            "ci": null,
+            "status": "pass"
+          },
+          {
+            "level": "auto",
+            "value": 0.00187,
+            "n": 29154,
+            "ci": null,
+            "status": "pass"
+          },
+          {
+            "level": "education",
+            "value": 0.00267,
+            "n": 29154,
+            "ci": null,
+            "status": "pass"
+          },
+          {
+            "level": "personal",
+            "value": 0.00251,
+            "n": 29154,
+            "ci": null,
+            "status": "pass"
+          }
+        ],
+        "figures": [
+          "ece_by_product.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-13",
+      "runner": "05_rank_order",
+      "metric": "menu_of_4_hit_rate",
+      "scope": "overall",
+      "cut": null,
+      "op": "ge",
+      "threshold": 0.8,
+      "min_n": 0,
+      "severity": "fail",
+      "rationale": "The mentors asked for a menu of four, not a single next-best product. The menu earns its place only if the product the customer actually takes is inside it four times in five.",
+      "source": "plan §B L9 bands (\"menu-of-4 hit rate ≥ 80% (new)\")",
+      "note": "INTERPRETATION: among held-out customers who disburse, the share whose realised product appears in the model's top-4 `product_menu` at the snapshot month. Random ordering over six products would score ~0.67, so 0.80 is a real but not heroic bar — recorded here so nobody later mistakes it for a strong result.",
+      "result": {
+        "criterion_id": "SK-13",
+        "value": 0.9649,
+        "ci": [
+          0.9649,
+          0.9738
+        ],
+        "n": 2764,
+        "status": "pass",
+        "detail": "95% CI is the cross-seed 2.5-97.5 percentile spread over 5 registered seeds (criteria.yaml confidence.cross_seed), mean 0.9678",
+        "breakdown": [],
+        "figures": [
+          "menu_hit_rate.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-14",
+      "runner": "05_rank_order",
+      "metric": "top_1_product_accuracy",
+      "scope": "overall",
+      "cut": null,
+      "op": "report",
+      "threshold": null,
+      "min_n": 0,
+      "severity": "report",
+      "rationale": "The same measurement at rank 1. Reported so the menu's value over a single recommendation is visible as a number rather than asserted.",
+      "source": "plan §B L9 (menu of 4); §D gate G3",
+      "note": "REPORTED, NO PRE-REGISTERED TARGET — deliberately. Setting a top-1 target would push the model back toward the single-recommendation behaviour the menu exists to replace.",
+      "result": {
+        "criterion_id": "SK-14",
+        "value": 0.7044,
+        "ci": [
+          0.6871,
+          0.7211
+        ],
+        "n": 2764,
+        "status": "report",
+        "detail": "drop-off-anchor rule (offer what they abandoned) scores 0.705499 on the same population — the anchor does most of top-1's work; among the 814 positives who switched product, top-1 scores 0.009828 and the menu-of-4 scores 0.880835 — that gap is the menu's real value. No target is registered by design (criteria.yaml SK-14 note).",
+        "breakdown": [],
+        "figures": [
+          "menu_hit_rate.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-15",
+      "runner": "05_rank_order",
+      "metric": "shopper_signal_negative_direction_count",
+      "scope": "overall",
+      "cut": null,
+      "op": "ge",
+      "threshold": 4,
+      "min_n": 0,
+      "severity": "fail",
+      "rationale": "The four window-shopper signals the mentors named — vague / blank answers, refusing to share income details, balking at the ₹1,000 fee, and refusing documents — must each push the disbursement probability DOWN. A signal that came out positive would mean the model had learned the opposite of the behaviour the business named, and the negative chips in the lead drawer would be lying to the RM.",
+      "source": "plan §D gate G3 (\"4 signals negative\"); mentor mandate (window-shopper signals)",
+      "note": "INTERPRETATION: direction is measured as the sign of the signal's mean signed contribution on the held-out book; all four must be negative, hence a count of 4. Filed under rank-order because it is a direction-of-effect check on the score, not a leakage or ablation test.",
+      "result": {
+        "criterion_id": "SK-15",
+        "value": 4,
+        "ci": null,
+        "n": 12000,
+        "status": "pass",
+        "detail": "shipped (constrained) model: journey_blank_field_ratio: -0.197335 (negative); journey_refused_income: -0.022215 (negative); journey_fee_balk: -0.207842 (negative); journey_doc_refusal: -0.165758 (negative) | unconstrained twin: 3/4 negative (the constraint's job is separating a real signal from an enforced sign — see MODEL_CARD.md's income-refusal discussion)",
+        "breakdown": [],
+        "figures": [
+          "shopper_signal_directions.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-16",
+      "runner": "06_stability",
+      "metric": "psi_score_distribution",
+      "scope": "overall",
+      "cut": null,
+      "op": "le",
+      "threshold": 0.1,
+      "min_n": 0,
+      "severity": "fail",
+      "rationale": "Population Stability Index of the score distribution between the training window and the most recent window. 0.10 is the conventional \"no meaningful shift\" line in bank model-risk practice.",
+      "source": "plan §B L9 bands (\"PSI ≤ 0.10\")",
+      "note": null,
+      "result": {
+        "criterion_id": "SK-16",
+        "value": 0.00882,
+        "ci": null,
+        "n": 29154,
+        "status": "pass",
+        "detail": "PSI is over the held-out score, early months vs the trailing 6-month window (src/model/pack.py's own early/~early split); no cross-seed spread computed for PSI. CSI (cut month 24, eligible_for_contact=1 population): journey (days_since_abandon)=0.1765; contact (contacts_30d)=0.0001. Not computed (would need re-deriving engineered features, not this runner's job): balance, debt, income, life_event, outflow, product, profile, shopper.",
+        "breakdown": [],
+        "figures": [
+          "psi_score.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-17",
+      "runner": "07_leakage",
+      "metric": "features_using_post_abandon_information",
+      "scope": "overall",
+      "cut": null,
+      "op": "eq",
+      "threshold": 0,
+      "min_n": 0,
+      "severity": "fail",
+      "rationale": "The application-journey layer is the single biggest leakage hazard in SANKET: every feature about a journey is computed from a timeline that ends in the very outcome being predicted. Not one model input may draw on data timestamped after `abandon_ts` (or after disbursement, for the converters).",
+      "source": "plan §B L9 bands (\"leakage: nothing after abandon_ts\")",
+      "note": "Zero tolerance, as written. Enforced as a count of violating features, so the report names the offending feature rather than just failing. Pairs with the existing rule in src/score_and_pack.py EXCLUDED_FEATURES that nothing after an application starts may be used at prospecting.",
+      "result": {
+        "criterion_id": "SK-17",
+        "value": 0,
+        "ci": null,
+        "n": 1075580,
+        "status": "pass",
+        "detail": "two independent checks, summed: (a) name-level guard — 0 of 60 forbidden columns appear in the 69-feature model input list; (b) journey-feature truncation-diff — 0 of 22 journey feature columns differed between the normal and physically-truncated calls across 6 sampled snapshot months [3, 8, 13, 18, 23, 29] (1,075,580 cells compared). Production data/model_metrics.json reports forbidden_inputs_used=0 for check (a) (agrees).",
+        "breakdown": [
+          {
+            "level": "forbidden_input_names",
+            "value": 0,
+            "n": 60,
+            "detail": "0 of 60 forbidden columns appear in the 69-feature model input list",
+            "status": "pass"
+          },
+          {
+            "level": "journey_feature_truncation_diff",
+            "value": 0,
+            "n": 1075580,
+            "detail": "0 of 22 journey feature columns differed between the normal and physically-truncated calls across 6 sampled snapshot months [3, 8, 13, 18, 23, 29] (1,075,580 cells compared)",
+            "status": "pass"
+          }
+        ],
+        "figures": [
+          "leakage_checks.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-18",
+      "runner": "07_leakage",
+      "metric": "permuted_label_auc",
+      "scope": "overall",
+      "cut": null,
+      "op": "between",
+      "threshold": [
+        0.48,
+        0.52
+      ],
+      "min_n": 0,
+      "severity": "fail",
+      "rationale": "Retrain the full pipeline on randomly permuted labels. Anything outside chance means the evaluation harness itself leaks — the strongest single check that the reported precision is real.",
+      "source": "plan §B L9 bands (\"permutation ∈ [0.48,0.52]\")",
+      "note": "INTERPRETATION: the permutation is of the LABEL, with split, features and hyper-parameters untouched. Averaged over the registered seeds.",
+      "result": {
+        "criterion_id": "SK-18",
+        "value": 0.5062,
+        "ci": null,
+        "n": null,
+        "status": "pass",
+        "detail": "production: full retrain on shuffled labels over the 60,000-row book, split/features/hyper-parameters untouched (forbidden set size 60). small-book cross-check (n=1,778 customers, `model.pack.permuted_label_auc` reused verbatim, single seed 7): 0.4995 (within [0.48, 0.52] — a smaller, noisier book can legitimately drift further from 0.50 than the production run).",
+        "breakdown": [],
+        "figures": [
+          "leakage_checks.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-19",
+      "runner": "08_ablation",
+      "metric": "precision_at_10pct_drop_by_feature_family",
+      "scope": "overall",
+      "cut": null,
+      "op": "report",
+      "threshold": null,
+      "min_n": 0,
+      "severity": "report",
+      "rationale": "Which families actually carry the model — cross-bank transactions from API 595/739, salary-credit behaviour, dwell signals, journey friction, shopper signals. Reported so the \"what would we lose without this API\" question has an evidenced answer.",
+      "source": "plan §B L9 (runner 08)",
+      "note": "The plan specifies runner 08 for SANKET but pre-registers no band for it, so no threshold was invented. Reported with CIs; a human reads it.",
+      "result": {
+        "criterion_id": "SK-19",
+        "value": {
+          "income": 1.02,
+          "balance": -2.03,
+          "outflow": 0.51,
+          "debt": -2.79,
+          "life_event": 0.51,
+          "profile": -0.25,
+          "journey": 1.53,
+          "shopper": 6.86,
+          "contact": 0.77,
+          "product": -2.28
+        },
+        "ci": null,
+        "n": null,
+        "status": "report",
+        "detail": "small-book refit (n=1,778 customers, single seed 7, 150-tree LightGBM — see validation/runners/_refit.py for why this is a smaller, noisier, single-seed estimate rather than a production-scale rerun). Baseline (all 69 features): precision@10%=0.2107 [0.1733, 0.2536], AUC=0.6522. delta_pp = baseline - ablated, in percentage points of precision@10% (positive = the family helps; negative = dropping it improved precision on this refit). 'product' drops the categorical that differentiates the six candidate rows per customer-month by construction, so its ablation is expected to collapse ranking rather than reveal a bug. Families whose ablated AUC rose ABOVE the baseline's own 95% Hanley-McNeil interval [0.6196, 0.6847] (i.e. dropping them helped beyond noise, which the L9 brief flags as worth a second look): ['product'].",
+        "breakdown": [
+          {
+            "level": "income",
+            "value": 1.02,
+            "n": 394,
+            "ci": [
+              0.164,
+              0.2428
+            ],
+            "n_features_dropped": 6,
+            "columns_dropped": [
+              "credits_med_6m",
+              "credits_cv_6m",
+              "credits_gr_6m",
+              "bonus_share_3m",
+              "salary_source_count",
+              "salary_day_drift"
+            ],
+            "ablated_precision": 0.2005,
+            "baseline_precision": 0.2107,
+            "ablated_auc": 0.6473,
+            "baseline_auc": 0.6522,
+            "delta_auc": -0.0049,
+            "status": "report"
+          },
+          {
+            "level": "balance",
+            "value": -2.03,
+            "n": 394,
+            "ci": [
+              0.1921,
+              0.2751
+            ],
+            "n_features_dropped": 6,
+            "columns_dropped": [
+              "bal_avg",
+              "bal_gr_6m",
+              "minbal_ratio",
+              "fd_ratio",
+              "fd_drop",
+              "minbal_charge_6m"
+            ],
+            "ablated_precision": 0.231,
+            "baseline_precision": 0.2107,
+            "ablated_auc": 0.6598,
+            "baseline_auc": 0.6522,
+            "delta_auc": 0.0076,
+            "status": "report"
+          },
+          {
+            "level": "outflow",
+            "value": 0.51,
+            "n": 394,
+            "ci": [
+              0.1686,
+              0.2482
+            ],
+            "n_features_dropped": 10,
+            "columns_dropped": [
+              "rent_share",
+              "rent_ratio_6m",
+              "fuel_ratio_3m",
+              "fuel_share",
+              "school_share",
+              "ecom_share",
+              "card_share",
+              "insurance_share",
+              "upi_share",
+              "upi_count_3m"
+            ],
+            "ablated_precision": 0.2056,
+            "baseline_precision": 0.2107,
+            "ablated_auc": 0.6527,
+            "baseline_auc": 0.6522,
+            "delta_auc": 0.0005,
+            "status": "report"
+          },
+          {
+            "level": "debt",
+            "value": -2.79,
+            "n": 394,
+            "ci": [
+              0.1991,
+              0.2831
+            ],
+            "n_features_dropped": 6,
+            "columns_dropped": [
+              "emi_share",
+              "emi_gr_6m",
+              "has_auto_emi",
+              "external_emi_count",
+              "other_bank_emi_share",
+              "mandate_fail_6m"
+            ],
+            "ablated_precision": 0.2386,
+            "baseline_precision": 0.2107,
+            "ablated_auc": 0.6664,
+            "baseline_auc": 0.6522,
+            "delta_auc": 0.0142,
+            "status": "report"
+          },
+          {
+            "level": "life_event",
+            "value": 0.51,
+            "n": 394,
+            "ci": [
+              0.1686,
+              0.2482
+            ],
+            "n_features_dropped": 1,
+            "columns_dropped": [
+              "kyc_event_6m"
+            ],
+            "ablated_precision": 0.2056,
+            "baseline_precision": 0.2107,
+            "ablated_auc": 0.6584,
+            "baseline_auc": 0.6522,
+            "delta_auc": 0.0062,
+            "status": "report"
+          },
+          {
+            "level": "profile",
+            "value": -0.25,
+            "n": 394,
+            "ci": [
+              0.1756,
+              0.2563
+            ],
+            "n_features_dropped": 4,
+            "columns_dropped": [
+              "age",
+              "segment",
+              "city_tier",
+              "tenure_m"
+            ],
+            "ablated_precision": 0.2132,
+            "baseline_precision": 0.2107,
+            "ablated_auc": 0.6442,
+            "baseline_auc": 0.6522,
+            "delta_auc": -0.008,
+            "status": "report"
+          },
+          {
+            "level": "journey",
+            "value": 1.53,
+            "n": 394,
+            "ci": [
+              0.1593,
+              0.2374
+            ],
+            "n_features_dropped": 17,
+            "columns_dropped": [
+              "journey_stage_idx",
+              "journey_attempts",
+              "journey_open_now",
+              "journey_ever_abandoned",
+              "journey_ever_disbursed",
+              "journey_fee_paid",
+              "journey_docs_shortfall",
+              "journey_rm_contacted",
+              "journey_amount_requested",
+              "journey_stated_income_ratio",
+              "journey_days_since_last_event",
+              "journey_days_since_first_start",
+              "journey_last_channel",
+              "has_journey",
+              "days_since_abandon",
+              "dropoff_attempts",
+              "dropoff_product"
+            ],
+            "ablated_precision": 0.1954,
+            "baseline_precision": 0.2107,
+            "ablated_auc": 0.6487,
+            "baseline_auc": 0.6522,
+            "delta_auc": -0.0035,
+            "status": "report"
+          },
+          {
+            "level": "shopper",
+            "value": 6.86,
+            "n": 394,
+            "ci": [
+              0.1111,
+              0.1801
+            ],
+            "n_features_dropped": 7,
+            "columns_dropped": [
+              "journey_blank_field_ratio",
+              "journey_refused_income",
+              "journey_fee_balk",
+              "journey_doc_refusal",
+              "journey_multi_product_revisits",
+              "journey_revisits_30d",
+              "journey_products_viewed_30d"
+            ],
+            "ablated_precision": 0.1421,
+            "baseline_precision": 0.2107,
+            "ablated_auc": 0.5854,
+            "baseline_auc": 0.6522,
+            "delta_auc": -0.0668,
+            "status": "report"
+          },
+          {
+            "level": "contact",
+            "value": 0.77,
+            "n": 394,
+            "ci": [
+              0.1663,
+              0.2455
+            ],
+            "n_features_dropped": 5,
+            "columns_dropped": [
+              "contacts_30d",
+              "contacts_90d",
+              "campaign_contacts_6m",
+              "last_contact_days",
+              "last_campaign_matches_product"
+            ],
+            "ablated_precision": 0.203,
+            "baseline_precision": 0.2107,
+            "ablated_auc": 0.6561,
+            "baseline_auc": 0.6522,
+            "delta_auc": 0.0039,
+            "status": "report"
+          },
+          {
+            "level": "product",
+            "value": -2.28,
+            "n": 394,
+            "ci": [
+              0.1944,
+              0.2777
+            ],
+            "n_features_dropped": 7,
+            "columns_dropped": [
+              "product",
+              "is_dropoff_product",
+              "product_window_days",
+              "dwell_product_3m",
+              "dwell_product_share",
+              "emi_headroom_ratio",
+              "journey_last_product_matches"
+            ],
+            "ablated_precision": 0.2335,
+            "baseline_precision": 0.2107,
+            "ablated_auc": 0.6929,
+            "baseline_auc": 0.6522,
+            "delta_auc": 0.0407,
+            "status": "report"
+          }
+        ],
+        "figures": [
+          "ablation_deltas.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-20",
+      "runner": "09_seeds",
+      "metric": "n_seeds_run",
+      "scope": "overall",
+      "cut": null,
+      "op": "ge",
+      "threshold": 5,
+      "min_n": 0,
+      "severity": "fail",
+      "rationale": "One seed is an anecdote. Five is the minimum at which the CI below means anything.",
+      "source": "plan §B L9 bands (\"≥5 seeds\"); §D gate G7",
+      "note": null,
+      "result": {
+        "criterion_id": "SK-20",
+        "value": 5,
+        "ci": null,
+        "n": 5,
+        "status": "pass",
+        "detail": "seeds actually fit and measured: [7, 8, 9, 10, 11] (registered: [7, 8, 9, 10, 11]); none dropped or cherry-picked",
+        "breakdown": [],
+        "figures": [
+          "seed_sweep_precision.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-21",
+      "runner": "09_seeds",
+      "metric": "cross_seed_precision_at_10pct_ci_width_pp",
+      "scope": "overall",
+      "cut": null,
+      "op": "le",
+      "threshold": 4.0,
+      "min_n": 0,
+      "severity": "fail",
+      "rationale": "The headline precision must be a property of the model, not of the seed. Registered in percentage points: a cross-seed interval wider than 4 pp would put the 25–35% band itself within noise.",
+      "source": "plan §B L9 bands (\"CI ≤ 4 pp\")",
+      "note": null,
+      "result": {
+        "criterion_id": "SK-21",
+        "value": 1.4639,
+        "ci": null,
+        "n": 5,
+        "status": "pass",
+        "detail": "precision@10% per seed: [0.2906, 0.278, 0.2813, 0.281, 0.2747]; cross-seed mean 0.281109, 2.5-97.5 percentile [0.275002, 0.289641], width 1.4639 pp over 5 seeds (criteria.yaml confidence.cross_seed).",
+        "breakdown": [],
+        "figures": [
+          "seed_sweep_precision.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-22",
+      "runner": "10_stress",
+      "metric": "precision_at_10pct_under_stress_scenarios",
+      "scope": "overall",
+      "cut": null,
+      "op": "report",
+      "threshold": null,
+      "min_n": 0,
+      "severity": "report",
+      "rationale": "Behaviour when the book shifts: consent withdrawal at scale, a suppression-rule sweep (§B L6 SD-S6), cross-bank transaction data (595/739) unavailable, and a doubled window-shopper share.",
+      "source": "plan §B L9 (runner 10)",
+      "note": "The plan specifies runner 10 for SANKET but pre-registers no band for it, so no threshold was invented. The scenarios themselves ARE pre-registered here so the set cannot be chosen after seeing which ones look good.",
+      "result": {
+        "criterion_id": "SK-22",
+        "value": {
+          "2x_base_rate_reweight_positives": 1.52,
+          "channel_missing_contact": 0.0
+        },
+        "ci": null,
+        "n": null,
+        "status": "report",
+        "detail": "small-book refit (n=1,778 customers, single seed 7 — see validation/runners/_refit.py). Baseline: precision@10%=0.2107 [0.1733, 0.2536], AUC=0.6522. delta_pp = scenario - baseline (positive = the scenario IMPROVED precision, negative = it degraded). 2x base rate: 681 duplicate positive training rows added to the fit split only, scored against the unduplicated held population — precision@10%=0.2259. channel-missing (contact): ['contacts_30d', 'contacts_90d', 'campaign_contacts_6m', 'last_contact_days', 'last_campaign_matches_product'] blanked to NaN in a copy of the SAME fitted baseline ranker's scoring frame (no retrain) — precision@10%=0.2107. Registered scenarios NOT computed this pass (reason: each needs a second generator run under altered parameters, which the refit budget does not cover twice over — not approximated, not silently dropped): ['consent withdrawal at scale', 'suppression-rule sweep (plan §B L6 SD-S6)'].",
+        "breakdown": [
+          {
+            "level": "2x_base_rate_reweight_positives",
+            "value": 1.52,
+            "n": 394,
+            "ci": [
+              0.1874,
+              0.2697
+            ],
+            "precision": 0.2259,
+            "auc": 0.6703,
+            "n_fit_positives_added": 681,
+            "status": "report"
+          },
+          {
+            "level": "channel_missing_contact",
+            "value": 0.0,
+            "n": 394,
+            "ci": [
+              0.1733,
+              0.2536
+            ],
+            "precision": 0.2107,
+            "auc": 0.6522,
+            "blanked_columns": [
+              "contacts_30d",
+              "contacts_90d",
+              "campaign_contacts_6m",
+              "last_contact_days",
+              "last_campaign_matches_product"
+            ],
+            "status": "report"
+          }
+        ],
+        "figures": [
+          "stress_precision.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-23",
+      "runner": "11_fairness",
+      "metric": "adverse_impact_ratio",
+      "scope": "per_cut",
+      "cut": "protected_proxies",
+      "op": "ge",
+      "threshold": 0.8,
+      "min_n": 500,
+      "severity": "report",
+      "rationale": "Four-fifths rule on the contact rate: least-contacted group ÷ most-contacted group within each protected-proxy attribute, at the live contact budget.",
+      "source": "plan §B L9 bands (\"fairness incl. the documented gig failure\")",
+      "note": "REPORTED, NOT GATED. SANKET excludes gender, religion, caste, marital status and pin-code outright by policy (src/score_and_pack.py EXCLUDED_FEATURES), so the protected-proxy attributes evaluated are occupation_segment, income_band, city_tier and age band. The 0.80 reference line is the conventional four-fifths threshold, recorded so the report can say how far each attribute sits from it.",
+      "result": {
+        "criterion_id": "SK-23",
+        "value": 0.69,
+        "ci": null,
+        "n": 815,
+        "status": "report",
+        "detail": "four-fifths ratio = group selection rate / best group's selection rate in the same dim, at the live 10% contact budget, over the eligible snapshot population (`model.metrics.fairness_table`). Protected proxies evaluated: Segment (occupation), City tier, Age band, Income band — gender/religion/caste/marital status/pin-code are excluded outright by policy and are not in the data at all (`model.copy.EXCLUDED_FEATURES`). BELOW the 0.80 four-fifths line (reported, not softened): [('Segment', 'gig', 0.69), ('Income band', 'Q1 lowest', 0.79)]. Occupation segment 'gig': selection rate 7.61% vs the best group's rate, ratio 0.69 (n=815) — FAILS the 0.80 line. This is `criteria.yaml` SK-23's documented gig failure; severity is `report` in criteria.yaml (never gates the run), and the ratio is carried through here exactly as measured, never rounded up or excluded. Supplementary, non-gated equal-opportunity (TPR = contact rate among true potential-disbursers) exhibit on the SMALL book's own snapshot month (n_positives=84, single seed 7 — too few positives per cell for a production-grade read, hence not registered or gated): max-min TPR gap by dim = {'Segment': 0.022, 'City tier': 0.2, 'Age band': 0.194, 'Income band': 0.214}. criteria.yaml SK-23 registers only adverse_impact_ratio, not a TPR-gap band; this is reported for a human, not graded.",
+        "breakdown": [
+          {
+            "level": "Segment:gig",
+            "value": 0.69,
+            "n": 815,
+            "sel_rate": 0.0761,
+            "ci": null,
+            "status": "report"
+          },
+          {
+            "level": "Segment:salaried",
+            "value": 1.0,
+            "n": 3341,
+            "sel_rate": 0.1101,
+            "ci": null,
+            "status": "report"
+          },
+          {
+            "level": "Segment:self-employed",
+            "value": 0.81,
+            "n": 1373,
+            "sel_rate": 0.0896,
+            "ci": null,
+            "status": "report"
+          },
+          {
+            "level": "City tier:1",
+            "value": 1.0,
+            "n": 2085,
+            "sel_rate": 0.107,
+            "ci": null,
+            "status": "report"
+          },
+          {
+            "level": "City tier:2",
+            "value": 0.92,
+            "n": 2282,
+            "sel_rate": 0.0986,
+            "ci": null,
+            "status": "report"
+          },
+          {
+            "level": "City tier:3",
+            "value": 0.84,
+            "n": 1162,
+            "sel_rate": 0.0904,
+            "ci": null,
+            "status": "report"
+          },
+          {
+            "level": "Age band:21-30",
+            "value": 0.97,
+            "n": 1622,
+            "sel_rate": 0.0993,
+            "ci": null,
+            "status": "report"
+          },
+          {
+            "level": "Age band:31-45",
+            "value": 1.0,
+            "n": 3144,
+            "sel_rate": 0.1021,
+            "ci": null,
+            "status": "report"
+          },
+          {
+            "level": "Age band:46+",
+            "value": 0.91,
+            "n": 763,
+            "sel_rate": 0.0931,
+            "ci": null,
+            "status": "report"
+          },
+          {
+            "level": "Income band:Q1 lowest",
+            "value": 0.79,
+            "n": 1106,
+            "sel_rate": 0.0877,
+            "ci": null,
+            "status": "report"
+          },
+          {
+            "level": "Income band:Q2",
+            "value": 0.87,
+            "n": 1106,
+            "sel_rate": 0.0967,
+            "ci": null,
+            "status": "report"
+          },
+          {
+            "level": "Income band:Q3",
+            "value": 1.0,
+            "n": 1105,
+            "sel_rate": 0.1113,
+            "ci": null,
+            "status": "report"
+          },
+          {
+            "level": "Income band:Q4",
+            "value": 0.93,
+            "n": 1106,
+            "sel_rate": 0.1031,
+            "ci": null,
+            "status": "report"
+          },
+          {
+            "level": "Income band:Q5 highest",
+            "value": 0.91,
+            "n": 1106,
+            "sel_rate": 0.1013,
+            "ci": null,
+            "status": "report"
+          }
+        ],
+        "figures": [
+          "fairness_contact_rates.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-24",
+      "runner": "11_fairness",
+      "metric": "gig_worker_failure_disclosure",
+      "scope": "overall",
+      "cut": null,
+      "op": "exists",
+      "threshold": null,
+      "min_n": 0,
+      "severity": "report",
+      "rationale": "A known, accepted failure mode: irregular gig-economy income reads as instability to a model trained mostly on salaried credits, so gig workers are under-contacted. It is disclosed rather than tuned away, because tuning it away on synthetic data would be pretending to have solved it.",
+      "source": "plan §B L9 bands (\"fairness incl. the documented gig failure\")",
+      "note": "INTERPRETATION: registered as an existence check — the fairness section of REPORT.md must contain a quantified statement of the gig-worker gap, and it must be carried into the README's \"What we did not build, and why\". Kept at severity `report` because the plan lists it among reported findings; it is nonetheless a G5 honesty-gate item.",
+      "result": {
+        "criterion_id": "SK-24",
+        "value": true,
+        "ci": null,
+        "n": null,
+        "status": "report",
+        "detail": "quantified gig-worker statement: behavioural income estimate within +-15% for 76.4% of gig workers (n=254) vs 95.2% overall (n=1694); median error 8.7% gig vs 2.5% overall. Mechanism: irregular gig income reads as instability to a model trained mostly on salaried credits, which depresses the behavioural income estimate, which depresses the safe-EMI capacity score, which depresses rank — the chain MODEL_CARD.md §8 and the README's 'What we did not build, and why' both carry. Disclosed rather than tuned away: tuning it out on synthetic data would be pretending to have solved it.",
+        "breakdown": [],
+        "figures": [
+          "gig_gap.png"
+        ]
+      }
+    },
+    {
+      "id": "SK-25",
+      "runner": "12_baseline_ladder",
+      "metric": "precision_at_10pct_by_baseline_rung",
+      "scope": "overall",
+      "cut": null,
+      "op": "report",
+      "threshold": null,
+      "min_n": 0,
+      "severity": "report",
+      "rationale": "Contextualises the gain: random contact, then balance-ranked contact (what a branch does today), then a logistic scorecard, then the LightGBM model, each with CI. If balance-ranking is within noise of the model, that is the honest finding and the deck says so.",
+      "source": "plan §B L9 (runner 12)",
+      "note": "The plan specifies runner 12 but pre-registers no band for it, so no threshold was invented. The rungs ARE pre-registered here so the comparison set cannot be chosen after the fact.",
+      "result": {
+        "criterion_id": "SK-25",
+        "value": [
+          {
+            "level": "random contact",
+            "value": 0.0948,
+            "n": 2915,
+            "ci": [
+              0.084581,
+              0.105851
+            ],
+            "status": "report"
+          },
+          {
+            "level": "balance-ranked (what a branch does today)",
+            "value": 0.0995,
+            "n": 2915,
+            "ci": [
+              0.089141,
+              0.110884
+            ],
+            "status": "report"
+          },
+          {
+            "level": "logistic scorecard",
+            "value": 0.2583,
+            "n": 2915,
+            "ci": [
+              0.242755,
+              0.27452
+            ],
+            "status": "report"
+          },
+          {
+            "level": "SANKET (one LightGBM, six products)",
+            "value": 0.2906,
+            "n": 2915,
+            "ci": [
+              0.274368,
+              0.307315
+            ],
+            "status": "report"
+          }
+        ],
+        "ci": null,
+        "n": null,
+        "status": "report",
+        "detail": "four rungs, same held-out book, same 10% budget: [('random contact', 0.0948), ('balance-ranked (what a branch does today)', 0.0995), ('logistic scorecard', 0.2583), ('SANKET (one LightGBM, six products)', 0.2906)]. Rung-to-rung gaps: balance-ranking over random: +0.47 pp; logistic over balance-ranking: +15.88 pp; SANKET over logistic: +3.22 pp. If a rung is within noise of the next, that is the honest finding (criteria.yaml SK-25 rationale: 'If balance-ranking is within noise of the model, that is the honest finding and the deck says so').",
+        "breakdown": [
+          {
+            "level": "random contact",
+            "value": 0.0948,
+            "n": 2915,
+            "ci": [
+              0.084581,
+              0.105851
+            ],
+            "status": "report"
+          },
+          {
+            "level": "balance-ranked (what a branch does today)",
+            "value": 0.0995,
+            "n": 2915,
+            "ci": [
+              0.089141,
+              0.110884
+            ],
+            "status": "report"
+          },
+          {
+            "level": "logistic scorecard",
+            "value": 0.2583,
+            "n": 2915,
+            "ci": [
+              0.242755,
+              0.27452
+            ],
+            "status": "report"
+          },
+          {
+            "level": "SANKET (one LightGBM, six products)",
+            "value": 0.2906,
+            "n": 2915,
+            "ci": [
+              0.274368,
+              0.307315
+            ],
+            "status": "report"
+          }
+        ],
+        "figures": [
+          "baseline_ladder.png"
+        ]
+      }
+    }
+  ],
+  "amendments": [
+    {
+      "at": "2026-09-16T00:00:00+05:30",
+      "by": "RR Squad — architect ruling",
+      "criteria": [
+        "SK-01",
+        "SK-02",
+        "SK-17",
+        "SK-18"
+      ],
+      "change": "SCOPING, NOT THRESHOLDS. No band moves. SK-01 stays [0.08, 0.10], SK-02 stays [0.25, 0.35], SK-18 stays [0.48, 0.52], SK-17 stays 0 — all `fail`, all with their ceilings. What is amended is the SCORING POPULATION SK-01 and SK-02 are computed over, which was under-specified at registration because this file was written before the application-journey layer (plan §B L6 SD-S2) existed and so before there was a drop-off population to name. The same entry re-points runner 07 at the files that layer actually emitted; SK-17 and SK-18 are listed only because that runner answers them, and neither band changes.\n\nORIGINAL WORDING (registered 2026-09-16T10:47:14+05:30). `label_definition.observation_unit`: \"One (cust_id, month) row of the liability book at a snapshot month m. The model scores a consented customer as at m using only information available at or before m.\" `label_definition.primary.description`: \"CONVERSION MEANS DISBURSEMENT, not lead creation and not application start (mentor mandate). 1 if, after being contacted at month m, the customer's application for the offered product reaches the Disburse stage within that product's pre-registered window; 0 otherwise, including applications that start and then abandon.\" `splits.holdout.scoring_population`: \"Held-out, consented customers at the snapshot month. Precision-at-budget is computed on this population; the cockpit queue is built over the whole book but is never a measurement surface.\" `validation/runners/07_leakage.py` INPUTS: \"data/application_journeys.csv  (PLANNED — plan §B L6 SD-S2)\".\n\nNEW WORDING. The scoring unit is a (customer, month) row for customers in the DROP-OFF POPULATION — consented, contactable customers with at least one abandoned application attempt in the trailing 12 months and no disbursement in flight — and the label is disbursement of any product within that product's decision window after an RM contact (windows in days: personal 1, gold 1, auto 3, education 7, home 14, lap 14 — unchanged, and unchanged from `conversion_windows_days` above). `random_contact_disbursement_rate` (SK-01) is the disbursement rate among a uniformly random 10% contact sample of that population. `precision_at_10pct_budget` (SK-02) is the same population, model-ranked at the same 10% contact budget. Runner 07's data path becomes `data/journeys.csv` + `data/journey_events.csv` (the alias columns SD-S2 emitted for the pre-registered spelling — cust_id, stage_reached, start_ts, abandon_ts, disburse_ts, blank_ratio, income_refused, revisit_count — stay); only the path and the column mapping change, not the leakage logic.",
+      "rationale": "The mentors defined conversion as disbursement and said in terms that \"the population that matters is the drop-offs\". The RM-call baseline of 8-10% is a statement about CALLED PROSPECTS, not about every consented customer-month: on the whole book that rate is ~0.1% at a snapshot month (1.35% even at the three-month horizon the old pipeline measured), which would force the contact effect theta to a value no bank reviewer would accept in order to reach 8%. The business action being priced is an RM working a lead list, not ringing 60,000 savings customers, so the denominator has to be the lead list. Recorded as an amendment rather than applied as a reinterpretation because the population is part of what a pre-registered metric means, and changing it quietly — even without touching a threshold — is exactly the move pre-registration exists to prevent. Generator side: plan §B L6 SD-S4 solves theta against this population and asserts both bands in-script (`src/journeys/labels.py`, `check()`), across five seeds; `DATA_CARD.md` §12 documents the label, the two solved knobs and the known unrealisms that come with them.",
+      "loosening": false
+    }
+  ],
+  "rulings": []
+}

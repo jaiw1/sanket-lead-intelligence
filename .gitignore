@@ -28,7 +28,6 @@ data/bank/provenance.json
 scratch/
 state-*.json
 data/liability_book_truth.csv
-validation/report/
 data/journeys.csv
 data/journey_events.csv
 data/journey_truth.csv
