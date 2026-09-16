@@ -1,11 +1,12 @@
-# DATA CARD — SANKET synthetic liability book
+# DATA CARD — SANKET synthetic liability book and application journeys
 
-**Artefact:** `data/customer_panel.csv`, `data/customer_book.csv`, `data/liability_book_truth.csv`
-**Generator:** `src/book/` (CLI wrapper: `src/make_book.py`)
-**Version:** SD-S1 (plan §B/L6), 2026-09-16 · supersedes the pre-SD-S1 row-loop generator
-**Status:** initial card. SD-S2 (journeys), SD-S3 (window-shopper as a causal negative), SD-S4
-(label windows + contact effect θ), SD-S6 (campaign/contact history) and SD-S7 (realism suite)
-are **not yet implemented**; §9 says so explicitly.
+**Artefact:** `data/customer_panel.csv`, `data/customer_book.csv`, `data/liability_book_truth.csv`,
+`data/journeys.csv`, `data/journey_events.csv`, `data/journey_truth.csv`, `data/journey_params.json`
+**Generator:** `src/book/` (CLI: `src/make_book.py`) and `src/journeys/` (CLI: `src/make_journeys.py`)
+**Version:** SD-S2 / SD-S3 (plan §B/L6), 2026-09-16 · builds on SD-S1
+**Status:** SD-S4 (label windows + contact effect θ), SD-S5 (substitution scoring), SD-S6
+(campaign/contact history) and SD-S7 (realism suite) are **not yet implemented**; §9 says so
+explicitly. §11 documents the application-journey layer.
 
 > This is synthetic data. It is engineered to bank-stated baselines, not sampled from any real
 > customer book. No IDBI, Atlas-sandbox or customer record is used anywhere in this file or in
@@ -35,9 +36,14 @@ Most of this book is `assumed`, and that is the honest position: a synthetic boo
 | `data/customer_panel.csv` | customer × month | 1,800,000 (34 columns) | no — features are derived from it |
 | `data/customer_book.csv` | customer | 60,000 (43 columns) | no |
 | `data/liability_book_truth.csv` | customer × month | 1,800,000 (12 columns) | **never.** Latent ground truth. Not a feature, not an input to any model. SD-S2 and the validation lane read it to grade against. |
+| `data/journeys.csv` | application attempt | 21,682 (49 columns) | no — features are derived from it, point-in-time (§11.9) |
+| `data/journey_events.csv` | stage transition | 119,793 (8 columns) | no |
+| `data/journey_truth.csv` | application attempt | 21,682 (17 columns) | **never.** Window-shopper truth and the hazard's own odds. |
+| `data/journey_params.json` | one run | — | no — the solved intercepts and the realised headline numbers |
 
 ```bash
 python3 src/make_book.py                        # 60,000 customers × 30 months, 6 products
+python3 src/make_journeys.py                    # the journey layer on top of it
 python3 src/make_book.py --legacy-size          # the pre-SD-S1 book (15,000 × 27, 3 products)
 python3 src/make_book.py --n 5000 --months 24   # anything else
 python3 src/make_book.py --seed 7 --out /tmp/b  # different seed / destination
@@ -339,10 +345,10 @@ which is exactly why the validation lane pre-registers ≥ 5 seeds with confiden
 
 Written down deliberately. Every one of these is a place a jury could push.
 
-1. **No application journey.** Conversion is a single `event_month`. There are no stages, no
-   drop-off, no ₹1,000 fee balk, no document refusal — SD-S2 adds them, and SD-S3 then replaces
-   the window-shopper *archetype* with window-shopping as a causal outcome of the journey. Until
-   then the drop-off population the mentor asked for does not exist in this book.
+1. ~~**No application journey.**~~ **Fixed at SD-S2/SD-S3** — see §11. The book itself still
+   carries conversion as a single `event_month`; the stages, the drop-offs, the ₹1,000 fee balk
+   and the document refusal live in `data/journeys.csv` beside it. What remains unrealistic
+   about *that* layer is listed in §11.11.
 2. **No delinquency.** The liability book never defaults, so the capacity estimate is never
    validated against actual repayment. Capacity is an assumption about affordability, not a
    measured outcome.
@@ -390,5 +396,343 @@ Written down deliberately. Every one of these is a place a jury could push.
 
 | Version | Date | Change |
 |---|---|---|
+| SD-S2 / SD-S3 | 2026-09-16 | Application-journey layer in `src/journeys/`: eight stages, a discrete-time hazard with solved intercepts, per-stage timeouts, multi-attempt histories, five channels, and window shopping as a causal latent read through four independent signal channels. Three new artefacts plus a params manifest; point-in-time-safe feature builder for L7. |
 | SD-S1 | 2026-09-16 | Vectorised into `src/book/`; 60,000 × 30; six products (`pl` → `personal` with a compat alias); 14 new channels; explicit latent intent/capacity exported to `liability_book_truth.csv`; cross-product substitution matrix; back-solved base rate; equivalence and performance tests. |
 | pre-SD-S1 | 2026-07-10 | `src/make_book.py` row loop: 15,000 × 27, three products. |
+
+---
+
+## 11. Application journeys — `src/journeys/`
+
+> **The mandate.** Conversion means **disbursement**, not lead creation. The population that
+> matters is the **drop-offs** — customers who started an application and did not finish. Window
+> shoppers are real and they have tells: vague answers, refusal to share details, balking at the
+> ₹1,000 processing fee, refusing documents, revisiting several products without committing.
+> Precision over recall. The book alone could express none of this; §11 is the layer that does.
+
+```bash
+python3 src/make_book.py && python3 src/make_journeys.py     # the book first, always
+python3 src/make_journeys.py --seed 8                         # a different journey draw
+python3 src/make_journeys.py --book-dir /tmp/b --out /tmp/b
+```
+
+The book is **read-only ground truth** to this layer. It already decided who disburses and in
+which month; the journey layer never re-decides that, it draws a *path* consistent with it. Every
+assertion in `journeys.build.check()` that starts "consistency with the book" exists to make that
+non-negotiable in code rather than in prose.
+
+### 11.1 The funnel
+
+Eight stages, seven gates:
+
+```
+start → eligibility → kyc → docs → fee (₹1,000) → offer → accept → disburse
+      g0           g1    g2     g3            g4        g5       g6
+```
+
+At each gate,
+
+```
+P(advance) = σ(α_stage + β·intent + γ·capacity + δ_stage·friction + product_effect + channel_effect)
+```
+
+and otherwise the attempt **times out** at that stage: it sits there for a per-stage number of
+days and the file is closed. `last_stage` is where it stopped — which is exactly the
+`stage_reached` cut `validation/criteria.yaml` pre-registers (8 levels), and the cut that makes
+the drop-off population visible at all.
+
+`intent` and `capacity` come from `data/liability_book_truth.csv`, read at the month **before**
+the application: the need builds, *then* the customer applies. `β = 2.20`, `γ = 1.60`, both
+centred. All `assumed`.
+
+**The intercepts are solved, not written down.** A hand-set `α_s` makes the funnel's shape an
+accident of whatever the friction weights happen to be. Instead the shape is the declared
+parameter and `funnel.solve_intercepts()` fits `α` to two constraints at once:
+
+| Constraint | Target | Realised (default size) |
+|---|---|---|
+| where abandonments land | `ABANDON_SHARE` below | within 0.3 pp at every stage |
+| the hazard's own completion rate, over all attempts | the book's (disbursed ÷ attempts) | 25.8% vs 25.8% |
+
+The second constraint is what keeps the conditioning honest. Without it the shape alone is
+satisfied by a degenerate funnel in which the model thinks nobody could ever finish and the 26%
+who do are a miracle. With it, attempts that disburse come out with visibly better odds
+(mean `p_complete` 0.51) than attempts that do not (0.17) — asserted in-script, and re-asserted
+as an AUC floor in `tests/test_journeys.py`.
+
+**Funnel shape** (`funnel.ABANDON_SHARE`, share of *abandonments* at each stage, all `assumed` —
+shaped like a retail-lending funnel for an existing bank customer, not measured from one):
+
+| stage | start | eligibility | kyc | docs | fee | offer | accept |
+|---|---|---|---|---|---|---|---|
+| target | 18% | 14% | 10% | 22% | 20% | 9% | 7% |
+| realised | 18.1% | 14.1% | 9.9% | 22.2% | 20.1% | 8.7% | 7.0% |
+
+Documents are the classic killer and the ₹1,000 fee is the mentors' signature drop. The tail after
+Offer is thin because a customer who has paid a fee and seen a number usually finishes.
+
+**Solved intercepts** at the default size: start 2.03 · eligibility 2.83 · kyc 2.95 · docs 2.55 ·
+fee 1.66 · offer 2.06 · accept 1.78. They are written to `data/journey_params.json` on every run.
+
+**Performance.** The whole layer costs **≈ 6 s** end to end at the default 60,000 × 30 book
+(2 s to read the book's three CSVs and generate, 2 s of in-script assertions, 2 s to write) —
+well inside the 60 s tuning budget plan §J.1 sets. Everything is vectorised across attempts; the
+only Python-level loops are over the seven gates, the three attempt slots and the twelve
+fixed-point iterations of the intercept solver.
+
+### 11.2 Conditioning on the book
+
+An attempt the book says disburses walks every stage. An attempt that abandons draws its stopping
+stage from the hazard **conditioned on not disbursing**,
+
+```
+P(abandon at s | does not disburse) = [∏_{j<s} p_j · (1 − p_s)] / (1 − ∏_j p_j)
+```
+
+which is Bayes conditioning, not a re-roll. Because window-shopper propensity loads negatively on
+`is_converter` (§11.6), the attempts the book sends to a disbursement systematically carry better
+covariates, so the conditioning is not fighting the hazard.
+
+### 11.3 The 8–10% baseline: which denominator, and why
+
+**This is the single most important interpretation in this lane, and it is a reading, not a fact.**
+
+The mentors said the bank's baseline for RM-called prospects is 8–10% disbursement and the target
+is 30%. The plan turns that into `baseline ≈ 9%` and the headline *"9 → 30 disbursements per 100
+RM calls"*. Three denominators are available and they are not close to each other:
+
+| Candidate denominator | Rate in this data | Verdict |
+|---|---|---|
+| a random consented customer, contacted at the snapshot, disbursing inside the product window | ~0.1% | far too low; this is the book's cold-call rate (1.35% at a three-month horizon), the number the README used to quote as "~1%" |
+| a random *application attempt* reaching Disburse | **25.8%** | this is a funnel completion rate, not a calling baseline |
+| a random **drop-off** — a customer who abandoned an application — later disbursing | **9.0%** | ✅ adopted |
+
+The third is adopted because it is the only one that matches all three of: the mentors' own words
+("the population that matters is drop-offs"), the business action being priced (an RM works a lead
+list, not 60,000 savings customers), and the size of the number. It is also realistic: a recovery
+rate near one in eleven is what an untargeted call-back campaign on a stale drop-off list gets.
+
+`cfg.target_recovery_rate` is solved for, not observed: `attempts.select()` scales the share of
+converters that carry an earlier abandoned attempt so the realised rate lands on 9%, and
+`check()` fails the run outside [8%, 10%].
+
+**What SD-S4 and L9 have to decide.** `validation/criteria.yaml` SK-01 registers
+`random_contact_disbursement_rate ∈ [0.08, 0.10]` against a label definition written at the
+*(cust_id, month)* grain of the book. On that grain the number is ~0.1%, not 9%. Either SK-01's
+scoring population is the drop-off list (the reading above), or the contact effect θ has to be
+large enough to *cause* 8–10% of random contacts to disburse within days, which would not be
+credible. This lane has no authority to amend a pre-registered criterion; it is flagged here, in
+`journey_params.json`, and in the SD-S2 hand-off.
+
+### 11.4 Volumes
+
+| Quantity | Target | Source | Realised |
+|---|---|---|---|
+| customers with ≥ 1 attempt | 30% of the book (band 25–35%) | plan §B/L6 SD-S2, `assumed` | 30.0% (18,000 of 60,000) |
+| attempts | — | — | 21,682 |
+| attempts per applicant | — | — | 1.20 (14,465 × 1, 3,388 × 2, 147 × 3) |
+| disbursed / abandoned / still open | — | — | 25.8% / 73.8% / 0.3% |
+| drop-off recovery (§11.3) | 9% (band 8–10%) | mentor-stated, `assumed` | 8.96% |
+| window shoppers among drop-offs | 30% (band 25–35%) | plan §B/L6 SD-S3, `assumed` | 30.0% |
+| attempts for an ineligible product | 2% | `assumed` | 1.1% |
+
+Who applies is not uniform: the selection weights the book's hard-negative archetypes heavily,
+because that is what they are for. A *near-miss* (the full run-up, then life happens) is a
+drop-off by definition and is 12× as likely to apply as a plain non-converter; a *window shopper*
+6×; a *red herring* 3×; a *dormant-rich* customer 0.45× (capacity without intent rarely even
+starts). Latent intent then scales all of them. All `assumed`.
+
+**Attempts still open when the panel ends** carry no `abandoned_at` and no `disbursed_at` — they
+are `in_flight`. Only 0.3% of attempts end that way, but as at the *snapshot* month the
+point-in-time view (§11.9) shows ~1% of customers with a live application, which is the queue an
+RM would actually be working.
+
+### 11.5 The clock
+
+Journey length is scaled by the product's own decision window (`book.products.DECISION_WINDOW_DAYS`
+— `personal` 1, `gold` 1, `auto` 3, `education` 7, `home` 14, `lap` 14, plan §B/L6 SD-S4):
+
+* total advance time ~ Gamma, mean **0.42 × window**, split across the seven gates
+  5/8/12/30/12/18/15 % — documents take the longest;
+* **stalls** are the realistic reason a disbursement misses its window: a customer who balked at
+  the fee (mean 0.26 × window) or had to go and find a document (0.24 × window) and then complied;
+* **timeouts** before the bank closes a stalled file: 2.5 / 4 / 6 / 11 / 8 / 9 / 12 days at a
+  7-day product, scaled by product speed, capped at 45 days;
+* an RM call that *precedes* the application leads it by up to 0.12 × window.
+
+All `assumed`. Realised median journey, disbursed attempts: gold 0.5 d · personal 0.5 d ·
+auto 1.6 d · education 3.9 d · lap 8.1 d · home 8.2 d.
+
+**Window respect** — of disbursements where an RM had contacted the customer, the share where the
+disbursement fell inside the product's window — is **94.9%** at the default size (92.5–96.0%
+across seeds 7/8/11). `validation/criteria.yaml` SK-04 pre-registers ≥ 90% for a *different*
+measurement (the clock starting at the model's contact at the snapshot, not at the RM's call
+during the journey); the generator's figure is the upstream headroom, not the criterion.
+
+**Attempts never overlap.** A customer's next application starts after the previous one closed
+plus a return gap (Gamma, mean 26 days; realised median gap between attempts 54 days). A
+converter's final attempt is *pinned* to the book's `event_month`, so an earlier attempt that
+would run into it is compressed rather than pushing it.
+
+### 11.6 Window shopping as a causal negative (SD-S3)
+
+`shopper_propensity` is a per-customer latent. Its logit (all weights `assumed`):
+
+| term | weight | why |
+|---|---|---|
+| the book's `window_shopper` archetype | **+4.30** | browses hard, never buys — the journey layer makes the archetype *behave* rather than replacing it |
+| `near_miss` | +0.90 | the full textbook run-up and then no purchase |
+| `red_herring` | +0.40 | a real financial event, no purchase intent |
+| curiosity (new latent: browsing breadth) | +0.70 | |
+| price sensitivity = the book's `fee_sensitivity` | +0.35 | reused, not re-invented, so the fee balk cannot contradict the book |
+| document reluctance | +0.18 | |
+| **`is_converter`** | **−1.60** | this is the term that gives the four signals a negative marginal effect on disbursement |
+| peak latent intent | −1.10 | |
+| intercept | solved (−2.31) | so shoppers are 30% of abandoned attempts |
+
+Realised: **73.2%** of the book's `window_shopper` archetype are journey shoppers, against 8.9% of
+everyone else; 69% of shoppers are book-archetype window shoppers, so the latent is correlated
+with the archetype without collapsing into it.
+
+**Informative, not deterministic.** 0.8% of disbursements are made by shoppers — small, as the
+plan requires, but not zero. 4.2% of attempts balked at the fee and paid it anyway, and 70% of
+those went on to disburse; 66% of fee-balkers are *not* shoppers, and 27% of the customers who
+refused a document went on to file a complete set. `criteria.yaml` SK-05
+registers a deliberately modest `shopper AUC ≥ 0.70`; the tests here assert an upper bound of 0.95
+as well, because a synthetic book where shoppers are trivially separable has made the problem too
+easy.
+
+**Where shoppers die.** The shopper drag is per-gate and deliberately not uniform:
+`(+0.15, +0.10, 0.0, −0.85, −1.05, −0.25, −0.30)`. Window shopping is free — a shopper is happy to
+fill in a form and hear whether they qualify, that is what they came for. They stop when the bank
+asks for something: documents, then a ₹1,000 cheque. That is what puts them at Docs and Fee, where
+the mentors said they die, rather than at Start.
+
+**Deliberately absent: an occupation term.** An explicit `+ gig` in the shopper logit would
+manufacture the fairness problem the model is then measured on (SK-23/SK-24). There is none. Gig
+workers still come out marginally shoppier — 26.8% vs 20.7% salaried and 24.0% self-employed —
+purely through the book's own `fee_sensitivity`, which carries `+0.25 × gig`. That inheritance is
+disclosed rather than hidden, and a test caps the between-segment ratio at 1.6.
+
+### 11.7 The four signals, and when each becomes knowable
+
+One **commitment** latent (`1.10 × is_converter + 0.55 × z(peak intent) + noise`) is read four
+times through four *independent, noisy* channels. Independent measurement error is the whole
+point: without it the four signals are one signal, and only the most precise of them survives a
+regression that controls for the others.
+
+| Mentor signal | Column | Knowable from | Realised rate |
+|---|---|---|---|
+| vague answers | `answers_blank_ratio` | `started_at` — it is the form they submitted | median 0.25 |
+| won't share details | `income_shared = 0` | `started_at` | 20.3% |
+| balks at the ₹1,000 fee | `fee_balk` (+ `fee_balk_at`) | the **Eligibility** conversation, where the fee is quoted | 30.0% of attempts that got that far |
+| refuses documents | `doc_refusal` (+ `doc_refusal_at`) | the same conversation, where the checklist is read out | 28.2% |
+
+> **Why the fee balk is recorded at Eligibility and not at the Fee stage.** The processing fee is
+> quoted when the bank confirms eligibility, four stages before it is due; so is the document
+> checklist. Recording both there is how a branch RM actually works — and it is also the only
+> coding under which the two signals are honestly negative. Define `fee_balk` as "abandoned at the
+> Fee stage" and it becomes *positive*: reaching the Fee stage means surviving four gates, and that
+> survivorship outweighs the balk. We hit exactly that inversion in development. The fix was to
+> model the disclosure where it really happens, not to re-weight the friction until the sign came
+> out right.
+
+The **measured** consequences are separate columns and arrive later: `docs_requested` /
+`docs_supplied` at the Docs stage, `fee_paid` / `fee_paid_at` at the Fee stage,
+`amount_offered` at Offer. Each is null until the attempt reaches the stage that produces it — a
+customer who never saw the fee page cannot have paid it, and the file says so.
+
+Realised marginal effects (logistic of disbursement on the four, 21,682 attempts, all
+p < 10⁻⁶): blank ratio **−4.35**, income refused **−1.44**, fee balk **−0.87**, document refusal
+**−1.03**. Stable across seeds (−4.4 to −4.7, −1.35 to −1.51, −0.81 to −0.89, −0.96 to −1.16 at
+seeds 7/8/11). These are the signs SK-15 will ask the *model* to recover.
+
+The fifth mentor behaviour, **not picking up the RM's call**, is `rm_contacted`: a shopper is 55%
+less likely to be reached (20.7% vs 16.4% on non-`rm-call` attempts). An `rm-call` application is
+exempt by construction — it started *because* they answered.
+
+### 11.8 Channels
+
+| | branch-walk-in | rm-call | app | web | dsa |
+|---|---|---|---|---|---|
+| share of attempts | 23.3% | 21.0% | 27.8% | 16.5% | 11.4% |
+| disbursement rate | 34.7% | 33.3% | 20.7% | 18.2% | 17.5% |
+| gate effect | +0.35 | +0.25 | 0.00 | −0.15 | −0.25 |
+
+Channel is an **outcome** of commitment, not an exogenous assignment: a customer who means it
+walks into a branch or takes the RM's call, a tyre-kicker taps the app at midnight. The base mix
+is by segment and city tier (tier 3 walks in, tier 1 taps), then log-tilted by a noisy reading of
+commitment. So the by-channel gap above is part selection and part friction — deliberately
+confounded, because that is what the real comparison looks like, and it is what gives the
+pre-registered by-channel cut something to find. All `assumed`.
+
+### 11.9 Point-in-time features for L7 / SM-3
+
+`journeys.features.journey_features_as_at(journeys, events, as_at)` returns one row per customer
+with at least one attempt open or closed by `as_at`. **A customer with no row has no application
+history — that is not the same as having a bad one, and must not be encoded as a zero.**
+
+The six contract columns are spelled exactly as `data/bank/SCHEMA.md` specifies for the `journey`
+family of `enriched.csv`: `journey_stage_reached`, `journey_blank_field_ratio`,
+`journey_refused_income`, `journey_fee_balk`, `journey_doc_refusal`,
+`journey_multi_product_revisits`. Sixteen more carry the same prefix for SM-3
+(`journey_attempts`, `journey_open_now`, `journey_ever_abandoned`, `journey_ever_disbursed`,
+`journey_stage_idx`, `journey_last_product`, `journey_last_channel`, `journey_fee_paid`,
+`journey_docs_shortfall`, `journey_rm_contacted`, `journey_revisits_30d`,
+`journey_products_viewed_30d`, `journey_amount_requested`, `journey_stated_income_ratio`,
+`journey_days_since_last_event`, `journey_days_since_first_start`).
+
+A fact is used only if it was on the bank's screen at `as_at`. An attempt that has started and not
+finished is **in flight**: its stage is whatever it had reached, and its outcome is unknown.
+`tests/test_journeys.py::test_features_as_at_use_no_future_information` recomputes the whole frame
+from tables *physically truncated* at `as_at` and demands the same answer; that test found and
+fixed one real leak (days-since-last-event was reading an in-flight attempt's future stage entry).
+This is the property `validation/runners/07_leakage.py` (SK-17, zero tolerance) asserts.
+
+### 11.10 Column shims
+
+Two, both temporary, both in `journeys/build.py`:
+
+* **validation contract aliases.** `07_leakage.py` pre-registered its `INPUTS` as
+  `data/application_journeys.csv` with columns `cust_id, stage_reached, start_ts, abandon_ts,
+  disburse_ts, blank_ratio, income_refused, revisit_count`. The file here is `data/journeys.csv`
+  with the names the SD-S2 brief specifies, **plus** those eight as duplicate columns so the runner
+  can be written against either. Delete them when runner 07 lands.
+* **`rm_id` is empty** on every row. SM-4 fills it from the round-robin roster (API 442
+  `accountManager` / API 508 HRMS); emitting placeholder ids now would only have to be undone.
+
+### 11.11 Known unrealisms — the journey layer
+
+These are additional to §9, which covers the book.
+
+1. **Nobody is rejected.** Every abandonment is the *customer* walking away. There is no credit
+   decline, no policy rejection, no negative bureau pull, no fraud decline. Real funnels lose a
+   material share of applications to the bank's own "no", and a model trained here cannot tell the
+   two apart. The Eligibility stage is the nearest thing, and even there the customer times out
+   rather than being told no.
+2. **The ₹1,000 fee is flat across all six products.** Real schedules of charges scale with ticket
+   size and are routinely waived in campaigns. The mentors named one number and this layer uses it.
+3. **An attempt is for exactly one product.** No one applies for two things at once, and nobody is
+   cross-sold mid-journey into a different product — which is precisely the behaviour the
+   "menu of four" is meant to exploit, so the menu's value cannot be measured on this data alone.
+4. **The offer is a one-shot number.** There is no negotiation, no counter-offer, no re-pricing, no
+   rate shopping against another lender. `amount_offered` is drawn once from capacity and a haircut.
+5. **No partial disbursement, no cancellation after disbursement, no top-up.**
+6. **6.3% of attempts begin one month after the month whose latents drove them**, because an
+   earlier attempt of the same customer was still open when the drawn month arrived. The generator
+   therefore read *older* information than the application, never newer — the safe direction — and
+   `journey_truth.latent_month` records which month was used so the difference is auditable.
+7. **Stage durations are independent draws.** A customer who is slow at KYC is not slow at Docs.
+   Real files have a persistent "this one is dragging" character that this misses.
+8. **Timeouts are the only abandonment mechanism**, so there is no "abandoned in three seconds
+   because the form asked for a PAN". The `start` stage absorbs all of that into one distribution.
+9. **No seasonality in applications.** The book has fee-season and festive effects on spending;
+   the journey layer has none on volumes, which is wrong — loan applications are strongly seasonal.
+10. **Channel is fixed for the whole journey.** Nobody starts on the app and finishes in a branch,
+    which is the most common real pattern of all.
+11. **The recovery population is generated, not observed.** Which drop-offs come back is drawn from
+    a latent return propensity (§11.3); no contact, campaign or nudge causes it, because the contact
+    effect θ is SD-S4's to fit. Until then, "what an RM call is worth" is not in this data.
+12. **Every application is attributed to exactly one customer in the book.** There is no walk-in
+    prospect, no joint application, no co-applicant, no guarantor — consistent with lead generation
+    being out of scope, but it means the funnel has no top-of-funnel at all.
