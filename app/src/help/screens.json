@@ -1,0 +1,170 @@
+{
+ "login": {
+  "title": "Signing in to SANKET",
+  "summary": "SANKET is an internal bank system. Every screen behind this form is role-gated, every action is written to an append-only audit log, and the sign-in form will not render over plain HTTP.",
+  "sections": [
+   {
+    "heading": "Which account",
+    "body": "Your role decides what you see. A relationship manager sees the leads assigned to their own employee number and nothing else. A manager sees the whole drop-off book, the dashboard, and the two actions that change other people's work — round-robin assignment and the push into the bank CRM. An administrator additionally sees users, the audit log and the consent replay."
+   },
+   {
+    "heading": "The first sign-in",
+    "body": "Every seeded account is created with a password that must be changed at first use. Until it is changed, the backend answers every other request with a 403 and a reason of PASSWORD_CHANGE_REQUIRED, and this app keeps you on the change-password screen. That is the same rule on both sides, not a redirect this screen invented."
+   },
+   {
+    "heading": "If the account locks",
+    "body": "Five failed attempts lock the account for fifteen minutes. The screen shows a countdown when the server sends one. If it does not, it says to wait a few minutes rather than inventing a time."
+   }
+  ],
+  "caveat": "Never enter a bank password on a page served over plain HTTP. If the certificate is self-signed, compare its SHA-256 fingerprint against the one published in the project README before accepting it."
+ },
+ "dashboard": {
+  "title": "Manager dashboard",
+  "summary": "The drop-off book at a glance: how many customers abandoned an application, where they stopped, who is working them, how many are still inside their contact window, and how many the bank decided not to call.",
+  "sections": [
+   {
+    "heading": "The headline is computed, never typed",
+    "body": "“N → M disbursements per 100 RM calls” is two measured rates over the same population and the same hundred calls: one contacts at random, the other contacts the model's top ten per cent. Both come from the published model run. If either is missing, the panel says so rather than showing a number. The earlier headline ranked the whole liability book, where a random call almost never lands — a denominator that made the model look far better than it is, and one this build cannot produce."
+   },
+   {
+    "heading": "Why the population is drop-offs",
+    "body": "A customer who never applied for anything is a lead-generation problem, and lead generation is out of scope. Everything here is scored over customers who started an application, abandoned it, and are still contactable. That is a harder denominator and an honest one."
+   },
+   {
+    "heading": "SLA against the window",
+    "body": "Each product has a decision window running from the moment the application was abandoned — one day for personal and gold, three for auto, seven for education, fourteen for home and loan-against-property. A lead outside its window is not a lead; it is a customer who has moved on. The split between open and closed is the operational number this screen exists for."
+   },
+   {
+    "heading": "The suppressed count",
+    "body": "Suppressed customers were scored and then held back: no marketing consent, on the DND registry, recently called, already applying, bereaved, dormant. The count is shown because it is a real cost of doing this properly, and the histogram shows which rule cost what."
+   }
+  ],
+  "caveat": "Every figure on this screen carries a source badge. A FIXTURE or SIMULATED badge means no bank API supplied it — the machinery is the claim, not the number."
+ },
+ "queue": {
+  "title": "Lead queue",
+  "summary": "Customers who abandoned a loan application, ranked by one model across all six products, with the reason for the call and the reason against it on the same row.",
+  "sections": [
+   {
+    "heading": "What you can see",
+    "body": "A relationship manager sees only leads assigned to their own employee number; a manager sees the whole book. That scoping happens in the backend, below the role check — an empty queue means nothing has been assigned to you, not that the filters are wrong."
+   },
+   {
+    "heading": "The filters are server queries",
+    "body": "Product, tier, status and contact window are sent to the API, not applied in the browser. “Include suppressed” in particular decides what the server is willing to return, and a suppressed lead always comes back with its reasons attached. The sort control offers only the five keys the backend accepts; anything else is rejected with a 400."
+   },
+   {
+    "heading": "Round-robin assignment",
+    "body": "A manager can assign the unassigned leads across the relationship-manager roster. The rotation honours each RM's current load, so the busiest is not handed the next lead. It changes other people's queues, so it asks for confirmation and shows the allocation that came back. Suppressed leads are never assigned."
+   },
+   {
+    "heading": "Recording an outcome",
+    "body": "A disposition is append-only. It records what happened on a call; it does not change the lead's score or its place in tomorrow's ranking. The eight outcomes are the contract's enum — there is no free-text outcome, because a free-text outcome cannot be counted."
+   }
+  ],
+  "caveat": "SANKET advises; the relationship manager decides. Nothing in this queue sanctions a loan or commits the bank to anything."
+ },
+ "consent": {
+  "title": "Consent and Account Aggregator",
+  "summary": "Cross-bank statements fill the two gaps this product cannot see from its own book — EMIs paid elsewhere and salary credited elsewhere. Nothing is fetched until the customer approves in their own Account Aggregator app.",
+  "sections": [
+   {
+    "heading": "The lifecycle",
+    "body": "REQUESTED when we ask (API 590), PENDING once the customer has it in front of them, ACTIVE when they approve. REJECTED, REVOKED, EXPIRED and FAILED are the ends. Those are the states the database can actually store; PAUSED appeared in an earlier contract and could never be written, so it is not drawn."
+   },
+   {
+    "heading": "Nothing on this screen sets a state",
+    "body": "A consent moves because the customer acted and the aggregator called our webhook (497/498). The buttons here request, and fetch under an already-active consent. A fetch against a consent that is not ACTIVE is refused with a 409, and that refusal is the product working correctly."
+   },
+   {
+    "heading": "What the customer sees",
+    "body": "The panel renders the artefact we send to the aggregator: who is asking, for what purpose, which data, over what period, how often, until when, and what we will not do with it. It is the 592 redirect in plain language. The customer approves or declines in their own app; this platform never sees their credentials."
+   },
+   {
+    "heading": "The administrator's replay",
+    "body": "The IDBI sandbox may not be able to reach a box with no public address, so an administrator can re-inject a stored webhook delivery through the same state machine. It is deliberately not the webhook endpoint with its signature check removed: it is authenticated, admin-only, and audited under its own action name, so no replayed delivery can later be mistaken for a real one."
+   }
+  ],
+  "caveat": "Consent is purpose-bound. Data fetched for loan eligibility is not available for a credit-bureau enquiry, and the customer is told so before they decide."
+ },
+ "trust": {
+  "title": "Model and trust",
+  "summary": "The scorecard a bank's model-risk function would ask for, shown before they ask: ranking quality per product, calibration, the window-shopper detector, the suppression cost, the fairness result including its failure, and the pre-registered criteria with their verdicts.",
+  "sections": [
+   {
+    "heading": "One model, six products",
+    "body": "A single gradient-boosted model scores one row per customer, month and candidate product, with the product itself as a feature. The menu of four falls out of ranking a customer's six candidate rows against each other. Three separate per-product models cannot share what they learn about “this customer is ready to borrow”, and have nothing to say about products they were not trained on."
+   },
+   {
+    "heading": "Why intervals are everywhere",
+    "body": "Several products have very few positive cases in the held-out set. A point estimate from a handful of disbursements is not a measurement, so every headline figure carries its confidence interval and its sample size. A bar below the pre-registered floor is drawn as a failure and left there."
+   },
+   {
+    "heading": "The window-shopper AUC is an upper bound",
+    "body": "It is measured against the data generator's own latent flag, which production will never have. In production the target is the observable proxy — two or more abandonments and no disbursement in twelve months — which is noisier, so the real figure will be lower. Saying that is more useful than quoting the better number."
+   },
+   {
+    "heading": "The fairness failure",
+    "body": "Gig workers are under-selected because volatile income depresses the capacity score. It is in the table as a failure. Two mitigations are in the design and neither re-weights the label: capacity uses the behavioural median rather than a payslip, and production adds segment-aware calling quotas so the queue cannot quietly exclude gig earners."
+   },
+   {
+    "heading": "Pre-registration",
+    "body": "The criteria were committed to validation/criteria.yaml before the first result was produced, so the git timestamp is the pre-registration. Nothing on this screen re-grades them: a failing criterion renders as a failure, and one that was never measured renders as not measured rather than being omitted."
+   }
+  ],
+  "caveat": "The demo book is synthetic. What is claimed is the machinery and the measurement — on real bank data every number recalibrates, and the queue, the reasons, the consent screening and the measurement stay exactly as shown."
+ },
+ "radar": {
+  "title": "Business radar",
+  "summary": "The retail queue runs on a synthetic book. The radar runs the same signal-scoring approach over real published financial statements of Indian businesses, to show the prospecting engine working on reality.",
+  "sections": [
+   {
+    "heading": "What it scores",
+    "body": "Growing income, comfortable interest cover and unused borrowing headroom mark a business ready for working capital — the business-banking equivalent of a hot retail lead."
+   },
+   {
+    "heading": "Why it is on a separate screen",
+    "body": "It is a different population, a different data source and a different product line. Blending it into the retail conversion numbers would be exactly the kind of mixed denominator this project has been at pains to remove."
+   }
+  ],
+  "caveat": "The filings are real and published. The processing is ours, done offline — nothing here is pulled from a bank API."
+ },
+ "sources": {
+  "title": "Data sources and sync",
+  "summary": "Which of the bank's APIs this product has actually called, what came back, and which families of data are still simulated. The honest answer, not the flattering one.",
+  "sections": [
+   {
+    "heading": "The five sources",
+    "body": "BANK API means the value is the bank's own. BANK API · SANDBOX means a real endpoint answered but the sandbox returns canned data shared across APIs — the call and the shape are real, the values are not production numbers. SIMULATED means our synthetic data model produced it because no bank API supplies the field. FIXTURE means a recorded response replayed from disk. NOT COLLECTED means deliberately not gathered."
+   },
+   {
+    "heading": "Why this screen is never feature-flagged",
+    "body": "If it says FIXTURE, the screen showing that number is showing simulated data. There is no build of this product in which that statement can be switched off."
+   },
+   {
+    "heading": "Subscriptions",
+    "body": "Each bank API needs a subscription approved by a bank employee, which takes a day or two. A pending subscription is shown as pending. That is disclosure, not a defect."
+   }
+  ],
+  "caveat": "A product that cannot say where its numbers came from should not be trusted with a lending decision."
+ },
+ "admin": {
+  "title": "Administration",
+  "summary": "Users and roles, the append-only audit log and its hash chain, and the batch runner.",
+  "sections": [
+   {
+    "heading": "The audit log cannot be edited",
+    "body": "Append-only is enforced by the database, not by the application: UPDATE and DELETE on the audit table raise. Each row carries the hash of the one before it, so a row that was altered or removed breaks the chain, and the verify button walks it."
+   },
+   {
+    "heading": "Roles",
+    "body": "Four roles: administrator, manager, credit officer and relationship manager. A credit officer is scoped to assigned portfolios, a relationship manager to assigned leads. Scoping is enforced below the role check, so a scoped user gets a filtered list rather than an error — and never another user's data."
+   },
+   {
+    "heading": "The batch runner",
+    "body": "Pull, enrich, generate, score, validate, load, verify, publish. A run whose export fails its JSON schema fails the batch; a run that misses its pre-registered criteria stays a candidate and the active run is untouched."
+   }
+  ],
+  "caveat": "Administrator actions are audited like everything else, including this screen's own."
+ }
+}

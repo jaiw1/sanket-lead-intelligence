@@ -1,0 +1,112 @@
+// The contact window: how long a drop-off lead is still worth calling.
+//
+// Mentor mandate, via plan SD-S4: conversion is a DISBURSEMENT inside the abandoned
+// product's decision window after an RM contact. The window runs from the moment the
+// customer abandoned the application, for the number of days that product allows
+// (personal 1, gold 1, auto 3, education 7, home 14, lap 14).
+//
+// Two rules this file exists to keep honest:
+//
+//  1. The SERVER decides. `GET /sanket/queue` and `/sanket/lead/{id}` both return a
+//     `window` object with `open` and `expired` already computed, and the queue's
+//     `window_due` filter is the server's own predicate. Everything here is either a
+//     presentation detail (how many days are left, how to phrase it) or the fallback for
+//     the static bundle, which has no server to ask.
+//  2. `open` and `expired` are NOT each other's negation on the wire — a lead with no
+//     `abandon_ts` has neither. A window we cannot compute is reported as unknown, never
+//     as expired, because "expired" tells an RM not to call.
+
+import { WINDOW_DAYS } from './fmt'
+
+export const WINDOW_STATE = { OPEN: 'open', EXPIRED: 'expired', UNKNOWN: 'unknown' }
+
+const MS_PER_DAY = 86_400_000
+
+const parse = (value) => {
+  if (!value) return null
+  const t = Date.parse(value)
+  return Number.isNaN(t) ? null : t
+}
+
+/**
+ * Normalise whatever a lead carries into one shape the UI can render.
+ *
+ * @param {object} lead     a queue row or lead detail (live) or a packed lead (static)
+ * @param {number} [now]    epoch ms; injected by tests so "today" is not the wall clock
+ * @returns {{state: string, days: number|null, dueBy: string|null, abandonedAt: string|null,
+ *            daysLeft: number|null, daysOver: number|null, fromServer: boolean}}
+ */
+export function windowStatus(lead, now = Date.now()) {
+  if (!lead) return { state: WINDOW_STATE.UNKNOWN, days: null, dueBy: null, abandonedAt: null, daysLeft: null, daysOver: null, fromServer: false }
+
+  const w = lead.window || null
+  const days = Number.isFinite(Number(w?.days)) ? Number(w.days)
+    : Number.isFinite(Number(lead.window_days)) ? Number(lead.window_days)
+      : WINDOW_DAYS[lead.product] ?? null
+
+  const abandonedAt = w?.abandoned_at || lead.abandon_ts || null
+  // The static pack carries `contact_by` (a date) where the API carries `window.due_by`.
+  const dueBy = w?.due_by || lead.contact_by || null
+
+  // The server already ruled. Trust it — a UI that recomputes `expired` from a clock that
+  // may be minutes off would contradict the filter the same screen just used.
+  let state = WINDOW_STATE.UNKNOWN
+  if (w && (w.open === true || w.expired === true)) {
+    state = w.open === true ? WINDOW_STATE.OPEN : WINDOW_STATE.EXPIRED
+  } else {
+    const due = parse(dueBy) ?? (parse(abandonedAt) != null && days != null ? parse(abandonedAt) + days * MS_PER_DAY : null)
+    if (due != null) state = due >= now ? WINDOW_STATE.OPEN : WINDOW_STATE.EXPIRED
+  }
+
+  const due = parse(dueBy) ?? (parse(abandonedAt) != null && days != null ? parse(abandonedAt) + days * MS_PER_DAY : null)
+  const diffDays = due == null ? null : Math.ceil((due - now) / MS_PER_DAY)
+
+  return {
+    state,
+    days,
+    dueBy,
+    abandonedAt,
+    daysLeft: state === WINDOW_STATE.OPEN && diffDays != null ? Math.max(0, diffDays) : null,
+    daysOver: state === WINDOW_STATE.EXPIRED && diffDays != null ? Math.max(0, -diffDays) : null,
+    fromServer: Boolean(w && (w.open === true || w.expired === true)),
+  }
+}
+
+/** One short phrase for a badge. Never invents urgency it cannot evidence. */
+export function windowPhrase(status) {
+  if (!status || status.state === WINDOW_STATE.UNKNOWN) return 'Window unknown'
+  if (status.state === WINDOW_STATE.OPEN) {
+    if (status.daysLeft == null) return 'Window open'
+    if (status.daysLeft === 0) return 'Window closes today'
+    return `${status.daysLeft} day${status.daysLeft === 1 ? '' : 's'} left`
+  }
+  if (status.daysOver == null) return 'Window closed'
+  if (status.daysOver === 0) return 'Window closed today'
+  return `Closed ${status.daysOver} day${status.daysOver === 1 ? '' : 's'} ago`
+}
+
+/** Tailwind classes for the badge, matched to the phrase. */
+export function windowTone(status) {
+  switch (status?.state) {
+    case WINDOW_STATE.OPEN:
+      return status.daysLeft != null && status.daysLeft <= 1
+        ? 'bg-signal-amber/15 text-signal-amber border-signal-amber/40'
+        : 'bg-signal-teal/15 text-signal-teal border-signal-teal/40'
+    case WINDOW_STATE.EXPIRED:
+      return 'bg-signal-rose/10 text-signal-rose border-signal-rose/40'
+    default:
+      return 'bg-ink-600 text-txt-mid border-line-strong'
+  }
+}
+
+/**
+ * The `window_due` query value for a UI filter.
+ * The contract: true = the window is still OPEN, false = it has run out, omitted = both.
+ * "unknown" is deliberately NOT expressible as a filter — the server has no such bucket,
+ * and a UI filter that silently means something else is a lie about the data.
+ */
+export const WINDOW_FILTERS = [
+  { value: '', label: 'Any window' },
+  { value: 'true', label: 'Window open' },
+  { value: 'false', label: 'Window closed' },
+]
