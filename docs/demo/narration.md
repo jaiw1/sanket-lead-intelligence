@@ -10,7 +10,18 @@ autonomous run) — the on-screen caption bar carries this exact text, word-sync
 into the video. A presenter can read this transcript aloud over the video, live, during
 the demo slot.
 
-Total run time: **3:52** (well inside the 4-minute budget for the 10-minute slot).
+This is a re-record. The DRISHTi video lane found that this script's burned-in caption
+clock (`window.__kStart`) lives only in the page's own JS context, so it gets wiped by
+every hard navigation (`page.goto` — every sign-in round trip through `/login`, and the
+mid-demo jump back to `/queue`) and the caption bar goes dark for the rest of the take
+after the first one. `resyncKaraoke()` is now ported into this script (called right
+after every such navigation) and re-anchors the clock to the same elapsed time it had
+before the jump, so the caption keeps speaking through both role switches. Confirmed on
+this take at 0:30, 2:00 and 3:30 — the caption is live and on-topic at all three marks,
+including 3:30, which falls after two hard navigations (the manager sign-in at 1:42 and
+the `/queue` jump at 2:10).
+
+Total run time: **3:53** (well inside the 4-minute budget for the 10-minute slot).
 
 ---
 
@@ -59,36 +70,38 @@ Total run time: **3:52** (well inside the 4-minute budget for the 10-minute slot
 
 **3:10–3:34 — Model & Trust**
 > The model's report card. Macro AUC **0.865** across six products, precision at the
-> top ten percent **29.1%**. Pre-registered criteria: **17 pass, 1 fail**, 5
-> report-only. The failure stays on screen — a **0.69** fairness ratio for gig workers,
-> against a 0.80 floor — disclosed, not tuned away.
+> top ten percent **29.1%**. Pre-registered criteria: **17 pass, 1 fail**. **SK-04**
+> doubles up — **passes** on the packed seed, **fails** on the five-seed mean — its own
+> row, not folded in. The gig-worker fairness ratio, **0.69** against a 0.80 floor,
+> stays on screen too — disclosed, not tuned away.
 
 **3:34–3:46 — Data sources**
 > And where every number comes from: **0 of 24** registered bank APIs called live in
 > this sandbox — every figure here is fixture or simulated, and the product says so on
 > its own dashboard.
 
-**3:46–3:52 — Sign-off**
+**3:46–3:53 — Sign-off**
 > SANKET advises. The relationship manager decides.
 
 ---
 
 ## Honesty notes (not spoken, for the record)
 
-- **The validation table shows 1 fail on screen (SK-23), not "two."** README.md
-  documents a second, subtler honest complication — SK-04 (window-respect) passes on
-  the packed single-seed run (90.1%) but fails on the 5-seed mean (88.1%); the
-  `bands[*].verdict` field the on-screen table reads carries only the single verdict, so
-  the narration above claims only what is literally visible: one disclosed numeric
-  failure. The fuller SK-04 nuance is real and cited in README.md §Validation, just not
-  claimable from this screen alone.
-- **`app/public/sanket_data.json` is stale** relative to `data/model_metrics.json`
-  (11 minutes older) and, unpatched, crashes the whole app via `ModelTrust.jsx`'s
-  `ValidationTable` (three criteria carry an object where the component expects a
-  scalar `observed` value). The autopilot patches the response in flight — same
-  pipeline's own newer output, not invented numbers — so the screen recorded here is
-  correct; the crash is real and open for L7/L11 to fix by regenerating the committed
-  file. See the comment block at the top of `sanket-autopilot.mjs`.
+- **SK-04 is now shown twice on screen, and the narration says so.** The validation
+  table renders a second "↳ 5-seed mean" row directly under SK-04 whenever
+  `bands["SK-04"].verdict_on_seed_mean` disagrees with the packed-seed `verdict` —
+  0.9009 (pass) on the seed the export packs, 0.8813 (fail) on the mean across the 5
+  registered seeds (`n_seeds_run = 5`, SK-20 pass). The tally badge above the table
+  counts this separately too: "17 pass · 1 fail · 1 fail on 5-seed mean · 5
+  report-only". As of this run, `app/public/sanket_data.json` and
+  `sanket/data/model_metrics.json` agree byte-for-byte on `metrics.bands` (checked
+  directly), so this is the pipeline's own committed output, not a patched-in number —
+  see the recaptured `sanket/docs/screenshots/05-model-trust.png`.
+- **Three criteria still ship an object where `ModelTrust.jsx` expects a scalar**
+  (SK-03, SK-06, SK-10), which crashes the app via the top-level ErrorBoundary if
+  rendered raw. The autopilot still patches the `sanket_data.json` response in flight to
+  stringify just those three — same pipeline's own output, not invented numbers — purely
+  so `/trust` renders. Open for L7/L11 to fix at the source (`src/model/pack.py`).
 - **CRM dedupe is honestly "unknown," not "clear."** With `ATLAS_MODE=off` in this
   sandbox, API 456 is never called, so the dry-run correctly reports "no dedupe check
   was made" rather than claiming a pass.
