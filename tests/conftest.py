@@ -63,3 +63,68 @@ def journeys(small_book: Path) -> SimpleNamespace:
                            truth=b.truth, campaigns=b.campaigns, labels=b.labels,
                            label_truth=b.label_truth, params=b.params, stats=stats,
                            label_stats=lstats, anchor=(2024, 4))
+
+
+#: A model small enough to fit inside the suite: 150 trees, one seed, no
+#: out-of-time / permuted-label / ladder exhibits.  The five-seed spread and the
+#: expensive exhibits belong to a real run.
+MODEL_KW = dict(seed=7, seeds=(7,), quick=True, queue_size=40, excluded_sample=6,
+                lgbm=dict(n_estimators=150, learning_rate=0.06, num_leaves=31,
+                          min_child_samples=40, subsample=0.8, subsample_freq=1,
+                          colsample_bytree=0.8, n_jobs=-1, verbose=-1))
+
+
+@pytest.fixture(scope="session")
+def model_dir(journeys: SimpleNamespace) -> Path:
+    """The small book plus the journey / label CSVs, written to disk.
+
+    Written rather than passed in memory for the same reason the journey fixture
+    reads the book back off disk: ``src/score_and_pack.py`` loads CSVs, and a
+    schema drift between what the generator returns and what the scorer reads
+    would show up here first.
+    """
+    d = journeys.book_dir
+    if not (d / "labels.csv").exists():
+        journeys.journeys.to_csv(d / "journeys.csv", index=False)
+        journeys.events.to_csv(d / "journey_events.csv", index=False)
+        journeys.campaigns.to_csv(d / "campaigns.csv", index=False)
+        journeys.labels.to_csv(d / "labels.csv", index=False)
+        journeys.label_truth.to_csv(d / "label_truth.csv", index=False)
+    return d
+
+
+@pytest.fixture(scope="session")
+def model_run(model_dir: Path) -> SimpleNamespace:
+    """SM-1's model fitted once: the frames, the split, the ranker, the scores."""
+    from model import ModelConfig
+    from model.frame import as_categorical, customer_month_frame, load_tables, stack
+    from model.train import fit_ranker, split_customers
+
+    cfg = ModelConfig(root=model_dir.parent, **MODEL_KW)
+    tables = load_tables(model_dir)
+    base = as_categorical(customer_month_frame(tables))
+    stacked = as_categorical(stack(base))
+    split = split_customers(base["cust_id"].unique(), cfg, cfg.seed)
+    ranker = fit_ranker(stacked, split, cfg, with_unconstrained=True)
+    return SimpleNamespace(cfg=cfg, data_dir=model_dir, tables=tables, base=base,
+                           stacked=stacked, split=split, ranker=ranker,
+                           P=ranker.matrix(stacked))
+
+
+@pytest.fixture(scope="session")
+def packed(model_dir: Path, tmp_path_factory) -> SimpleNamespace:
+    """The whole ``score_and_pack`` export, run once on the small book."""
+    from model import ModelConfig
+    import model.pack as pack
+
+    out = tmp_path_factory.mktemp("pack")
+    cfg = ModelConfig(root=model_dir.parent, **MODEL_KW)
+    real = pack.F.load_tables
+    pack.F.load_tables = lambda _d: real(model_dir)
+    try:
+        payload = pack.run(cfg, out_json=out / "sanket_data.json",
+                           metrics_json=out / "model_metrics.json", verbose=False)
+    finally:
+        pack.F.load_tables = real
+    return SimpleNamespace(out=payload, json_path=out / "sanket_data.json",
+                           metrics_path=out / "model_metrics.json", cfg=cfg)

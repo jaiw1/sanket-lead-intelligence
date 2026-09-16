@@ -1,386 +1,75 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-SANKET scoring pipeline  ->  app/public/sanket_data.json
+SANKET scoring pipeline  ->  app/public/sanket_data.json  +  data/model_metrics.json
 
-Trains one LightGBM per product (home / auto / personal loan) on trailing-window
-behavioural features, measures honestly (customer-grouped split; precision@budget
-on the held-out book at the snapshot month), and packs everything the cockpit
-needs: queue, reasons, pitch material, retained-income estimates, trust metrics.
+**One** LightGBM across all six products (home, loan-against-property, gold, auto,
+education, personal), trained over the **drop-off population** — consented,
+contactable customers with an abandoned application behind them — with `product`
+as a categorical over a stacked (customer, month, product) frame.  It replaces the
+three per-product models the pre-SM-1 pipeline trained on the whole liability book.
 
-No leakage by construction: every feature is computed from months <= m; labels
-live strictly in (m, m+3]. No post-event information is ever visible at m.
+Conversion means **disbursement inside that product's decision window after an RM
+contact** (personal 1d, gold 1d, auto 3d, education 7d, home 14d, lap 14d), which
+is the label `data/labels.csv` carries and `validation/criteria.yaml` registers.
+
+The headline is built from the two measured numbers and never typed:
+
+    "{baseline} → {precision} disbursements per 100 RM calls"
+
+Both are disbursement rates over the same population and the same hundred calls —
+one contacts at random, the other contacts the model's top 10%.  The retired
+"1% → 36%, a 28x lift" ranked the *whole book*, where a random call almost never
+lands; nothing in this pipeline can emit it.
+
+No leakage by construction: every feature is computed as at the first instant of
+the month the row is scored in, which is the instant the drop-off list is picked
+up.  `model.FORBIDDEN_INPUTS` names every outcome, latent and policy flag that may
+never be an input, and `model.frame.build_matrix` raises rather than let one
+through.
+
+Usage
+-----
+    python3 src/score_and_pack.py                  # full run, 5 seeds
+    python3 src/score_and_pack.py --seeds 7        # one seed (fast)
+    python3 src/score_and_pack.py --quick          # skip the expensive exhibits
+    python3 src/score_and_pack.py --no-write       # measure, write nothing
 """
 
-import json
-import numpy as np
-import pandas as pd
-from lightgbm import LGBMClassifier
-from sklearn.metrics import roc_auc_score
+import argparse
+import sys
+from pathlib import Path
 
-RNG = np.random.default_rng(11)
-ROOT = __file__.rsplit("/src/", 1)[0]
-SNAP = 23
-PRODUCTS = ["home", "auto", "pl"]
-TYPICAL_EMI = {"home": 26_000, "auto": 12_500, "pl": 8_500}
-CAT = ["segment", "city_tier"]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-EXCLUDED_FEATURES = [
-    "Gender, religion, caste, marital status — excluded outright by policy.",
-    "Pin-code / neighbourhood — an income proxy that quietly discriminates.",
-    "Credit-bureau score — needs purpose-specific consent; pulled only at application stage, never for prospecting.",
-    "Anything about the 15% of customers without marketing consent — they are never scored at all.",
-    "Any activity after a loan application starts — it would encode the outcome we claim to predict.",
-]
+from model import ModelConfig  # noqa: E402
+from model.pack import run  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
-def build_features(panel, book):
-    df = panel.sort_values(["cust_id", "month"]).reset_index(drop=True)
-    g = df.groupby("cust_id", sort=False)
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--seeds", default="7,8,9,10,11",
+                    help="comma-separated model seeds; the first is packed (default 7,8,9,10,11)")
+    ap.add_argument("--budget", type=float, default=0.10,
+                    help="contact budget the headline is priced at (default 0.10)")
+    ap.add_argument("--quick", action="store_true",
+                    help="skip out-of-time, permuted-label and the baseline ladder")
+    ap.add_argument("--no-write", action="store_true", help="measure but write no files")
+    ap.add_argument("--out", default=str(ROOT / "app" / "public" / "sanket_data.json"))
+    ap.add_argument("--metrics-out", default=str(ROOT / "data" / "model_metrics.json"))
+    a = ap.parse_args(argv)
 
-    def roll(col, w, fn="mean"):
-        r = g[col].rolling(w, min_periods=1)
-        return (getattr(r, fn)()).reset_index(level=0, drop=True)
-
-    df["credits_med_6m"] = roll("credits", 6, "median")
-    df["credits_std_6m"] = roll("credits", 6, "std").fillna(0)
-    df["credits_cv_6m"] = (df.credits_std_6m / df.credits_med_6m).clip(0, 2)
-    df["credits_gr_6m"] = (df.credits / g["credits"].shift(6)).replace([np.inf, -np.inf], np.nan)
-
-    df["bal_gr_6m"] = (df.bal_avg / g["bal_avg"].shift(6)).replace([np.inf, -np.inf], np.nan)
-    df["minbal_ratio"] = (df.bal_min / df.credits_med_6m).clip(0, 5)
-
-    df["rent_share"] = (df.rent / df.credits_med_6m).clip(0, 1.5)
-    df["rent_ratio_6m"] = (df.rent / g["rent"].shift(6).clip(lower=1)).where(g["rent"].shift(6) > 0)
-
-    df["fuel_3m"] = roll("fuel_cab", 3, "mean")
-    df["fuel_prev3"] = g["fuel_cab"].shift(3).groupby(df.cust_id, sort=False).rolling(3, min_periods=1).mean().reset_index(level=0, drop=True)
-    df["fuel_ratio_3m"] = (df.fuel_3m / df.fuel_prev3.clip(lower=1)).clip(0, 6)
-    df["fuel_share"] = (df.fuel_cab / df.credits_med_6m).clip(0, 0.6)
-
-    df["emi_share"] = (df.ext_emi / df.credits_med_6m).clip(0, 1)
-    df["emi_gr_6m"] = (df.ext_emi - g["ext_emi"].shift(6)).fillna(0) / df.credits_med_6m
-    df["school_share"] = (df.school_fees / df.credits_med_6m).clip(0, 0.5)
-    df["ecom_share"] = (df.ecommerce / df.credits_med_6m).clip(0, 0.8)
-
-    df["fd_ratio"] = (df.fd_bal / df.credits_med_6m).clip(0, 20)
-    df["fd_drop"] = ((df.fd_bal < 0.6 * g["fd_bal"].shift(3)) & (g["fd_bal"].shift(3) > 0)).astype(int)
-
-    for p in PRODUCTS:
-        df[f"dwell_{p}_3m"] = roll(f"dwell_{p}", 3, "sum")
-
-    df = df.merge(book[["cust_id", "segment", "age", "city_tier", "tenure_m", "consent", "product", "event_month",
-                        "dnd", "persuadable", "p_win_start", "p_win_end", "true_income", "inc_drift"]], on="cust_id")
-    for p in PRODUCTS:
-        df[f"y_{p}"] = ((df["product"] == p) & (df.event_month > df.month) & (df.event_month <= df.month + 3)).astype(int)
-    df["y_any"] = df[[f"y_{p}" for p in PRODUCTS]].max(axis=1)
-
-    # behavioural retained income -> comfortable EMI headroom
-    committed = df.rent + df.ext_emi + df.school_fees + 0.38 * df.credits_med_6m
-    df["retained"] = (df.credits_med_6m - committed).clip(lower=0)
-    df["safe_emi"] = (0.40 * df.retained).round(-2)
-
-    for c in CAT:
-        df[c] = df[c].astype("category")
-    return df
-
-
-FEATS = ["credits_med_6m", "credits_cv_6m", "credits_gr_6m", "bal_avg", "bal_gr_6m", "minbal_ratio",
-         "rent_share", "rent_ratio_6m", "fuel_ratio_3m", "fuel_share", "emi_share", "emi_gr_6m",
-         "school_share", "ecom_share", "fd_ratio", "fd_drop", "has_auto_emi",
-         "dwell_home_3m", "dwell_auto_3m", "dwell_pl_3m", "age", "segment", "city_tier", "tenure_m"]
-
-REASON = {
-    "rent_ratio_6m": lambda r: f"Rent debit up {int((r.rent_ratio_6m - 1) * 100)}% in 6 months — outgrowing the current home" if r.rent_ratio_6m and r.rent_ratio_6m > 1.12 else None,
-    "bal_gr_6m":     lambda r: f"Average balance up {int((r.bal_gr_6m - 1) * 100)}% in 6 months — building a down-payment" if r.bal_gr_6m and r.bal_gr_6m > 1.25 else None,
-    "dwell_home_3m": lambda r: f"{int(r.dwell_home_3m)} min on home-loan pages in the last 90 days" if r.dwell_home_3m > 5 else None,
-    "dwell_auto_3m": lambda r: f"{int(r.dwell_auto_3m)} min on auto-loan pages in the last 90 days" if r.dwell_auto_3m > 5 else None,
-    "dwell_pl_3m":   lambda r: f"{int(r.dwell_pl_3m)} min on personal-loan pages in the last 90 days" if r.dwell_pl_3m > 5 else None,
-    "fuel_ratio_3m": lambda r: f"Fuel + cab spend up {int((r.fuel_ratio_3m - 1) * 100)}% quarter-on-quarter — commute pain" if r.fuel_ratio_3m > 1.35 else None,
-    "has_auto_emi":  lambda r: "No existing vehicle EMI anywhere in banking history" if r.has_auto_emi == 0 else None,
-    "emi_share":     lambda r: f"Outside EMIs eat {int(r.emi_share * 100)}% of income — consolidation candidate" if r.emi_share > 0.14 else None,
-    "minbal_ratio":  lambda r: "Balance dips sharply before salary day — monthly squeeze" if r.minbal_ratio < 0.22 else None,
-    "fd_drop":       lambda r: "Broke a fixed deposit recently — mobilising funds" if r.fd_drop == 1 else None,
-    "credits_gr_6m": lambda r: f"Credits up {int((r.credits_gr_6m - 1) * 100)}% in 6 months — rising income" if r.credits_gr_6m and r.credits_gr_6m > 1.12 else None,
-    "credits_cv_6m": lambda r: "Volatile month-to-month income — scored on behavioural median, not payslip" if r.credits_cv_6m > 0.25 else None,
-}
-
-# English + Hindi script pairs. ~40% of the queue surfaces in Hindi (Devanagari),
-# mirroring IDBI's bilingual customer communication.
-PITCH_EN = {
-    "home": ("Namaste! I'm calling from your bank. I noticed you've been managing a growing rent commitment — many customers at that point find an EMI works out comparable to rent.",
-             "Based on your account behaviour you'd be comfortable around ₹{emi:,}/month — would a quick eligibility check be useful? No paperwork at this stage.",
-             "Would an EMI really match my rent?", "On your observed retained income, a ₹{emi:,} EMI stays within the comfort band we computed — and unlike rent, it builds your own asset."),
-    "auto": ("Namaste! Quick one — your commuting spend has climbed noticeably these past months. A lot of customers at that point are weighing their own vehicle.",
-             "With your track record you're pre-qualified for an auto loan; EMI near ₹{emi:,} fits your monthly headroom. Want me to hold a rate quote for you?",
-             "I'm not sure I want the EMI burden.", "Your cab + fuel outflow is already near that EMI — this shifts the same money from expense to ownership."),
-    "pl":   ("Namaste! I handle personal banking for your branch. I noticed some months get tight before salary day — you're not alone, and there are cleaner ways to handle it.",
-             "We can consolidate outside EMIs into one at a lower rate, or set a small credit line ~₹{emi:,}/month equivalent. Shall I check your pre-approved amount?",
-             "Another loan sounds like more stress.", "This replaces costlier debt you're already servicing — one EMI, lower rate, and your salary month breathes again."),
-}
-PITCH_HI = {
-    "home": ("नमस्ते! मैं आपके बैंक से बात कर रहा हूँ। हमने देखा कि आपका किराया पिछले कुछ महीनों में बढ़ा है — ऐसे कई ग्राहकों को होम लोन की EMI किराए के बराबर ही बैठती है।",
-             "आपके खाते के व्यवहार के अनुसार लगभग ₹{emi:,}/माह आपके लिए आरामदायक रहेगा — क्या मैं एक झटपट पात्रता जाँच कर दूँ? अभी कोई कागज़ी कार्यवाही नहीं।",
-             "क्या सच में EMI मेरे किराए के बराबर बैठेगी?", "आपकी उपलब्ध आय के हिसाब से ₹{emi:,} की EMI आरामदायक दायरे में रहती है — और किराए के विपरीत, यह आपकी अपनी संपत्ति बनाती है।"),
-    "auto": ("नमस्ते! एक छोटी सी बात — पिछले कुछ महीनों में आपका आने-जाने का खर्च काफ़ी बढ़ा है। ऐसे कई ग्राहक इस समय अपनी गाड़ी लेने पर विचार करते हैं।",
-             "आपके रिकॉर्ड के अनुसार आप ऑटो लोन के लिए पूर्व-योग्य हैं; लगभग ₹{emi:,} की EMI आपकी मासिक क्षमता में बैठती है। क्या मैं आपके लिए एक दर-उद्धरण रोक रखूँ?",
-             "मुझे यकीन नहीं कि मैं EMI का बोझ लेना चाहता हूँ।", "आपका कैब और ईंधन खर्च पहले से ही उस EMI के आसपास है — यह उसी पैसे को खर्च से मालिकाना हक़ में बदल देता है।"),
-    "pl":   ("नमस्ते! मैं आपकी शाखा की व्यक्तिगत बैंकिंग संभालता हूँ। हमने देखा कि वेतन से पहले कुछ महीने तंग हो जाते हैं — आप अकेले नहीं हैं, और इसे संभालने के बेहतर तरीके हैं।",
-             "हम आपके बाहरी EMIs को कम दर पर एक में समेट सकते हैं, या लगभग ₹{emi:,}/माह के बराबर एक छोटी क्रेडिट लाइन रख सकते हैं। क्या मैं आपकी पूर्व-स्वीकृत राशि जाँच दूँ?",
-             "एक और लोन तो और तनाव जैसा लगता है।", "यह उस महँगे कर्ज़ की जगह लेता है जो आप पहले से चुका रहे हैं — एक EMI, कम दर, और आपका वेतन-माह राहत की साँस लेता है।"),
-}
-
-NBA = {
-    "hot":  "Call within 48h (Tue–Thu 11:00–13:00 windows convert best). Open with the observed change, not the product.",
-    "warm": "WhatsApp opt-in nudge this week with a personalised calculator link; call on click-through.",
-    "cold": "Keep in monthly digest; re-score after next salary cycle. Do not call — protect goodwill.",
-}
-
-
-def reasons_for(row, contribs, cols, k=3):
-    out = []
-    for c, v in sorted(zip(cols, contribs), key=lambda x: -x[1]):
-        if v <= 0 or c not in REASON:
-            continue
-        s = REASON[c](row)
-        if s and s not in out:
-            out.append(s)
-        if len(out) >= k:
-            break
-    return out
-
-
-def main():
-    panel = pd.read_csv(f"{ROOT}/data/customer_panel.csv")
-    book = pd.read_csv(f"{ROOT}/data/customer_book.csv")
-    df = build_features(panel, book)
-
-    custs = book.cust_id.values
-    heldout = set(pd.Series(custs).sample(frac=0.30, random_state=7))
-    df["held"] = df.cust_id.isin(heldout)
-
-    train = df[(~df.held) & df.month.between(6, 20)]
-    test_rows = df[df.held & df.month.between(18, 23)]
-    snap_all = df[df.month == SNAP].set_index("cust_id")
-
-    models, per_product = {}, {}
-    for p in PRODUCTS:
-        m = LGBMClassifier(n_estimators=500, learning_rate=0.04, num_leaves=31, min_child_samples=60,
-                           subsample=0.8, colsample_bytree=0.8, random_state=7, n_jobs=-1, verbose=-1)
-        m.fit(train[FEATS], train[f"y_{p}"], categorical_feature=CAT)
-        auc = roc_auc_score(test_rows[f"y_{p}"], m.predict_proba(test_rows[FEATS])[:, 1])
-        models[p] = m
-        per_product[p] = dict(auc=round(float(auc), 3), n_pos_test=int(test_rows[f"y_{p}"].sum()))
-        print(f"{p:5s} AUC {auc:.3f}  (test positives {per_product[p]['n_pos_test']})")
-
-    # ---- snapshot scoring (whole book for the queue; held-out only for measurement) ----
-    probs = {p: models[p].predict_proba(snap_all[FEATS])[:, 1] for p in PRODUCTS}
-    P = np.vstack([probs[p] for p in PRODUCTS]).T
-    snap_all["score_raw"] = P.max(axis=1)
-    snap_all["nbp"] = [PRODUCTS[i] for i in P.argmax(axis=1)]
-
-    ho = snap_all[snap_all.held & (snap_all.consent == 1)]
-    y_ho = ((ho.event_month > SNAP) & (ho.event_month <= SNAP + 3)).astype(int).values
-    order = np.argsort(-ho.score_raw.values)
-    baseline = float(y_ho.mean())
-    n_book_consented = int((snap_all.consent == 1).sum())
-
-    prec_curve = []
-    for b in [x / 100 for x in range(1, 31)]:
-        k = max(1, int(len(ho) * b))
-        prec = float(y_ho[order[:k]].mean())
-        prec_curve.append(dict(budget=b, precision=round(prec, 4), lift=round(prec / baseline, 1),
-                               contacts=int(n_book_consented * b),
-                               expected_conversions=int(round(n_book_consented * b * prec))))
-    p5 = next(p for p in prec_curve if p["budget"] == 0.05)
-    print(f"baseline {baseline:.3%} | precision@5% {p5['precision']:.1%} (lift {p5['lift']}x)  [GATE: 20-40%]")
-
-    # ---- calibration: proper P(any conversion) = 1 - prod(1 - p_i), isotonic-calibrated ----
-    # max-of-3 over-predicts; combining the three product models then isotonic-fitting the
-    # result recovers scores whose value matches the observed conversion rate. Reliability is
-    # shown on the calibrated score (standard "after calibration" plot), so points sit on y=x.
-    from sklearn.isotonic import IsotonicRegression
-    Pt = np.vstack([models[p].predict_proba(test_rows[FEATS])[:, 1] for p in PRODUCTS]).T
-    comb = 1 - np.prod(1 - Pt, axis=1)
-    y_any_test = test_rows["y_any"].values
-    p_cal = IsotonicRegression(out_of_bounds="clip").fit_transform(comb, y_any_test)
-    tr = pd.DataFrame({"p": p_cal, "y": y_any_test})
-    qs = pd.qcut(tr.p.rank(method="first"), 10)     # equal-count bins even with many ties at 0
-    calib = [dict(pred=round(float(g.p.mean()), 4), obs=round(float(g.y.mean()), 4), n=int(len(g)))
-             for _, g in tr.groupby(qs, observed=True)]
-
-    auc_macro = float(np.mean([per_product[p]["auc"] for p in PRODUCTS]))
-
-    # ================= UPLIFT / PERSUADABILITY =================
-    # Ground truth gives every customer two potential outcomes: y0 (converts organically)
-    # and y1 (converts if contacted). We simulate a randomized monthly campaign (T ~ 50/50),
-    # observe only y_obs = T ? y1 : y0 (like a real bank experiment), train a two-model
-    # uplift estimator, and evaluate a Qini-style incremental-conversion curve on held-out
-    # customers. Propensity says WHO WILL CONVERT; uplift says WHO CONVERTS BECAUSE YOU CALLED.
-    def campaign(custset, months):
-        rows = df[df.cust_id.isin(custset) & df.month.isin(months) & (df.consent == 1)].copy()
-        y0 = ((rows.event_month > rows.month) & (rows.event_month <= rows.month + 3)).astype(int).values
-        receptive = ((rows.persuadable == 1) & (rows.p_win_start <= rows.month) & (rows.month < rows.p_win_end + 2)).values
-        y1 = (((y0 == 1) & (rows.dnd.values == 0)) | receptive).astype(int)
-        T = RNG.random(len(rows)) < 0.5
-        return rows, T, np.where(T, y1, y0), y0, y1
-
-    train_set = set(custs) - heldout
-    tr_rows, T_tr, y_tr, _, _ = campaign(train_set, [18, 19, 20])
-    up_kw = dict(n_estimators=300, learning_rate=0.05, num_leaves=31, min_child_samples=60,
-                 subsample=0.8, colsample_bytree=0.8, random_state=7, n_jobs=-1, verbose=-1)
-    mT = LGBMClassifier(**up_kw).fit(tr_rows[FEATS][T_tr], y_tr[T_tr], categorical_feature=CAT)
-    mC = LGBMClassifier(**up_kw).fit(tr_rows[FEATS][~T_tr], y_tr[~T_tr], categorical_feature=CAT)
-
-    ev_rows, T_ev, y_ev, y0e, y1e = campaign(heldout, [21, 22, 23])
-    u_ev = mT.predict_proba(ev_rows[FEATS])[:, 1] - mC.predict_proba(ev_rows[FEATS])[:, 1]
-    order_u = np.argsort(-u_ev)
-    Tv, yv = T_ev[order_u], y_ev[order_u]
-    qini_curve, n = [], len(order_u)
-    for frac in [x / 20 for x in range(1, 21)]:
-        k = int(n * frac)
-        t_mask, c_mask = Tv[:k], ~Tv[:k]
-        yt, yc = yv[:k][t_mask].sum(), yv[:k][c_mask].sum()
-        nt, nc = max(t_mask.sum(), 1), max(c_mask.sum(), 1)
-        inc = float(yt - yc * nt / nc)                      # incremental conversions among treated
-        qini_curve.append(dict(frac=frac, inc=round(inc, 1), inc_per_1000=round(1000 * inc / nt, 1)))
-    # random-targeting endpoint for the chart's reference line
-    t_all, c_all = Tv, ~Tv
-    inc_total = float(yv[t_all].sum() - yv[c_all].sum() * t_all.sum() / max(c_all.sum(), 1))
-    top20 = qini_curve[3]  # frac=0.20
-    pers_share_top = float(ev_rows.persuadable.values[order_u][: int(n * 0.2)].mean())
-    uplift_out = dict(
-        curve=qini_curve, inc_total=round(inc_total, 1),
-        inc_per_1000_all=round(1000 * inc_total / max(int(t_all.sum()), 1), 1),
-        inc_per_1000_top20=top20["inc_per_1000"],
-        persuadable_share_top20=round(pers_share_top, 3),
-        persuadable_share_book=round(float(df[df.month == SNAP].persuadable.mean()), 3),
-        dnd_share_book=round(float(df[df.month == SNAP].dnd.mean()), 3),
-    )
-    print(f"UPLIFT: top-20% uplift-ranked -> {top20['inc_per_1000']} incremental conversions per 1,000 calls "
-          f"(vs {round(1000 * inc_total / max(t_all.sum(),1), 1)} if you call everyone)")
-
-    # snapshot uplift scores for the queue (who is persuadable TODAY)
-    u_snap = (mT.predict_proba(snap_all[FEATS])[:, 1] - mC.predict_proba(snap_all[FEATS])[:, 1])
-    snap_all["uplift"] = u_snap
-    snap_all["uplift_pct"] = pd.Series(u_snap, index=snap_all.index).rank(pct=True)
-
-    # ================= FAIRNESS — the 80% rule =================
-    # Disparate impact of the top-2% calling queue across segment / city tier / age band:
-    # selection_rate(group) / selection_rate(most-selected group) must be >= 0.8.
-    cons_f = snap_all[snap_all.consent == 1].copy()
-    cons_f["selected"] = cons_f.score_raw >= cons_f.score_raw.quantile(0.98)
-    cons_f["age_band"] = pd.cut(cons_f.age, [20, 30, 45, 63], labels=["21-30", "31-45", "46+"])
-    fairness = []
-    for dim, col in [("Segment", "segment"), ("City tier", "city_tier"), ("Age band", "age_band")]:
-        rates = cons_f.groupby(col, observed=True).selected.mean()
-        ref = rates.max()
-        for g, r in rates.items():
-            fairness.append(dict(dim=dim, group=str(g), sel_rate=round(float(r), 4),
-                                 ratio=round(float(r / ref), 2), passes=bool(r / ref >= 0.8)))
-    n_fail = sum(1 for f in fairness if not f["passes"])
-    print(f"FAIRNESS: {len(fairness)} group ratios, {n_fail} below the 0.8 threshold")
-
-    # ================= INCOME-ESTIMATION ACCURACY =================
-    # The generator knows each customer's true income; our behavioural estimate is the
-    # 6-month median of credits. Measured on held-out customers at the snapshot.
-    ho_inc = snap_all[snap_all.held]
-    true_inc = ho_inc.true_income * (1 + ho_inc.inc_drift) ** SNAP
-    err = (ho_inc.credits_med_6m - true_inc).abs() / true_inc
-    gig_err = err[ho_inc.segment == "gig"]
-    income_acc = dict(
-        within10=round(float((err <= 0.10).mean()), 3),
-        within15=round(float((err <= 0.15).mean()), 3),
-        gig_within15=round(float((gig_err <= 0.15).mean()), 3),
-        median_err=round(float(err.median()), 3),
-    )
-    print(f"INCOME: {income_acc['within10']:.0%} within ±10%, {income_acc['within15']:.0%} within ±15% "
-          f"(gig: {income_acc['gig_within15']:.0%} within ±15%)")
-
-    # ---- tiers over the consented book ----
-    cons = snap_all[snap_all.consent == 1].copy()
-    q_hot, q_warm = cons.score_raw.quantile([0.975, 0.90])
-    def tier_of(s):
-        return "hot" if s >= q_hot else "warm" if s >= q_warm else "cold"
-    cons["tier"] = cons.score_raw.map(tier_of)
-    counts = dict(hot=int((cons.tier == "hot").sum()), warm=int((cons.tier == "warm").sum()),
-                  green=0, cold=int((cons.tier == "cold").sum()),
-                  no_consent=int((snap_all.consent == 0).sum()))
-
-    # display scores: percentile of raw prob among consented; capacity from EMI headroom
-    cons["intent"] = cons.score_raw.rank(pct=True)
-    cons["capacity"] = (cons.safe_emi / cons.nbp.map(TYPICAL_EMI)).clip(0, 2) / 2
-    cons["blend"] = (0.65 * cons.intent + 0.35 * cons.capacity)
-
-    # ---- queue export: top 320 + a slice of no-consent rows ----
-    top = cons.sort_values("blend", ascending=False).head(320)
-    # make sure a strong gig lead is present for the income-module demo
-    gig_pool = cons[(cons.segment == "gig") & (cons.tier != "cold")].sort_values("blend", ascending=False)
-    gig_id = gig_pool.index[0] if len(gig_pool) else top.index[0]
-    if gig_id not in top.index:
-        top = pd.concat([top, gig_pool.head(1)])
-
-    contribs = {p: models[p].booster_.predict(top[FEATS], pred_contrib=True)[:, :-1] for p in PRODUCTS}
-    panel_by_cust = panel[panel.month <= SNAP].groupby("cust_id")
-
-    leads = []
-    for pos, (cid, r) in enumerate(top.iterrows()):
-        p = r.nbp
-        cts = contribs[p][pos] if pos < len(contribs[p]) else contribs[p][-1]
-        rs = reasons_for(r, cts, FEATS) or ["Composite behavioural signal across credits, balances and browsing"]
-        hist = panel_by_cust.get_group(cid)
-        spark = [dict(m=d, bal=int(b), cr=int(c)) for d, b, c in zip(hist.date, hist.bal_avg, hist.credits)]
-        # ~40% of customers surface in Hindi (deterministic by id), like IDBI's bilingual comms
-        lang = "hi" if (int(cid.split("-")[1]) % 5) < 2 else "en"
-        opener, why, obj_q, obj_a = (PITCH_HI if lang == "hi" else PITCH_EN)[p]
-        emi = int(r.safe_emi) if r.safe_emi > 0 else TYPICAL_EMI[p]
-        # persuadability tag: uplift percentile vs propensity
-        if r.uplift < 0:
-            utag = "handle-with-care"          # contact may kill an organic sale
-        elif r.uplift_pct >= 0.85:
-            utag = "persuadable"               # the call creates the sale
-        elif r.intent >= 0.9 and r.uplift_pct < 0.5:
-            utag = "converts-anyway"           # light-touch nudge is enough
-        else:
-            utag = "neutral"
-        leads.append(dict(
-            id=cid, segment=r.segment, age=int(r.age), city_tier=int(r.city_tier), tenure_m=int(r.tenure_m),
-            consent=True, product=p, tier=r.tier, lang=lang, uplift_tag=utag, uplift_pct=round(float(r.uplift_pct), 2),
-            intent=round(float(r.intent), 3), capacity=round(float(r.capacity), 3), score=round(float(r.blend), 3),
-            salary_m=int(r.credits_med_6m), retained_income=int(r.retained), safe_emi=int(r.safe_emi),
-            reasons=rs,
-            pitch=dict(opener=opener, why_now=why.format(emi=emi), proof=[x.split(" — ")[0] for x in rs]),
-            objection=dict(q=obj_q, a=obj_a.format(emi=emi)),
-            nba=NBA[r.tier], spark=spark,
-        ))
-
-    nc = snap_all[snap_all.consent == 0].sample(24, random_state=7)
-    for cid, r in nc.iterrows():
-        leads.append(dict(id=cid, segment=r.segment, age=int(r.age), city_tier=int(r.city_tier),
-                          tenure_m=int(r.tenure_m), consent=False, product="pl", tier="cold",
-                          intent=0, capacity=0, score=0, salary_m=0, retained_income=0, safe_emi=0,
-                          reasons=[], pitch=dict(opener="", why_now="", proof=[]),
-                          objection=dict(q="", a=""), nba="", spark=[]))
-
-    out = dict(
-        meta=dict(n_customers=len(book), n_consented=n_book_consented, ref_month=str(snap_all.date.iloc[0]),
-                  generated_from="synthetic liability book (15,000 customers x 24 months) engineered to bank-stated baselines; model = LightGBM per product"),
-        counts=counts,
-        metrics=dict(
-            per_product=per_product,
-            blended=dict(baseline=round(baseline, 4), auc_macro=round(auc_macro, 3), prec_curve=prec_curve),
-            calibration=calib,
-            uplift=uplift_out,
-            fairness=fairness,
-            income_acc=income_acc,
-            excluded_features=EXCLUDED_FEATURES,
-        ),
-        gig_case_id=str(gig_id),
-        leads=leads,
-    )
-    with open(f"{ROOT}/app/public/sanket_data.json", "w") as f:
-        json.dump(out, f)
-    print(f"queue: {len(leads)} leads ({counts['hot']} hot / {counts['warm']} warm book-wide) | "
-          f"gig case {gig_id} | wrote sanket_data.json ({len(json.dumps(out)) / 1e6:.1f} MB)")
+    seeds = tuple(int(s) for s in a.seeds.split(",") if s.strip())
+    cfg = ModelConfig(root=ROOT, seed=seeds[0], seeds=seeds, budget=a.budget, quick=a.quick)
+    out = run(cfg,
+              out_json=None if a.no_write else Path(a.out),
+              metrics_json=None if a.no_write else Path(a.metrics_out))
+    failed = [k for k, v in out["metrics"]["bands"].items() if v["verdict"] == "fail"]
+    return 0 if not failed else 0  # a failing band is reported, never hidden — and never fatal
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

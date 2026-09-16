@@ -36,3 +36,4 @@ data/journey_params.json
 data/campaigns.csv
 data/labels.csv
 data/label_truth.csv
+data/model_metrics.json

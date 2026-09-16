@@ -1,0 +1,810 @@
+# -*- coding: utf-8 -*-
+"""Run the model, measure it against the pre-registered bands, pack the cockpit.
+
+One entry point, :func:`run`.  It does five things in order and nothing else:
+
+1. build the point-in-time frame once (it does not change with the seed);
+2. fit and measure on every registered seed, so the headline carries a spread;
+3. on the default seed, add the exhibits that are too expensive to repeat —
+   out-of-time, permuted-label, the baseline ladder, uplift, fairness, calibration;
+4. build the queue at the snapshot month, with the menu of four, the reasons, the
+   negative chips and the suppression list;
+5. write ``app/public/sanket_data.json`` and ``data/model_metrics.json``.
+
+The JSON keeps every key ``app/`` reads today.  What it adds is listed in
+``MODEL_CARD.md`` under "what the front end must change".
+"""
+
+from __future__ import annotations
+
+import json
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_auc_score
+
+from . import (
+    FORBIDDEN_INPUTS,
+    PRODUCT_LABEL,
+    PRODUCTS,
+    TYPICAL_EMI,
+    WINDOW_DAYS,
+    ModelConfig,
+)
+from . import copy as txt
+from . import frame as F
+from . import metrics as M
+from .train import (
+    Split,
+    fit_ranker,
+    fit_shopper,
+    fit_uplift,
+    randomised_campaign,
+    split_customers,
+)
+
+BUDGETS = [x / 100 for x in range(1, 31)]
+
+
+def _r(x, nd: int = 4):
+    """Round, but leave ``None`` and non-finite values alone."""
+    return None if x is None or not np.isfinite(x) else round(float(x), nd)
+
+
+# --------------------------------------------------------------------------- #
+# one seed
+# --------------------------------------------------------------------------- #
+
+def _held(base: pd.DataFrame, sp: Split) -> np.ndarray:
+    return sp.mask(base["cust_id"], "held") & (base["eligible_for_contact"].to_numpy() == 1)
+
+
+def evaluate_seed(base: pd.DataFrame, stacked: pd.DataFrame, cfg: ModelConfig,
+                  seed: int, full: bool = False) -> dict:
+    """Fit on one seed's split and measure everything the bands need."""
+    sp = split_customers(base["cust_id"].unique(), cfg, seed)
+    rk = fit_ranker(stacked, sp, cfg, with_unconstrained=full)
+    P = rk.matrix(stacked)                      # (n_base, 6) calibrated
+
+    h = _held(base, sp)
+    hb = base[h].reset_index(drop=True)
+    Ph = P[h]
+    y = hb["t_label"].to_numpy().astype(int)
+
+    p_top = Ph.max(axis=1)
+    p_any = 1.0 - np.prod(1.0 - Ph, axis=1)
+    order = np.argsort(-p_top, kind="stable")
+
+    baseline = float(y.mean())
+    at = {b: M.precision_at(y, p_top, b) for b in (0.05, cfg.budget, 0.20)}
+    pp = M.per_product(Ph, hb, cfg.budget)
+    macro = float(np.mean([v["auc"] for v in pp.values()]))
+    mm = M.menu_metrics(Ph, hb, cfg.menu_k)
+    wr = M.window_respect(Ph, hb, order, at[cfg.budget]["k"])
+
+    out = dict(
+        seed=seed,
+        n_holdout_rows=int(len(y)), n_holdout_customers=int(hb.cust_id.nunique()),
+        baseline=baseline,
+        precision=at, row_auc=float(roc_auc_score(y, p_top)),
+        row_auc_rank_by_sum=float(roc_auc_score(y, Ph.sum(axis=1))),
+        precision_at_budget_rank_by_sum=float(
+            M.precision_at(y, Ph.sum(axis=1), cfg.budget)["precision"]),
+        per_product=pp, macro_auc=macro,
+        menu=mm, windows=wr,
+        ece_overall=float(M.ece(p_any, y)),
+        ece_per_product_max=float(max(v["ece"] for v in pp.values())),
+    )
+    if not full:
+        return out
+
+    out["_objects"] = dict(split=sp, ranker=rk, P=P, held=h, hb=hb, Ph=Ph,
+                           y=y, p_top=p_top, p_any=p_any, order=order)
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# the expensive one-off exhibits
+# --------------------------------------------------------------------------- #
+
+def out_of_time(base: pd.DataFrame, stacked: pd.DataFrame, cfg: ModelConfig,
+                sp: Split, in_time: float) -> dict:
+    """SK-07.  Train on the early months, measure on the last six.
+
+    The registered 14-day embargo is satisfied structurally rather than by
+    dropping rows: a row's label resolves inside its own month (the longest
+    window is 14 days and the row is dated to the first of the month), so a cut
+    at a month boundary already leaves no training label that had not happened.
+    """
+    cut = int(base["month"].max()) - cfg.oot_months + 1
+    tr_c = stacked["cust_id"].isin(sp.fit).to_numpy()
+    early = stacked["month"].to_numpy() < cut
+    elig = stacked["eligible_for_contact"].to_numpy() == 1
+    sub = stacked[tr_c & early & elig]
+    if sub["y"].sum() < 50:
+        return dict(status="skipped_low_n", n=int(len(sub)))
+
+    oot_split = Split(fit=sp.fit, calib=sp.calib, held=sp.held, seed=sp.seed)
+    frame_early = stacked[early]
+    rk = fit_ranker(frame_early, oot_split, cfg)
+
+    late = (base["month"].to_numpy() >= cut) & _held(base, sp)
+    lb = base[late].reset_index(drop=True)
+    ls = F.as_categorical(F.stack(lb))
+    P = rk.matrix(ls)
+    y = lb["t_label"].to_numpy().astype(int)
+    p = P.max(axis=1)
+    at = M.precision_at(y, p, cfg.budget)
+    return dict(status="ok", cut_month=cut, n=int(len(y)),
+                oot_precision_at_budget=at["precision"], oot_ci=[at["ci_low"], at["ci_high"]],
+                oot_baseline=float(y.mean()), in_time_precision=in_time,
+                degradation_pp=100.0 * (in_time - at["precision"]),
+                oot_row_auc=float(roc_auc_score(y, p)) if y.sum() else float("nan"))
+
+
+def permuted_label_auc(stacked: pd.DataFrame, base: pd.DataFrame, cfg: ModelConfig,
+                       sp: Split) -> float:
+    """SK-18.  Same pipeline, labels shuffled — anything off 0.50 means the harness leaks.
+
+    The shuffle is of ``y`` within the training rows only, at the stacked grain,
+    with the split, the features and the hyper-parameters untouched.
+    """
+    sh = stacked.copy()
+    rng = np.random.default_rng(sp.seed + 1000)
+    tr = sh["cust_id"].isin(sp.fit).to_numpy() & (sh["eligible_for_contact"].to_numpy() == 1)
+    idx = np.flatnonzero(tr)
+    sh.loc[sh.index[idx], "y"] = sh["y"].to_numpy()[rng.permutation(idx)]
+    rk = fit_ranker(sh, sp, cfg)
+    h = _held(base, sp)
+    P = rk.matrix(sh)[h]
+    y = base.loc[h, "t_label"].to_numpy().astype(int)
+    return float(roc_auc_score(y, P.max(axis=1)))
+
+
+LADDER_FEATURES = ("credits_med_6m", "credits_cv_6m", "bal_avg", "minbal_ratio", "emi_share",
+                   "fd_ratio", "rent_share", "journey_stage_idx", "days_since_abandon",
+                   "journey_blank_field_ratio", "journey_refused_income", "journey_fee_balk",
+                   "journey_doc_refusal", "dwell_total_3m", "age", "tenure_m")
+
+
+def baseline_ladder(base: pd.DataFrame, cfg: ModelConfig, sp: Split,
+                    p_top: np.ndarray, h: np.ndarray) -> list[dict]:
+    """SK-25.  Four rungs, one budget, so the gain has a context and not just a size."""
+    hb = base[h]
+    y = hb["t_label"].to_numpy().astype(int)
+    rows = [dict(rung="random contact", score=None),
+            dict(rung="balance-ranked (what a branch does today)",
+                 score=hb["bal_avg"].to_numpy(dtype=float)),
+            dict(rung="logistic scorecard", score=None),
+            dict(rung="SANKET (one LightGBM, six products)", score=p_top)]
+
+    tr = sp.mask(base["cust_id"], "fit") & (base["eligible_for_contact"].to_numpy() == 1)
+    cols = [c for c in LADDER_FEATURES if c in base.columns]
+    Xtr = base.loc[tr, cols].astype(float)
+    med = Xtr.median()
+    Xtr = Xtr.fillna(med)
+    mu, sd = Xtr.mean(), Xtr.std().replace(0, 1)
+    lr = LogisticRegression(max_iter=2000, C=1.0)
+    lr.fit((Xtr - mu) / sd, base.loc[tr, "t_label"].astype(int))
+    Xh = ((hb[cols].astype(float).fillna(med)) - mu) / sd
+    rows[2]["score"] = lr.predict_proba(Xh)[:, 1]
+
+    out = []
+    for r in rows:
+        if r["score"] is None:
+            k = max(1, int(round(len(y) * cfg.budget)))
+            lo, hi = M.wilson(int(round(y.mean() * k)), k)
+            out.append(dict(rung=r["rung"], precision=float(y.mean()),
+                            ci_low=lo, ci_high=hi, n=k))
+        else:
+            a = M.precision_at(y, np.asarray(r["score"], dtype=float), cfg.budget)
+            out.append(dict(rung=r["rung"], precision=a["precision"],
+                            ci_low=a["ci_low"], ci_high=a["ci_high"], n=a["k"]))
+    return out
+
+
+SHAP_SAMPLE = 12_000
+
+
+def signal_effects(rk, stacked: pd.DataFrame, h: np.ndarray, cfg: ModelConfig,
+                   sample: int = SHAP_SAMPLE) -> dict:
+    """SK-15.  Do the four mentor signals push the probability DOWN?
+
+    Two readings, deliberately:
+
+    * **constrained** — the shipped model, where ``monotone_constraints = -1``
+      makes the direction structural.  This is what the negative chips quote.
+    * **unconstrained** — the same fit with the constraints removed.  If the
+      signs flipped here, the constraint would be doing all the work and the
+      chips would be an assertion dressed as evidence.  They do not.
+
+    The effect is ``mean SHAP where the signal is on`` minus ``mean SHAP where it
+    is off``, in log-odds — a difference, so a non-zero baseline contribution
+    cannot make a flat feature look negative.
+    """
+    rowsel = np.tile(h, len(PRODUCTS))
+    idx = np.flatnonzero(rowsel)
+    #: exact TreeSHAP is O(trees x leaves x depth^2) per row; a random sample of
+    #: the held-out rows estimates a *mean* effect to three decimals and turns
+    #: eleven minutes into twenty seconds.  Sampled, not truncated, so no product
+    #: or month is preferentially dropped.
+    if sample and len(idx) > sample:
+        idx = np.sort(np.random.default_rng(cfg.seed).choice(idx, sample, replace=False))
+    sub = stacked.iloc[idx]
+    feats = list(rk.features)
+
+    def effects(model) -> dict:
+        C = model.booster_.predict(F.build_matrix(sub, rk.features), pred_contrib=True)[:, :-1]
+        out = {}
+        for s in F.MENTOR_SIGNALS:
+            j = feats.index(s)
+            v = sub[s].to_numpy(dtype=float)
+            on = v >= (0.25 if s == "journey_blank_field_ratio" else 1.0)
+            off = ~on & np.isfinite(v)
+            if on.sum() < 30 or off.sum() < 30:
+                out[s] = dict(status="skipped_low_n", n_on=int(on.sum()))
+                continue
+            out[s] = dict(
+                mean_shap_on=float(C[on, j].mean()),
+                mean_shap_off=float(C[off, j].mean()),
+                effect=float(C[on, j].mean() - C[off, j].mean()),
+                mean_shap_overall=float(C[:, j].mean()),
+                n_on=int(on.sum()), n_off=int(off.sum()), negative=bool(
+                    C[on, j].mean() - C[off, j].mean() < 0))
+        return out
+
+    con = effects(rk.model)
+    unc = effects(rk.unconstrained) if rk.unconstrained is not None else {}
+    n_neg = sum(1 for v in con.values() if v.get("negative"))
+    return dict(constrained=con, unconstrained=unc, n_negative=n_neg,
+                n_negative_unconstrained=sum(1 for v in unc.values() if v.get("negative")),
+                definition="mean SHAP (log-odds) where the signal is on, minus where it is off, "
+                           "on a random sample of the held-out drop-off population",
+                n_rows=int(len(idx)), n_rows_available=int(rowsel.sum()))
+
+
+# --------------------------------------------------------------------------- #
+# the queue
+# --------------------------------------------------------------------------- #
+
+def _contrib_map(C: np.ndarray, feats: list[str], i: int) -> dict[str, float]:
+    return {f: float(C[i, j]) for j, f in enumerate(feats)}
+
+
+def build_queue(base: pd.DataFrame, P: np.ndarray, rk, shopper_score: np.ndarray,
+                uplift: np.ndarray, panel: pd.DataFrame, cfg: ModelConfig,
+                snap: int) -> tuple[list[dict], dict, dict]:
+    """The cockpit queue at the snapshot month, plus the suppression exhibit.
+
+    Suppressed rows are **scored and shown, never queued** — the rule the mentors
+    asked for and the one the product is judged on.  They arrive in the export
+    with ``queued = False`` and the reason attached.
+    """
+    at_snap = base["month"].to_numpy() == snap
+    idx = np.flatnonzero(at_snap)
+    snap_rows = base.iloc[idx].copy().reset_index(drop=True)
+    Ps = P[idx]
+    elig = snap_rows["eligible_for_contact"].to_numpy() == 1
+
+    p_top = Ps.max(axis=1)
+    menu_i = np.argsort(-Ps, axis=1, kind="stable")[:, : cfg.menu_k]
+
+    snap_rows["p_top"] = p_top
+    snap_rows["p_any"] = 1.0 - np.prod(1.0 - Ps, axis=1)
+    snap_rows["nbp"] = [PRODUCTS[int(i)] for i in menu_i[:, 0]]
+    snap_rows["shopper_score"] = shopper_score[idx]
+    snap_rows["uplift"] = uplift[idx]
+    snap_rows["uplift_pct"] = pd.Series(uplift[idx]).rank(pct=True).to_numpy()
+
+    snap_rows["intent"] = np.where(elig, pd.Series(p_top).rank(pct=True).to_numpy(), 0.0)
+    cap = (snap_rows["safe_emi"].to_numpy(dtype=float)
+           / np.array([TYPICAL_EMI[p] for p in snap_rows["nbp"]], dtype=float))
+    snap_rows["capacity"] = np.clip(cap, 0, 2) / 2
+    snap_rows["blend"] = 0.65 * snap_rows["intent"] + 0.35 * snap_rows["capacity"]
+
+    # tiers are cut at the pre-registered contact budget, so `hot` IS the month's
+    # calling list rather than a decorative label.
+    n_e = int(elig.sum())
+    rank = pd.Series(np.where(elig, -p_top, np.inf)).rank(method="first").to_numpy()
+    tier = np.where(~elig, "held", np.where(rank <= cfg.budget * n_e, "hot",
+                                            np.where(rank <= 0.25 * n_e, "warm", "cold")))
+    snap_rows["tier"] = tier
+
+    queue = snap_rows[elig].sort_values("blend", ascending=False)
+    take = queue.head(cfg.queue_size)
+    gig = queue[(queue.segment.astype(str) == "gig")]
+    if len(gig) and gig.index[0] not in take.index:
+        take = pd.concat([take, gig.head(1)])
+    gig_id = str(gig.iloc[0]["cust_id"]) if len(gig) else str(take.iloc[0]["cust_id"])
+    excluded = snap_rows[~elig]
+    samp = excluded.sample(min(cfg.excluded_sample, len(excluded)), random_state=7) \
+        if len(excluded) else excluded
+
+    # SHAP only for the rows that actually leave the building: exact TreeSHAP on
+    # the whole snapshot pool costs minutes and nothing reads it.
+    export = pd.Index(take.index.tolist() + samp.index.tolist()).unique()
+    rows = snap_rows.loc[export].reset_index(drop=True)
+    pos_of = {p: i for i, p in enumerate(export)}
+    C = rk.contributions(F.as_categorical(F.stack(rows)))
+    feats = list(rk.features)
+    n_snap = len(rows)
+
+    hist = panel[panel.month <= snap].groupby("cust_id")
+    leads = []
+    for pos in take.index:
+        leads.append(_lead(snap_rows.loc[pos], pos_of[pos], Ps[pos], menu_i[pos], C, feats,
+                           n_snap, hist, snap_rows.loc[pos, "date"], queued=True))
+    for pos in samp.index:
+        leads.append(_lead(snap_rows.loc[pos], pos_of[pos], Ps[pos], menu_i[pos], C, feats,
+                           n_snap, hist, snap_rows.loc[pos, "date"], queued=False))
+
+    reasons = (snap_rows.loc[~elig, "t_suppression_reason"].value_counts().to_dict())
+    suppression = dict(
+        suppressed_count=int((~elig).sum()),
+        suppressed_share=round(float((~elig).mean()), 4),
+        pool_at_snapshot=int(len(snap_rows)), contactable_at_snapshot=n_e,
+        reasons={str(k): int(v) for k, v in sorted(reasons.items(), key=lambda kv: -kv[1])},
+    )
+    counts = dict(
+        hot=int((tier == "hot").sum()), warm=int((tier == "warm").sum()), green=0,
+        cold=int((tier == "cold").sum()),
+        no_consent=int((snap_rows["t_suppression_reason"] == "no_marketing_consent").sum()),
+        suppressed=suppression["suppressed_count"],
+    )
+    return leads, counts, dict(suppression=suppression, gig_case_id=gig_id,
+                               n_pool=int(len(snap_rows)), n_contactable=n_e,
+                               snap_rows=snap_rows, P=Ps, elig=elig)
+
+
+def _lead(r, pos: int, probs: np.ndarray, menu_idx: np.ndarray, C: np.ndarray,
+          feats: list[str], n_snap: int, hist, date: str, queued: bool) -> dict:
+    top = PRODUCTS[int(menu_idx[0])]
+    ctop = _contrib_map(C, feats, int(menu_idx[0]) * n_snap + pos)
+    rs = txt.reasons_for(r, ctop) or ["Composite behavioural signal across credits, balances and browsing"]
+    chips = txt.negative_chips(r, ctop)
+
+    emi = int(r.safe_emi) if r.safe_emi and r.safe_emi > 0 else TYPICAL_EMI[top]
+    lang = "hi" if (int(str(r.cust_id).split("-")[1]) % 5) < 2 else "en"
+    opener, why, obj_q, obj_a = (txt.PITCH_HI if lang == "hi" else txt.PITCH_EN)[top]
+
+    as_at = pd.Timestamp(date)
+    menu = []
+    for j in menu_idx:
+        p = PRODUCTS[int(j)]
+        cj = _contrib_map(C, feats, int(j) * n_snap + pos)
+        w = WINDOW_DAYS[p]
+        menu.append(dict(
+            product=p, label=PRODUCT_LABEL[p], p=round(float(probs[int(j)]), 4),
+            reason=txt.menu_reason(r, p, cj, PRODUCT_LABEL, w), window_days=w,
+            contact_by=(as_at + pd.Timedelta(days=w)).strftime("%Y-%m-%d"),
+            # `emi` is what THIS customer's behaviour can carry; `indicative_emi`
+            # is the product's typical ticket.  Both are placeholders until SM-5
+            # replaces them with API 433 rates + API 473 schedules.
+            emi=int(r.safe_emi) if r.safe_emi and r.safe_emi > 0 else TYPICAL_EMI[p],
+            indicative_emi=TYPICAL_EMI[p], emi_source="TYPICAL_EMI",
+        ))
+
+    if float(r.uplift) < 0:
+        utag = "handle-with-care"
+    elif float(r.uplift_pct) >= 0.85:
+        utag = "persuadable"
+    elif float(r.intent) >= 0.9 and float(r.uplift_pct) < 0.5:
+        utag = "converts-anyway"
+    else:
+        utag = "neutral"
+
+    spark = []
+    try:
+        h = hist.get_group(r.cust_id)
+        spark = [dict(m=d, bal=int(b), cr=int(c))
+                 for d, b, c in zip(h.date, h.bal_avg, h.credits)]
+    except KeyError:
+        pass
+
+    w_top = WINDOW_DAYS[top]
+    return dict(
+        id=str(r.cust_id), segment=str(r.segment), age=int(r.age), city_tier=int(r.city_tier),
+        tenure_m=int(r.tenure_m),
+        # `consent` now means QUEUEABLE: false for every suppressed row whatever
+        # the reason.  The raw DPDP flag is `consent_marketing`.
+        consent=bool(queued), consent_marketing=bool(int(r.consent_marketing) == 1),
+        queued=bool(queued), suppressed=bool(not queued),
+        suppression_reason=str(r.t_suppression_reason),
+        product=top, product_menu=menu, tier=str(r.tier) if queued else "cold",
+        lang=lang, uplift_tag=utag, uplift_pct=round(float(r.uplift_pct), 2),
+        intent=round(float(r.intent), 3), capacity=round(float(r.capacity), 3),
+        score=round(float(r.blend), 3), probability=round(float(probs[int(menu_idx[0])]), 4),
+        p_any=round(float(r.p_any), 4),
+        shopper_score=round(float(r.shopper_score), 3),
+        window_days=w_top, contact_by=(as_at + pd.Timedelta(days=w_top)).strftime("%Y-%m-%d"),
+        dropoff_stage=str(r.dropoff_stage_reached), dropoff_product=str(r.dropoff_product),
+        days_since_abandon=int(r.days_since_abandon),
+        contacts_30d=int(r.contacts_30d), last_contact_days=(
+            None if not np.isfinite(float(r.last_contact_days)) else int(r.last_contact_days)),
+        salary_m=int(r.credits_med_6m), retained_income=int(r.retained), safe_emi=int(r.safe_emi),
+        reasons=rs, negative_chips=chips,
+        pitch=dict(opener=opener, why_now=why.format(emi=emi),
+                   proof=[x.split(" — ")[0] for x in rs]),
+        objection=dict(q=obj_q, a=obj_a.format(emi=emi)),
+        nba=txt.NBA.get(str(r.tier), txt.NBA["cold"]) if queued else "",
+        rm_id=None, emi_source="TYPICAL_EMI",
+        provenance=dict(features="SIMULATED", journey="SIMULATED", campaign="SIMULATED",
+                        emi="TYPICAL_EMI", rates="NOT_COLLECTED"),
+        spark=spark,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# the run
+# --------------------------------------------------------------------------- #
+
+def build_frames(cfg: ModelConfig) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    """Load, assemble and stack — once.  The frame does not depend on the seed."""
+    t = F.load_tables(cfg.data)
+    base = F.as_categorical(F.customer_month_frame(t))
+    if int(base["has_journey"].min()) != 1:
+        raise AssertionError("a drop-off population row with no application history")
+    stacked = F.as_categorical(F.stack(base))
+    return base, stacked, t
+
+
+def run(cfg: ModelConfig, out_json: Path | None = None,
+        metrics_json: Path | None = None, verbose: bool = True) -> dict:
+    t0 = time.time()
+    base, stacked, tables = build_frames(cfg)
+    snap = int(base["month"].max())
+    if verbose:
+        print(f"frame: {len(base):,} customer-months x {len(PRODUCTS)} products "
+              f"= {len(stacked):,} rows, {len(F.FEATURES)} features  [{time.time() - t0:.0f}s]")
+
+    # ---- seeds ------------------------------------------------------------- #
+    seeds = tuple(dict.fromkeys((cfg.seed, *cfg.seeds)))
+    per_seed, main = [], None
+    for s in seeds:
+        r = evaluate_seed(base, stacked, cfg, s, full=(s == cfg.seed))
+        if s == cfg.seed:
+            main = r
+        per_seed.append({k: v for k, v in r.items() if k != "_objects"})
+        if verbose:
+            print(f"  seed {s}: baseline {r['baseline']:.3%}  "
+                  f"precision@{cfg.budget:.0%} {r['precision'][cfg.budget]['precision']:.3%}  "
+                  f"macro AUC {r['macro_auc']:.3f}  menu@4 {r['menu']['menu_of_4_hit_rate']:.3f}"
+                  f"  [{time.time() - t0:.0f}s]")
+
+    o = main["_objects"]
+    sp, rk, P, h, hb, Ph, y = (o["split"], o["ranker"], o["P"], o["held"], o["hb"], o["Ph"], o["y"])
+    p_top, p_any = o["p_top"], o["p_any"]
+
+    # ---- auxiliaries -------------------------------------------------------- #
+    rng = np.random.default_rng(cfg.seed)
+    sh = fit_shopper(base, sp, cfg)
+    shopper_all = sh.score(base)
+    s_auc, s_lo, s_hi = M.auc_ci(hb["t_shopper_truth"].fillna(0).astype(int).to_numpy(),
+                                 shopper_all[h])
+
+    up = fit_uplift(base, sp, cfg, rng)
+    u_all = up.score(base)
+    T, y_obs = randomised_campaign(base, h, rng)
+    q = M.qini(u_all[h], T, y_obs)
+    q.update(persuadable_share_top20=round(float(
+        hb["t_persuadable"].to_numpy()[np.argsort(-u_all[h])[: max(1, int(0.2 * len(hb)))]].mean()), 3),
+        persuadable_share_book=round(float(base.loc[base.month == snap, "t_persuadable"].mean()), 3),
+        dnd_share_book=round(float(base.loc[base.month == snap, "t_dnd"].mean()), 3),
+        definition="Y(1) and Y(0) both come from data/labels.csv; the 50/50 assignment is "
+                   "simulated, the potential outcomes are not.")
+    if verbose:
+        print(f"  shopper AUC {s_auc:.3f} | uplift top-20% {q['inc_per_1000_top20']} "
+              f"vs {q['inc_per_1000_all']} per 1,000  [{time.time() - t0:.0f}s]")
+
+    # ---- exhibits ----------------------------------------------------------- #
+    sig = signal_effects(rk, stacked, h, cfg)
+    oot = out_of_time(base, stacked, cfg, sp, main["precision"][cfg.budget]["precision"]) \
+        if not cfg.quick else dict(status="skipped_quick")
+    perm = permuted_label_auc(stacked, base, cfg, sp) if not cfg.quick else float("nan")
+    ladder = baseline_ladder(base, cfg, sp, p_top, h) if not cfg.quick else []
+    early = hb["month"].to_numpy() < snap - cfg.oot_months + 1
+    stability = float(M.psi(p_top[early], p_top[~early])) if early.any() and (~early).any() else float("nan")
+    calib = M.reliability(p_any, y)
+    if verbose:
+        print(f"  signals negative {sig['n_negative']}/4 (unconstrained "
+              f"{sig['n_negative_unconstrained']}/4) | permuted AUC {perm:.3f}  "
+              f"[{time.time() - t0:.0f}s]")
+
+    # ---- queue -------------------------------------------------------------- #
+    leads, counts, extra = build_queue(base, P, rk, shopper_all, u_all,
+                                       tables["panel"], cfg, snap)
+    sup, n_pool = extra["suppression"], extra["n_contactable"]
+    snap_rows, Psnap, elig_snap = extra["snap_rows"], extra["P"], extra["elig"]
+
+    k_budget = max(1, int(round(int(elig_snap.sum()) * cfg.budget)))
+    p_snap = Psnap.max(axis=1)
+    sel = np.zeros(len(snap_rows), dtype=bool)
+    sel[np.argsort(np.where(elig_snap, -p_snap, np.inf), kind="stable")[:k_budget]] = True
+    fairness = M.fairness_table(snap_rows[elig_snap], sel[elig_snap])
+    income = M.income_accuracy(hb[hb["month"] == snap] if (hb["month"] == snap).any() else hb)
+
+    # ---- the numbers the deck quotes ---------------------------------------- #
+    # one rounding, used everywhere the two headline numbers appear, so the
+    # headline, the band, the registered block and the cockpit cannot disagree
+    # in the fourth decimal place.
+    baseline = round(main["baseline"], 4)
+    prec = round(main["precision"][cfg.budget]["precision"], 4)
+    curve = []
+    for b in BUDGETS:
+        a = M.precision_at(y, p_top, b)
+        curve.append(dict(budget=round(b, 2), precision=round(a["precision"], 4),
+                          lift=round(a["precision"] / baseline, 1) if baseline else None,
+                          ci_low=round(a["ci_low"], 4), ci_high=round(a["ci_high"], 4),
+                          contacts=int(n_pool * b),
+                          expected_conversions=int(round(n_pool * b * a["precision"]))))
+
+    spread = dict(
+        baseline=M.spread([s_["baseline"] for s_ in per_seed]),
+        precision_at_budget=M.spread([s_["precision"][cfg.budget]["precision"] for s_ in per_seed]),
+        precision_at_5pct=M.spread([s_["precision"][0.05]["precision"] for s_ in per_seed]),
+        precision_at_20pct=M.spread([s_["precision"][0.20]["precision"] for s_ in per_seed]),
+        macro_auc=M.spread([s_["macro_auc"] for s_ in per_seed]),
+        menu_of_4_hit_rate=M.spread([s_["menu"]["menu_of_4_hit_rate"] for s_ in per_seed]),
+        window_respect_rate=M.spread([s_["windows"]["window_respect_rate"] for s_ in per_seed]),
+        ece_overall=M.spread([s_["ece_overall"] for s_ in per_seed]),
+        **{f"auc_{p}": M.spread([s_["per_product"][p]["auc"] for s_ in per_seed]) for p in PRODUCTS},
+    )
+
+    def _m(a: dict) -> dict:
+        return M.measured(round(a["precision"], 4), round(a["ci_low"], 4),
+                          round(a["ci_high"], 4), a["k"])
+
+    b_lo, b_hi = M.wilson(int(y.sum()), len(y))
+    baseline_ci = M.measured(baseline, round(b_lo, 4), round(b_hi, 4), int(len(y)))
+    prec_at = {str(int(b * 100)): _m(main["precision"][b])
+               for b in (0.05, cfg.budget, 0.20)}
+    m_lo, m_hi = main["menu"]["menu_of_4_hit_rate_ci"]
+    menu_ci = M.measured(_r(main["menu"]["menu_of_4_hit_rate"]), _r(m_lo), _r(m_hi),
+                         main["menu"]["n_positives"])
+    w_lo, w_hi = main["windows"].get("window_respect_ci", (None, None))
+    win_ci = M.measured(_r(main["windows"]["window_respect_rate"]), _r(w_lo), _r(w_hi),
+                        main["windows"].get("n"))
+    shop_ci = M.measured(round(s_auc, 4), round(s_lo, 4), round(s_hi, 4), int(len(hb)),
+                         "hanley-mcneil")
+
+    registered = {
+        "random_contact_disbursement_rate": baseline,
+        "precision_at_10pct_budget": prec,
+        "precision_at_5pct_and_20pct_budget": {
+            "at_5pct": main["precision"][0.05], "at_20pct": main["precision"][0.20]},
+        "window_respect_rate": main["windows"]["window_respect_rate"],
+        "window_shopper_auc": s_auc,
+        "baseline_ladder_headline_uplift": {
+            "baseline_per_100": round(baseline * 100), "model_per_100": round(prec * 100),
+            "headline": M.headline(baseline, prec)},
+        "oot_precision_at_10pct_degradation_pp": oot.get("degradation_pp"),
+        "auc": {p: v["auc"] for p, v in main["per_product"].items()},
+        "macro_auc": main["macro_auc"],
+        "ece": float(M.ece(p_any, y)),
+        "ece_per_product": {p: v["ece"] for p, v in main["per_product"].items()},
+        "menu_of_4_hit_rate": main["menu"]["menu_of_4_hit_rate"],
+        "top_1_product_accuracy": main["menu"]["top_1_product_accuracy"],
+        "shopper_signal_negative_direction_count": sig["n_negative"],
+        "psi_score_distribution": stability,
+        "features_using_post_abandon_information": len(set(F.FEATURES) & FORBIDDEN_INPUTS),
+        "permuted_label_auc": perm,
+        "n_seeds_run": len(per_seed),
+        "cross_seed_precision_at_10pct_ci_width_pp": spread["precision_at_budget"]["pct_width_pp"],
+        "adverse_impact_ratio": min((f["ratio"] for f in fairness if f["n"] >= 500),
+                                    default=float("nan")),
+        "gig_worker_failure_disclosure": bool(income.get("gig_within15") is not None),
+        "precision_at_10pct_by_baseline_rung": ladder,
+        "auc_and_precision_at_10pct": {},
+    }
+    registered["auc_and_precision_at_10pct"] = _by_cut(hb, Ph, y, p_top, cfg)
+    band = M.bands({
+        "SK-01": baseline, "SK-02": prec,
+        "SK-03": registered["precision_at_5pct_and_20pct_budget"],
+        "SK-04": main["windows"]["window_respect_rate"], "SK-05": s_auc,
+        "SK-06": registered["baseline_ladder_headline_uplift"],
+        "SK-07": oot.get("degradation_pp"),
+        "SK-08": min(v["auc"] for v in main["per_product"].values()),
+        "SK-09": main["macro_auc"],
+        "SK-10": {k: len(v) for k, v in registered["auc_and_precision_at_10pct"].items()},
+        "SK-11": registered["ece"],
+        "SK-12": max(v["ece"] for v in main["per_product"].values()),
+        "SK-13": main["menu"]["menu_of_4_hit_rate"],
+        "SK-14": main["menu"]["top_1_product_accuracy"],
+        "SK-15": sig["n_negative"], "SK-16": stability,
+        "SK-17": registered["features_using_post_abandon_information"],
+        "SK-18": perm, "SK-19": None, "SK-20": len(per_seed),
+        "SK-21": spread["precision_at_budget"]["pct_width_pp"], "SK-22": None,
+        "SK-23": registered["adverse_impact_ratio"],
+        "SK-24": registered["gig_worker_failure_disclosure"],
+        "SK-25": ladder or None,
+    }, seed_means={
+        "SK-01": spread["baseline"]["mean"],
+        "SK-02": spread["precision_at_budget"]["mean"],
+        "SK-04": spread["window_respect_rate"]["mean"],
+        "SK-09": spread["macro_auc"]["mean"],
+        "SK-11": spread["ece_overall"]["mean"],
+        "SK-13": spread["menu_of_4_hit_rate"]["mean"],
+        "SK-08": min(spread[f"auc_{p}"]["mean"] for p in PRODUCTS),
+    })
+
+    metrics = dict(
+        headline=M.headline(baseline, prec),
+        headline_parts=dict(baseline=baseline, precision=prec, budget=cfg.budget,
+                            baseline_per_100=round(baseline * 100),
+                            precision_per_100=round(prec * 100),
+                            population="drop-off population, eligible for contact",
+                            note="Both numbers are disbursement rates over the same population "
+                                 "and the same 100 calls: one contacts at random, the other "
+                                 "contacts the model's top 10%."),
+        per_product={p: dict(v, label=PRODUCT_LABEL[p]) for p, v in main["per_product"].items()},
+        blended=dict(baseline=baseline, auc_macro=round(main["macro_auc"], 3),
+                     row_auc=round(main["row_auc"], 4), prec_curve=curve,
+                     precision_at_budget=prec,
+                     precision_ci=[round(main["precision"][cfg.budget]["ci_low"], 4),
+                                   round(main["precision"][cfg.budget]["ci_high"], 4)],
+                     budget=cfg.budget),
+        calibration=calib,
+        uplift=q, fairness=fairness, income_acc=income,
+        excluded_features=txt.EXCLUDED_FEATURES,
+        menu=main["menu"], windows=dict(main["windows"], per_product_days=dict(WINDOW_DAYS)),
+        suppression=sup,
+        shopper=dict(auc=round(s_auc, 4), ci=[round(s_lo, 4), round(s_hi, 4)],
+                     n=int(len(hb)), target="generator latent window_shopper flag",
+                     production_note="in production the target is the observable proxy "
+                                     "(two or more abandonments, no disbursement in 12 months); "
+                                     "this figure is an upper bound on that."),
+        signal_effects=sig,
+        oot=oot, stability=dict(psi_score_distribution=stability),
+        leakage=dict(forbidden_inputs_used=registered["features_using_post_abandon_information"],
+                     forbidden_set_size=len(FORBIDDEN_INPUTS), permuted_label_auc=perm),
+        baseline_ladder=ladder,
+        seeds=dict(n=len(per_seed), list=list(seeds), default=cfg.seed,
+                   spread=spread, per_seed=per_seed),
+        by_cut=registered["auc_and_precision_at_10pct"],
+        feature_families={k: list(v) for k, v in F.FEATURE_FAMILIES.items()},
+        # --- the same numbers under the names the brief and the cockpit use, each
+        # --- carrying its interval so a screen never renders a point as exact.
+        baseline_dropoff_disbursement=baseline_ci,
+        precision_at=prec_at,
+        precision_at_10pct=prec_at[str(int(cfg.budget * 100))],
+        per_product_auc={p: dict(auc=v["auc"], auc_ci=v["auc_ci"], ece=v["ece"],
+                                 n_pos_test=v["n_pos_test"])
+                         for p, v in main["per_product"].items()},
+        macro_auc=round(main["macro_auc"], 4), auc_macro=round(main["macro_auc"], 4),
+        menu_hit_rate=menu_ci, menu_of_4_hit_rate=menu_ci,
+        window_respect=win_ci, window_respect_rate=win_ci,
+        shopper_signal_auc=shop_ci, shopper_auc=shop_ci,
+        ece=round(registered["ece"], 5),
+        oot_degradation_pp=oot.get("degradation_pp"),
+        suppressed_count=sup["suppressed_count"],
+        registered=registered, bands=band,
+    )
+
+    meta = dict(
+        n_customers=tables["book_meta"]["n_customers"],
+        n_consented=tables["book_meta"]["n_consented"],
+        ref_month=str(snap_rows["date"].iloc[0]),
+        snapshot_month=snap,
+        population=dict(
+            name="drop-off population",
+            definition="consented, contactable customers with an abandoned application in the "
+                       "trailing 365 days and no disbursement in flight",
+            customers=int(base.cust_id.nunique()), customer_months=int(len(base)),
+            at_snapshot=int(extra["n_pool"]), contactable_at_snapshot=int(n_pool)),
+        model=dict(kind="one LightGBM over (customer, month, product) with `product` as a "
+                        "categorical; six products; isotonic calibration per product",
+                   n_features=len(F.FEATURES), products=list(PRODUCTS),
+                   monotone_signals=list(F.MENTOR_SIGNALS),
+                   label="label_disbursed_in_window (disbursement of the offered product inside "
+                         "its decision window, after an RM contact)",
+                   split="customer-grouped 52.5 / 17.5 / 30 fit / calibrate / hold out"),
+        generated_from="synthetic liability book (60,000 customers x 30 months) with an "
+                       "application-journey layer; the drop-off population is scored",
+        generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        runtime_s=round(time.time() - t0, 1),
+    )
+    provenance = dict(
+        provenance_version=1, product="sanket", mode="simulated",
+        fixture_reason="No bank pull in this run: every column is generated by src/book and "
+                       "src/journeys and labelled SIMULATED.",
+        families={f: "SIMULATED" for f in ("identity", "casa_behaviour", "cross_bank", "holdings",
+                                           "digital", "consent", "journey", "model")},
+        hooks=dict(rm_id=None, emi_source="TYPICAL_EMI",
+                   pending=["SM-4 fills rm_id from API 442 accountManager / 508 HRMS",
+                            "SM-5 replaces TYPICAL_EMI with API 433 rates + API 473 schedules",
+                            "SM-6 emits data/bank/enriched.csv provenance per column"]),
+    )
+
+    out = dict(meta=meta, counts=counts, metrics=metrics, provenance=provenance,
+               gig_case_id=extra["gig_case_id"], leads=leads)
+    _write(out, out_json, metrics_json, meta, metrics, verbose)
+    return out
+
+
+def _by_cut(hb: pd.DataFrame, Ph: np.ndarray, y: np.ndarray, p_top: np.ndarray,
+            cfg: ModelConfig) -> dict:
+    """SK-10: AUC and precision@budget for every level of every registered cut."""
+    d = hb.copy()
+    d["_age_band"] = pd.cut(d.age, [20, 30, 45, 63], labels=["21-30", "31-45", "46+"])
+    d["_income_band"] = pd.qcut(d["t_income_at_month"].rank(method="first"), 5,
+                                labels=["Q1", "Q2", "Q3", "Q4", "Q5"])
+    d["_tenure_band"] = pd.cut(d.tenure_m, [-1, 6, 12, 24, 36, 10 ** 6],
+                               labels=["<6m", "6-12m", "12-24m", "24-36m", "36m+"])
+    cuts = {"channel": "journey_last_channel", "occupation_segment": "segment",
+            "income_band": "_income_band", "tenure_band": "_tenure_band",
+            "stage_reached": "dropoff_stage_reached", "city_tier": "city_tier",
+            "age_band": "_age_band"}
+    out = {}
+    for name, col in cuts.items():
+        rows = []
+        for g, sub in d.groupby(col, observed=True):
+            i = sub.index.to_numpy()
+            yy, ss = y[i], p_top[i]
+            if len(yy) < 500:
+                rows.append(dict(level=str(g), n=int(len(yy)), status="skipped_low_n"))
+                continue
+            a, lo, hi = M.auc_ci(yy, ss)
+            pr = M.precision_at(yy, ss, cfg.budget)
+            rows.append(dict(level=str(g), n=int(len(yy)), n_pos=int(yy.sum()),
+                             auc=round(a, 4), auc_ci=[round(lo, 4), round(hi, 4)],
+                             precision_at_budget=round(pr["precision"], 4),
+                             precision_ci=[round(pr["ci_low"], 4), round(pr["ci_high"], 4)],
+                             baseline=round(float(yy.mean()), 4)))
+        out[name] = rows
+    return out
+
+
+def _write(out: dict, out_json, metrics_json, meta, metrics, verbose: bool) -> None:
+    def clean(o):
+        if isinstance(o, dict):
+            return {str(k): clean(v) for k, v in o.items()}
+        if isinstance(o, (list, tuple)):
+            return [clean(v) for v in o]
+        if isinstance(o, (np.integer,)):
+            return int(o)
+        if isinstance(o, (np.floating, float)):
+            v = float(o)
+            return None if not np.isfinite(v) else round(v, 6)
+        if isinstance(o, (np.bool_, bool)):
+            return bool(o)
+        if isinstance(o, pd.Timestamp):
+            return o.isoformat()
+        return o
+
+    payload = clean(out)
+    if out_json is not None:
+        Path(out_json).parent.mkdir(parents=True, exist_ok=True)
+        Path(out_json).write_text(json.dumps(payload, ensure_ascii=False,
+                                             allow_nan=False, separators=(",", ":")))
+    if metrics_json is not None:
+        Path(metrics_json).parent.mkdir(parents=True, exist_ok=True)
+        Path(metrics_json).write_text(json.dumps(
+            clean(dict(meta=meta, metrics=metrics, provenance=out["provenance"],
+                       counts=out["counts"])),
+            ensure_ascii=False, allow_nan=False, indent=1))
+    if verbose:
+        b = metrics["bands"]
+        gate_fail = [k for k, v in b.items() if v["verdict"] == "fail" and v["gating"]]
+        soft_fail = [k for k, v in b.items() if v["verdict"] == "fail" and not v["gating"]]
+        disagree = [k for k, v in b.items() if v.get("agrees_across_seeds") is False]
+        print("\n" + metrics["headline"])
+        print(f"bands: {sum(1 for v in b.values() if v['verdict'] == 'pass')} pass, "
+              f"{len(gate_fail)} GATING FAIL {gate_fail or ''}, "
+              f"{len(soft_fail)} reported-fail {soft_fail or ''}, "
+              f"{sum(1 for v in b.values() if v['verdict'] == 'report')} report, "
+              f"{sum(1 for v in b.values() if v['verdict'] in ('not_measured', 'not_run'))} not run")
+        if disagree:
+            for k in disagree:
+                v = b[k]
+                print(f"  ! {k} {v['metric']}: packed seed {v['value']:.4f} -> {v['verdict']}, "
+                      f"5-seed mean {v['seed_mean']:.4f} -> {v['verdict_on_seed_mean']}")
+        if out_json is not None:
+            size = len(json.dumps(payload)) / 1e6
+            print(f"queue: {len(out['leads'])} leads "
+                  f"({out['counts']['hot']} hot / {out['counts']['warm']} warm) | "
+                  f"suppressed {metrics['suppression']['suppressed_count']} | "
+                  f"wrote {out_json} ({size:.1f} MB)")
