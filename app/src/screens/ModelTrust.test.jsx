@@ -62,11 +62,13 @@ describe('ModelTrust — SK-04’s dual verdict', () => {
     expect(screen.getByText(/1 fail on 5-seed mean/)).toBeInTheDocument()
   })
 
-  it('adds no second row when the pack only ran one seed and the verdicts agree', async () => {
-    // The actual committed pack (`--seeds 7 --quick`) only ran a single seed, so
-    // verdict_on_seed_mean equals verdict for every band — no divergence to disclose.
+  it('discloses the SK-04 five-seed fail from the committed five-seed pack', async () => {
+    // The committed pack ran seeds 7–11: SK-04 passes on the packed seed (0.901)
+    // and fails on the five-seed mean (0.881). The screen must show both.
     renderScreen(<ModelTrust />, { path: '/trust', mode: 'static', user: null, pack: sanketData })
     await screen.findByText('SK-04')
-    expect(screen.queryByText(/5-seed mean/)).not.toBeInTheDocument()
+    expect(sanketData.metrics.seeds.n).toBe(5)
+    const seedMeanRow = screen.getByText('↳ 5-seed mean').closest('tr')
+    expect(seedMeanRow).toHaveTextContent('fail')
   })
 })
