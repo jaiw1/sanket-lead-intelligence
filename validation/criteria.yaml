@@ -1,0 +1,651 @@
+# =============================================================================
+# SANKET — PRE-REGISTERED VALIDATION CRITERIA
+# =============================================================================
+# This file is the acceptance contract for the SANKET prospect-assist model.
+#
+# It is committed BEFORE the first model result exists. The git timestamp of the
+# commit that introduces this file is the evidence of pre-registration: every
+# band below was fixed while the outcome was still unknown, so no threshold here
+# can have been chosen to fit a number we had already seen.
+#
+# Every band is transcribed from the approved build plan (§B lane L9, plus the
+# §D G3 gate). Where the plan's wording admitted more than one reading, the
+# reading we adopted is written down in the criterion's `note:` field rather
+# than resolved silently.
+#
+# AFTER REGISTRATION: criteria may be ADDED, never LOOSENED. Any change to an
+# existing criterion requires a dated entry in `amendments:` at the foot of this
+# file, stating what changed and why. See validation/README.md.
+# =============================================================================
+
+product: SANKET
+schema_version: "1.0.0"
+registered_at: "2026-09-16T10:47:14+05:30"
+registered_by: "RR Squad"
+repo: sanket
+plan_reference: >-
+  IDBI Innovate 2026 final build & submission plan (v2) — §B lane L9
+  (Validation), §D gate G3 (SANKET model gate) and §D gate G7 (Validation
+  gate). Bands transcribed verbatim; no band was widened or narrowed.
+
+# Clarifications issued DURING pre-registration, i.e. still before any model
+# result existed. These are not amendments — nothing here loosens a band.
+rulings: []
+
+# -----------------------------------------------------------------------------
+# What is being predicted
+# -----------------------------------------------------------------------------
+label_definition:
+  observation_unit: >-
+    One (cust_id, month) row of the liability book at a snapshot month m. The
+    model scores a consented customer as at m using only information available at
+    or before m.
+  eligibility: >-
+    Consented customers only. Customers without marketing consent are never
+    scored and never enter a metric (src/score_and_pack.py EXCLUDED_FEATURES).
+  primary:
+    name: disbursed_within_product_window
+    description: >-
+      CONVERSION MEANS DISBURSEMENT, not lead creation and not application start
+      (mentor mandate). 1 if, after being contacted at month m, the customer's
+      application for the offered product reaches the Disburse stage within that
+      product's pre-registered window; 0 otherwise, including applications that
+      start and then abandon.
+  conversion_windows_days:
+    personal: 1
+    gold: 1
+    auto: 3
+    education: 7
+    home: 14
+    lap: 14
+  windows_source: "plan §B L6 SD-S4 — per-product windows in days"
+  funnel_stages:
+    ["Start", "Eligibility", "KYC", "Docs", "Fee", "Offer", "Accept", "Disburse"]
+  positive_class_note: >-
+    Precision over recall (mentor mandate). An RM's day is a fixed number of
+    calls; a false positive costs a call that a better lead would have had. The
+    bands below are therefore precision-at-budget bands, not recall bands.
+
+# -----------------------------------------------------------------------------
+# How the data is split. Fixed here so no split can be re-drawn to rescue a band.
+# -----------------------------------------------------------------------------
+splits:
+  holdout:
+    kind: grouped
+    group_key: cust_id
+    test_fraction: 0.30
+    description: >-
+      Customer-grouped split: every month of a given cust_id falls wholly on one
+      side, so a customer the model trained on can never appear in the measured
+      queue.
+    scoring_population: >-
+      Held-out, consented customers at the snapshot month. Precision-at-budget is
+      computed on this population; the cockpit queue is built over the whole book
+      but is never a measurement surface.
+  oot:
+    kind: out_of_time
+    time_key: month
+    description: >-
+      Train on earlier snapshot months, test on later ones, with training rows
+      embargoed if their conversion window would reach past the cut — the model
+      may not learn from a disbursement that had not yet happened at the cut.
+    embargo_days: 14
+    embargo_note: "14 days = the longest pre-registered product window (home, lap)."
+
+# -----------------------------------------------------------------------------
+# The cuts every per-cut criterion is evaluated over (plan §B L9: product,
+# channel, occupation, income band, tenure, stage-reached, city tier).
+# Source columns name today's pipeline; the L6 generator lane is actively adding
+# columns, so a runner resolves a cut by id first and by source_column second.
+# -----------------------------------------------------------------------------
+cuts:
+  - id: product
+    source_column: product
+    expected_levels: 6
+    levels: ["personal", "gold", "auto", "education", "home", "lap"]
+    min_n: 0
+    note: >-
+      Six products, per plan §B L7 SM-5 and the window table above. Today's
+      pipeline ships three (home / auto / pl); the six-product expansion is L7's
+      work. min_n is 0 because the per-product floor (SK-08) is pre-registered to
+      hold for all six regardless of cell size.
+  - id: channel
+    source_column: channel
+    expected_levels: null
+    min_n: 500
+    note: >-
+      Acquisition / contact channel as emitted by the journey generator
+      (data/application_journeys.csv). Levels were not enumerated at registration
+      time because the generator lane had not fixed them; the criterion applies
+      to every level that appears.
+  - id: occupation_segment
+    source_column: segment
+    expected_levels: null
+    min_n: 500
+    note: >-
+      Named "occupation" in the plan; today's book column is `segment`. Must
+      include a gig-worker level — the fairness finding at SK-23 is specifically
+      about it.
+  - id: income_band
+    source_column: true_income
+    binning: "global quintiles of true_income over the evaluated population"
+    expected_levels: 5
+    min_n: 500
+    note: >-
+      Binned on the generator's ground-truth income, NOT on the model's estimated
+      income, so the cut cannot move when the income model changes. Quantile bins
+      are self-computing, which means the edges cannot be nudged after a result.
+  - id: tenure_band
+    source_column: tenure_m
+    binning: "fixed months-with-bank bands: [0,6), [6,12), [12,24), [24,36), [36,inf)"
+    expected_levels: 5
+    min_n: 500
+  - id: stage_reached
+    source_column: stage_reached
+    expected_levels: 8
+    min_n: 500
+    note: >-
+      The furthest funnel stage an attempt reached before disbursing or
+      abandoning (see label_definition.funnel_stages). This is the cut that makes
+      the drop-off population visible — the mentor mandate the whole
+      application-journey layer exists to serve.
+  - id: city_tier
+    source_column: city_tier
+    expected_levels: 3
+    min_n: 500
+
+# -----------------------------------------------------------------------------
+# Seeds and confidence intervals
+# -----------------------------------------------------------------------------
+seeds:
+  n_min: 5
+  list: [7, 8, 9, 10, 11]
+  policy: >-
+    Consecutive integers from 7 (the value already used in today's pipelines).
+    Seeds may be ADDED. A seed may never be dropped or cherry-picked from a
+    reported aggregate; every seed that was run appears in report.json.
+
+confidence:
+  level: 0.95
+  method: >-
+    Percentile bootstrap, 1000 resamples, resampled at the group level (cust_id)
+    so a customer's repeated months are respected.
+  cross_seed: >-
+    Where a criterion is about spread across seeds (SK-20), the interval is the
+    2.5th–97.5th percentile of the per-seed point estimates, and "CI width" means
+    upper minus lower, expressed in percentage points.
+
+# -----------------------------------------------------------------------------
+# Decision rule
+# -----------------------------------------------------------------------------
+decision_rule:
+  pass: "Zero criteria with severity `fail` evaluate to fail."
+  exit_code: "`python3 -m validation.run` exits non-zero if any `fail` criterion fails."
+  pending: >-
+    A criterion whose runner is not yet implemented is reported `pending`, never
+    `pass`. `--strict` (the G7 form) treats pending and warn as failures too.
+  low_n: >-
+    A cut cell with n below the criterion's min_n is reported `skipped_low_n`
+    with its n, never silently dropped.
+  publication: >-
+    Per plan §A batch stage 6: a model run that fails verification stays
+    `candidate`; the active run is untouched. Validation failure never promotes.
+
+# -----------------------------------------------------------------------------
+# THE BANDS
+# -----------------------------------------------------------------------------
+criteria:
+
+  # -- 01 holdout ------------------------------------------------------------
+  - id: SK-01
+    runner: "01_holdout"
+    metric: random_contact_disbursement_rate
+    scope: overall
+    op: between
+    threshold: [0.08, 0.10]
+    min_n: 0
+    severity: fail
+    source: "plan §B L9 bands (\"baseline 8–10% (asserted)\"); §D gate G3"
+    rationale: >-
+      The denominator of the entire pitch. "9 → 30 disbursements per 100 RM
+      calls" is only meaningful if the 9 is real, so the untargeted
+      random-contact disbursement rate is pre-registered as a band in its own
+      right rather than being read off whatever the generator happened to
+      produce.
+    note: >-
+      Also asserted inside the generator (§B L6 SD-S4 solves the contact-effect
+      θ to land in this band). Asserting it here as well means a generator change
+      that drifts the baseline cannot pass silently.
+
+  - id: SK-02
+    runner: "01_holdout"
+    metric: precision_at_10pct_budget
+    scope: overall
+    op: between
+    threshold: [0.25, 0.35]
+    min_n: 0
+    severity: fail
+    source: "plan §B L9 bands (\"precision@10% 25–35%\"); §D gate G3"
+    rationale: >-
+      The headline claim. Contact the top 10% of the consented held-out book and
+      roughly 30 in 100 of those calls end in a disbursement. The upper bound
+      matters as much as the lower: a synthetic book that yields 60% precision
+      has leaked its own generative structure and no bank reviewer would believe
+      it.
+    note: "Band is on the point estimate; the 95% CI is reported beside it."
+
+  - id: SK-03
+    runner: "01_holdout"
+    metric: precision_at_5pct_and_20pct_budget
+    scope: overall
+    op: report
+    threshold: null
+    min_n: 0
+    severity: report
+    source: "plan §B L9 bands (\"+ @5/@20 w/ CI\")"
+    rationale: >-
+      The shape of the precision curve either side of the operating budget, with
+      CIs. A curve that is flat between 5% and 20% would mean the ranking is not
+      doing much, whatever the single headline number says.
+    note: "REPORTED, NO TARGET — the plan pre-registers a band at 10% only."
+
+  - id: SK-04
+    runner: "01_holdout"
+    metric: window_respect_rate
+    scope: overall
+    op: ge
+    threshold: 0.90
+    min_n: 0
+    severity: fail
+    source: "plan §B L9 bands (\"window respect ≥ 90% (new)\")"
+    rationale: >-
+      Per-product windows are a mentor mandate: a gold-loan lead is worthless on
+      day three, a home-loan lead is alive for a fortnight. The model's positives
+      must respect that timing or the RM queue's SLA is fiction.
+    note: >-
+      INTERPRETATION. The plan introduces "window respect" without defining it.
+      We registered it as: of the held-out customers inside the contact budget
+      who do disburse, the share whose disbursement falls within the
+      pre-registered window of the product the model offered them (see
+      label_definition.conversion_windows_days). A conversion that lands outside
+      the offered product's window counts against this criterion even though it
+      is a real disbursement.
+
+  - id: SK-05
+    runner: "01_holdout"
+    metric: window_shopper_auc
+    scope: overall
+    op: ge
+    threshold: 0.70
+    min_n: 0
+    severity: fail
+    source: "plan §B L9 bands (\"shopper AUC ≥ 0.70\")"
+    rationale: >-
+      Window-shopper detection is the feature that keeps RM time away from
+      tyre-kickers. Deliberately a modest floor: the generator makes the signal
+      informative but NOT deterministic (§B L6 SD-S3 — some genuine buyers balk
+      at the fee once), so a high AUC here would mean the synthetic data had made
+      the problem too easy.
+    note: "AUC against the generator's latent window_shopper flag on the held-out book."
+
+  - id: SK-06
+    runner: "01_holdout"
+    metric: baseline_ladder_headline_uplift
+    scope: overall
+    op: report
+    threshold: null
+    min_n: 0
+    severity: report
+    source: "plan §B L7 SM-2 (\"9 → 30 disbursements per 100 RM calls\")"
+    rationale: >-
+      The exact two numbers that go on the deck and in the README, emitted from
+      the same run as everything else so they cannot drift apart from the
+      evidence. Replaces the retired "28×" claim everywhere.
+    note: "Derived from SK-01 and SK-02; reported, no separate band."
+
+  # -- 02 out-of-time --------------------------------------------------------
+  - id: SK-07
+    runner: "02_oot"
+    metric: oot_precision_at_10pct_degradation_pp
+    scope: overall
+    op: le
+    threshold: 5.0
+    min_n: 0
+    severity: fail
+    source: "plan §B L9 bands (\"OOT degradation ≤ 5 pp\")"
+    rationale: >-
+      A prospecting model is retrained on a cadence but used continuously. Losing
+      more than 5 percentage points of precision on later months means the queue
+      goes stale faster than the bank can refresh it.
+    note: >-
+      Measured in PERCENTAGE POINTS (holdout precision@10% minus out-of-time
+      precision@10%), not as a ratio. Improvement is reported as a negative
+      degradation and passes.
+
+  # -- 03 by cut -------------------------------------------------------------
+  - id: SK-08
+    runner: "03_by_cut"
+    metric: auc
+    scope: per_product
+    op: ge
+    threshold: 0.75
+    min_n: 0
+    severity: fail
+    source: "plan §B L9 bands (\"per-product AUC ≥ 0.75\"); §D gate G3 (\"×6\")"
+    rationale: >-
+      This is what licenses the 3-models-to-1 collapse (§B L7 SM-1). One model
+      with `product` as a categorical is only defensible if it holds its own on
+      every product, including the two thin ones.
+    note: >-
+      All six products, with CI. min_n is 0 deliberately: "×6" means all six, so
+      a thin product is a generator problem to fix, not a cell to exempt.
+
+  - id: SK-09
+    runner: "03_by_cut"
+    metric: macro_auc
+    scope: overall
+    op: ge
+    threshold: 0.78
+    min_n: 0
+    severity: fail
+    source: "plan §B L9 bands (\"macro ≥ 0.78\")"
+    rationale: >-
+      Unweighted mean of the six per-product AUCs, so a large product cannot
+      carry the average while a small one is being failed.
+
+  - id: SK-10
+    runner: "03_by_cut"
+    metric: auc_and_precision_at_10pct
+    scope: per_cut
+    cut: all
+    op: report
+    threshold: null
+    min_n: 500
+    severity: report
+    source: "plan §B L9 (12 runners, cut list); owner direction 7 (\"validated across every cut\")"
+    rationale: >-
+      AUC and precision@10% with CI and n for every level of all seven cuts. Only
+      the product cut carries a pre-registered floor, so the remaining six are
+      reported in full and read by a human — including the cells that look bad.
+    note: >-
+      min_n of 500 is carried over from the calibration cell-size convention used
+      on the DRISHTi side rather than inventing a second number. Cells below 500
+      are listed with their n and marked skipped_low_n.
+
+  # -- 04 calibration --------------------------------------------------------
+  - id: SK-11
+    runner: "04_calibration"
+    metric: ece
+    scope: overall
+    op: le
+    threshold: 0.03
+    min_n: 0
+    severity: fail
+    source: "plan §B L9 bands (\"ECE ≤ 0.03 overall\")"
+    rationale: >-
+      The lead drawer shows a probability to an RM who will act on it. If a "40%"
+      lead converts at 15%, the RM stops trusting the queue within a week.
+
+  - id: SK-12
+    runner: "04_calibration"
+    metric: ece
+    scope: per_product
+    op: le
+    threshold: 0.03
+    min_n: 0
+    severity: fail
+    source: "plan §B L9 bands (\"ECE ≤ 0.03 overall + per product\")"
+    rationale: >-
+      One model across six products can be well calibrated on average while being
+      systematically over-confident on the products it saw least.
+    note: >-
+      The plan states a single figure (0.03) for both the overall and the
+      per-product clause, so the same 0.03 is registered here — NOT a looser
+      per-cell band. min_n is 0 for the same reason as SK-08.
+
+  # -- 05 rank order ---------------------------------------------------------
+  - id: SK-13
+    runner: "05_rank_order"
+    metric: menu_of_4_hit_rate
+    scope: overall
+    op: ge
+    threshold: 0.80
+    min_n: 0
+    severity: fail
+    source: "plan §B L9 bands (\"menu-of-4 hit rate ≥ 80% (new)\")"
+    rationale: >-
+      The mentors asked for a menu of four, not a single next-best product. The
+      menu earns its place only if the product the customer actually takes is
+      inside it four times in five.
+    note: >-
+      INTERPRETATION: among held-out customers who disburse, the share whose
+      realised product appears in the model's top-4 `product_menu` at the
+      snapshot month. Random ordering over six products would score ~0.67, so
+      0.80 is a real but not heroic bar — recorded here so nobody later mistakes
+      it for a strong result.
+
+  - id: SK-14
+    runner: "05_rank_order"
+    metric: top_1_product_accuracy
+    scope: overall
+    op: report
+    threshold: null
+    min_n: 0
+    severity: report
+    source: "plan §B L9 (menu of 4); §D gate G3"
+    rationale: >-
+      The same measurement at rank 1. Reported so the menu's value over a single
+      recommendation is visible as a number rather than asserted.
+    note: >-
+      REPORTED, NO PRE-REGISTERED TARGET — deliberately. Setting a top-1 target
+      would push the model back toward the single-recommendation behaviour the
+      menu exists to replace.
+
+  - id: SK-15
+    runner: "05_rank_order"
+    metric: shopper_signal_negative_direction_count
+    scope: overall
+    op: ge
+    threshold: 4
+    min_n: 0
+    severity: fail
+    source: "plan §D gate G3 (\"4 signals negative\"); mentor mandate (window-shopper signals)"
+    rationale: >-
+      The four window-shopper signals the mentors named — vague / blank answers,
+      refusing to share income details, balking at the ₹1,000 fee, and refusing
+      documents — must each push the disbursement probability DOWN. A signal that
+      came out positive would mean the model had learned the opposite of the
+      behaviour the business named, and the negative chips in the lead drawer
+      would be lying to the RM.
+    note: >-
+      INTERPRETATION: direction is measured as the sign of the signal's mean
+      signed contribution on the held-out book; all four must be negative, hence
+      a count of 4. Filed under rank-order because it is a direction-of-effect
+      check on the score, not a leakage or ablation test.
+
+  # -- 06 stability ----------------------------------------------------------
+  - id: SK-16
+    runner: "06_stability"
+    metric: psi_score_distribution
+    scope: overall
+    op: le
+    threshold: 0.10
+    min_n: 0
+    severity: fail
+    source: "plan §B L9 bands (\"PSI ≤ 0.10\")"
+    rationale: >-
+      Population Stability Index of the score distribution between the training
+      window and the most recent window. 0.10 is the conventional "no meaningful
+      shift" line in bank model-risk practice.
+
+  # -- 07 leakage ------------------------------------------------------------
+  - id: SK-17
+    runner: "07_leakage"
+    metric: features_using_post_abandon_information
+    scope: overall
+    op: eq
+    threshold: 0
+    min_n: 0
+    severity: fail
+    source: "plan §B L9 bands (\"leakage: nothing after abandon_ts\")"
+    rationale: >-
+      The application-journey layer is the single biggest leakage hazard in
+      SANKET: every feature about a journey is computed from a timeline that ends
+      in the very outcome being predicted. Not one model input may draw on data
+      timestamped after `abandon_ts` (or after disbursement, for the converters).
+    note: >-
+      Zero tolerance, as written. Enforced as a count of violating features, so
+      the report names the offending feature rather than just failing. Pairs with
+      the existing rule in src/score_and_pack.py EXCLUDED_FEATURES that nothing
+      after an application starts may be used at prospecting.
+
+  - id: SK-18
+    runner: "07_leakage"
+    metric: permuted_label_auc
+    scope: overall
+    op: between
+    threshold: [0.48, 0.52]
+    min_n: 0
+    severity: fail
+    source: "plan §B L9 bands (\"permutation ∈ [0.48,0.52]\")"
+    rationale: >-
+      Retrain the full pipeline on randomly permuted labels. Anything outside
+      chance means the evaluation harness itself leaks — the strongest single
+      check that the reported precision is real.
+    note: >-
+      INTERPRETATION: the permutation is of the LABEL, with split, features and
+      hyper-parameters untouched. Averaged over the registered seeds.
+
+  # -- 08 ablation -----------------------------------------------------------
+  - id: SK-19
+    runner: "08_ablation"
+    metric: precision_at_10pct_drop_by_feature_family
+    scope: overall
+    op: report
+    threshold: null
+    min_n: 0
+    severity: report
+    source: "plan §B L9 (runner 08)"
+    rationale: >-
+      Which families actually carry the model — cross-bank transactions from API
+      595/739, salary-credit behaviour, dwell signals, journey friction, shopper
+      signals. Reported so the "what would we lose without this API" question has
+      an evidenced answer.
+    note: >-
+      The plan specifies runner 08 for SANKET but pre-registers no band for it,
+      so no threshold was invented. Reported with CIs; a human reads it.
+
+  # -- 09 seeds --------------------------------------------------------------
+  - id: SK-20
+    runner: "09_seeds"
+    metric: n_seeds_run
+    scope: overall
+    op: ge
+    threshold: 5
+    min_n: 0
+    severity: fail
+    source: "plan §B L9 bands (\"≥5 seeds\"); §D gate G7"
+    rationale: "One seed is an anecdote. Five is the minimum at which the CI below means anything."
+
+  - id: SK-21
+    runner: "09_seeds"
+    metric: cross_seed_precision_at_10pct_ci_width_pp
+    scope: overall
+    op: le
+    threshold: 4.0
+    min_n: 0
+    severity: fail
+    source: "plan §B L9 bands (\"CI ≤ 4 pp\")"
+    rationale: >-
+      The headline precision must be a property of the model, not of the seed.
+      Registered in percentage points: a cross-seed interval wider than 4 pp
+      would put the 25–35% band itself within noise.
+
+  # -- 10 stress -------------------------------------------------------------
+  - id: SK-22
+    runner: "10_stress"
+    metric: precision_at_10pct_under_stress_scenarios
+    scope: overall
+    op: report
+    threshold: null
+    min_n: 0
+    severity: report
+    source: "plan §B L9 (runner 10)"
+    rationale: >-
+      Behaviour when the book shifts: consent withdrawal at scale, a
+      suppression-rule sweep (§B L6 SD-S6), cross-bank transaction data (595/739)
+      unavailable, and a doubled window-shopper share.
+    note: >-
+      The plan specifies runner 10 for SANKET but pre-registers no band for it,
+      so no threshold was invented. The scenarios themselves ARE pre-registered
+      here so the set cannot be chosen after seeing which ones look good.
+
+  # -- 11 fairness -----------------------------------------------------------
+  - id: SK-23
+    runner: "11_fairness"
+    metric: adverse_impact_ratio
+    scope: per_cut
+    cut: "protected_proxies"
+    op: ge
+    threshold: 0.80
+    min_n: 500
+    severity: report
+    source: "plan §B L9 bands (\"fairness incl. the documented gig failure\")"
+    rationale: >-
+      Four-fifths rule on the contact rate: least-contacted group ÷
+      most-contacted group within each protected-proxy attribute, at the live
+      contact budget.
+    note: >-
+      REPORTED, NOT GATED. SANKET excludes gender, religion, caste, marital
+      status and pin-code outright by policy (src/score_and_pack.py
+      EXCLUDED_FEATURES), so the protected-proxy attributes evaluated are
+      occupation_segment, income_band, city_tier and age band. The 0.80 reference
+      line is the conventional four-fifths threshold, recorded so the report can
+      say how far each attribute sits from it.
+
+  - id: SK-24
+    runner: "11_fairness"
+    metric: gig_worker_failure_disclosure
+    scope: overall
+    op: exists
+    threshold: null
+    min_n: 0
+    severity: report
+    source: "plan §B L9 bands (\"fairness incl. the documented gig failure\")"
+    rationale: >-
+      A known, accepted failure mode: irregular gig-economy income reads as
+      instability to a model trained mostly on salaried credits, so gig workers
+      are under-contacted. It is disclosed rather than tuned away, because tuning
+      it away on synthetic data would be pretending to have solved it.
+    note: >-
+      INTERPRETATION: registered as an existence check — the fairness section of
+      REPORT.md must contain a quantified statement of the gig-worker gap, and it
+      must be carried into the README's "What we did not build, and why". Kept at
+      severity `report` because the plan lists it among reported findings; it is
+      nonetheless a G5 honesty-gate item.
+
+  # -- 12 baseline ladder ----------------------------------------------------
+  - id: SK-25
+    runner: "12_baseline_ladder"
+    metric: precision_at_10pct_by_baseline_rung
+    scope: overall
+    op: report
+    threshold: null
+    min_n: 0
+    severity: report
+    source: "plan §B L9 (runner 12)"
+    rationale: >-
+      Contextualises the gain: random contact, then balance-ranked contact (what
+      a branch does today), then a logistic scorecard, then the LightGBM model,
+      each with CI. If balance-ranking is within noise of the model, that is the
+      honest finding and the deck says so.
+    note: >-
+      The plan specifies runner 12 but pre-registers no band for it, so no
+      threshold was invented. The rungs ARE pre-registered here so the comparison
+      set cannot be chosen after the fact.
+
+# -----------------------------------------------------------------------------
+# Amendments — append only. Loosening a registered band requires an entry here
+# with a date and a reason, and the reason has to survive a bank reviewer.
+# -----------------------------------------------------------------------------
+amendments: []
