@@ -1,0 +1,51 @@
+{
+  "_note": "EXAMPLE of the provenance.json that src/enrich_bank.py writes beside enriched.csv. The real file is gitignored. This one is committed so every lane can see the shape without running a pull.",
+  "provenance_version": 1,
+  "product": "sanket",
+  "generated_at": "2026-09-16T02:45:00+05:30",
+  "mode": "mixed",
+  "fixture_reason": "No AA consent is active for most of the book, so the cross-bank family (595/739) fell back to data/bank/fixture.json.",
+  "families": {
+    "identity": "BANK_API",
+    "casa_behaviour": "BANK_API",
+    "cross_bank": "FIXTURE",
+    "holdings": "BANK_API",
+    "digital": "SIMULATED",
+    "consent": "SIMULATED",
+    "journey": "SIMULATED",
+    "model": "FIXTURE"
+  },
+  "columns": {
+    "balance_avg_3m": { "source": "BANK_API", "api_id": "365", "field": "availBal", "pulled_at": "2026-09-16T02:31:00+05:30", "n_records": 4820 },
+    "credits_med_6m": { "source": "BANK_API", "api_id": "393", "field": "txnAmt", "pulled_at": "2026-09-16T02:38:00+05:30", "n_records": 4820 },
+    "salary_credit_day": { "source": "BANK_API", "api_id": "393", "field": "txnDate", "pulled_at": "2026-09-16T02:38:00+05:30", "n_records": 3611 },
+    "narration_samples": { "source": "BANK_API", "api_id": "393", "field": "txnDesc", "pulled_at": "2026-09-16T02:38:00+05:30", "n_records": 4820 },
+    "holdings": { "source": "BANK_API", "api_id": "394", "field": "acctType", "pulled_at": "2026-09-16T02:33:00+05:30", "n_records": 4820 },
+    "dedupe_match_score": { "source": "BANK_API", "api_id": "456", "field": "matchScore", "pulled_at": "2026-09-16T02:34:00+05:30", "n_records": 4820 },
+    "ext_emi_total": { "source": "FIXTURE", "api_id": "595", "field": "txnAmt", "reason": "no active AA consent for this customer" },
+    "ext_emi_narration": { "source": "FIXTURE", "api_id": "595", "field": "narration", "reason": "no active AA consent for this customer" },
+    "ext_salary_bank": { "source": "FIXTURE", "api_id": "739", "field": "narration", "reason": "no active AA consent for this customer" },
+    "card_rate_pa": { "source": "BANK_API", "api_id": "433", "field": "rateOfInterest", "pulled_at": "2026-09-16T02:29:00+05:30", "n_records": 6 },
+    "emi_per_lakh": { "source": "BANK_API", "api_id": "473", "field": "instAmt", "pulled_at": "2026-09-16T02:30:00+05:30", "n_records": 6 },
+    "rm_name": { "source": "BANK_API", "api_id": "508", "field": "empName", "pulled_at": "2026-09-16T02:28:00+05:30", "n_records": 64 },
+    "dwell_home": { "source": "SIMULATED", "reason": "no Atlas API supplies product-page dwell" },
+    "campaign_contacts_6m": { "source": "SIMULATED", "reason": "no Atlas API supplies campaign history" },
+    "journey_stage_reached": { "source": "SIMULATED", "reason": "no Atlas API supplies application-journey events" },
+    "consent_marketing": { "source": "SIMULATED", "reason": "marketing consent is not exposed by any of the 25 APIs; AA consent (591) is a different artefact" },
+    "bureau_score": { "source": "NOT_COLLECTED", "api_id": "408", "reason": "DELIBERATE: SANKET does not call the bureau at prospecting, only at lead-to-application" }
+  },
+  "endpoints": [
+    { "api_id": "365", "http_status": 200, "n_records": 4820, "subscription_status": "approved", "latency_ms": 221 },
+    { "api_id": "393", "http_status": 200, "n_records": 4820, "subscription_status": "approved", "latency_ms": 41200 },
+    { "api_id": "394", "http_status": 200, "n_records": 4820, "subscription_status": "approved", "latency_ms": 260 },
+    { "api_id": "456", "http_status": 200, "n_records": 4820, "subscription_status": "approved", "latency_ms": 402 },
+    { "api_id": "442", "http_status": 200, "n_records": 4820, "subscription_status": "approved", "latency_ms": 431 },
+    { "api_id": "433", "http_status": 200, "n_records": 6, "subscription_status": "approved", "latency_ms": 96 },
+    { "api_id": "473", "http_status": 200, "n_records": 6, "subscription_status": "approved", "latency_ms": 118 },
+    { "api_id": "508", "http_status": 200, "n_records": 64, "subscription_status": "approved", "latency_ms": 143 },
+    { "api_id": "591", "http_status": 200, "n_records": 312, "subscription_status": "approved", "latency_ms": 188 },
+    { "api_id": "595", "http_status": 0, "n_records": 0, "subscription_status": "approved", "error": "no active AA consent for this customer" },
+    { "api_id": "739", "http_status": 0, "n_records": 0, "subscription_status": "approved", "error": "no active AA consent for this customer" },
+    { "api_id": "428", "http_status": 0, "n_records": 0, "subscription_status": "approved", "error": "not called during enrichment; write-back only, manager-gated, dry-run default" }
+  ]
+}
