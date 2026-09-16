@@ -10,7 +10,7 @@ on, or deployed against real customers. Every number below is reproducible from 
 `python3 src/make_book.py && python3 src/make_journeys.py && python3 src/score_and_pack.py`.
 
 **Owner:** RR Squad (Jai Wadhwa, Yuvraj Kundargi) — IDBI Innovate 2026, Prospect Assist AI track.
-**Card version:** SM-1/SM-2/SM-3. **Written:** 2026-09-16.
+**Card version:** SM-1/SM-2/SM-3/SM-4/SM-5/SM-6. **Written:** 2026-09-16.
 
 ---
 
@@ -472,16 +472,44 @@ is the finding; it is never hidden and never tuned toward.
    in the design — capacity uses the behavioural *median* rather than a payslip, and production
    adds segment-aware calling quotas — but the gap is disclosed, not tuned away, because tuning
    it away on synthetic data would be pretending to have solved it.
-7. **EMI figures are indicative.** `emi_source = "TYPICAL_EMI"` on every lead. Real per-product
-   rates (API 433) and amortisation schedules (API 473) land at SM-5.
-8. **`rm_id` is null on every lead.** Round-robin assignment from API 442 `accountManager` /
-   API 508 HRMS lands at SM-4.
-9. **Ablation (SK-19) and stress (SK-22) are not run here.** The feature-family map they need is
-   emitted (`metrics.feature_families`); the runs belong to validation runners 08 and 10.
-10. **One contact per month, binary.** No call attempts that do not connect, no voicemail, no
+7. **EMI figures price one sandbox rate, not a per-product quote.** `emi_source =
+   "BANK_API_433_sandbox_fixture"` (SM-5): a live API 433 call returned one canned blob — the
+   sandbox serves the same JSON to every endpoint regardless of the request body — so all six
+   products price off the same 12.75% p.a. reading (`rateInfo.effectiveRate`) rather than a
+   per-product rate. API 473 (the repayment schedule) has never returned a body in this sandbox
+   at all; the schedule is **derived** from the 433 rate with a standard reducing-balance annuity
+   formula (`emi_source`-adjacent tag `DERIVED_FROM_433`, `src/model/emi.py`), not fetched. The
+   flat `TYPICAL_EMI` table is retained as a fallback only — it is not what a normal run reports.
+8. **`rm_id` is a fabricated roster, not a real HRMS directory.** SM-4 fills `rm_id` / `rm_name` /
+   `rm_branch` by deterministic round-robin over `data/roster.yaml` — eight fabricated names,
+   branches and EINs, tagged `SIMULATED` — because no live Atlas pull has ever run against this
+   book. `src/model/roster.py` reads `data/bank/pulled.json`'s API 442 `accountManager` / API 508
+   HRMS records first and would use those instead, tagged `BANK_API`, the moment one exists.
+   Suppressed leads are never assigned an RM at all — a customer who is never going to be called
+   should not be shown as tied to one.
+9. **The bank overlay (SM-6, `--bank`) covers 120 of 60,000 customers, honestly.**
+   `data/bank/fixture.json` is the committed offline stand-in for a live Atlas pull; it is not
+   sized to cover the whole book. A customer whose `cust_id` is one of the fixture's 120 reads
+   `FIXTURE` for `identity` / `casa_behaviour` / `holdings` / `cross_bank`; every other customer
+   reads `SIMULATED` for those same families even in a `--bank` run, because nothing was actually
+   substituted for them (`model.bank.BankContext.provenance_for`). This is the same partial-
+   coverage shape `data/bank/SCHEMA.md` documents for real AA consent — "consent is per customer
+   and the customer may say no" — reproduced honestly rather than papered over with an aggregate
+   `FIXTURE` badge that would overstate what happened for any one row.
+10. **`data/bank/pulled.json` has never existed for this book.** No live Atlas credentials have
+    run against SANKET; every `BANK_API`-path test in `tests/test_model_bank.py` /
+    `tests/test_model_roster.py` exercises the *mechanism* against a synthetic `pulled.json`, not
+    a real sandbox response. The only real sandbox response this repo has ever seen is the single
+    API 433 rate blob SM-5 hardcodes (§ item 7).
+11. **SANKET never writes back to the bank.** API 428 (`createLead`, the only write in the 25-API
+    surface `data/bank/SCHEMA.md` lists) is not called anywhere in this pipeline. Nothing here
+    pushes a lead into a real CRM; `leads[]` is a read-only export for a human RM to act on.
+12. **Ablation (SK-19) and stress (SK-22) are not run here.** The feature-family map they need is
+    emitted (`metrics.feature_families`); the runs belong to validation runners 08 and 10.
+13. **One contact per month, binary.** No call attempts that do not connect, no voicemail, no
     time-of-day effect — and an RM call costs the same as an SMS in the data, even though the
     whole product exists because it does not.
-11. **The shopper detector, the uplift pair and the ranker are three fits, not one.** Only the
+14. **The shopper detector, the uplift pair and the ranker are three fits, not one.** Only the
     ranker is "the model" in the mentors' sense; the other two are exhibits.
 
 ---
@@ -557,21 +585,128 @@ build that has not been updated.
 emi_source}`) · `negative_chips` (`{signal, text, impact, mentor_signal}`) · `suppressed` ·
 `suppression_reason` · `queued` · `consent_marketing` · `contact_by` · `window_days` ·
 `probability` · `p_any` · `shopper_score` · `dropoff_stage` · `dropoff_product` ·
-`days_since_abandon` · `contacts_30d` · `last_contact_days` · `provenance` · `rm_id` (null,
-SM-4) · `emi_source` (`"TYPICAL_EMI"`, SM-5)
+`days_since_abandon` · `contacts_30d` · `last_contact_days` · `provenance` · `rm_id` / `rm_name` /
+`rm_branch` (SM-4 — an EIN + name + branch on every **queued** lead, `null` on a suppressed one) ·
+`emi_source` (SM-5 — `"BANK_API_433_sandbox_fixture"` on a normal run, `"TYPICAL_EMI"` only if the
+sandbox rate is ever unavailable)
+
+**SM-5's two EMI numbers, disambiguated for L11:** `product_menu[].emi` is the number to say out
+loud — the bank-rate EMI on that product's reference ticket, computed by `src/model/emi.py`'s
+annuity formula from the captured API 433 rate (12.75% p.a., every product, since the sandbox
+returns one canned blob regardless of the request body). `product_menu[].indicative_emi` is no
+longer a second number: it is a **label** naming the ticket, tenor and rate `emi` was computed
+from, so a screen never has to guess which of the two figures is the one to quote. The lead-level
+`safe_emi` is unrelated to either — it stays the customer's own behavioural affordability ceiling,
+used for the retained-income (capacity) check and for filling `{emi}` in the pitch/objection text.
+
+### Added — top level, again
+
+`roster` *(new, SM-4)* — `{source: "BANK_API"|"SIMULATED", n_rms, n_active, rms: [{rm_id, rm_name,
+rm_branch, active}]}`. `provenance.families` (SM-6) now genuinely varies with `--bank`; without it,
+every family is still `SIMULATED`, unchanged from SM-1–3.
 
 ### Not this lane's
 
-`rm_id` and round-robin assignment are SM-4. Real EMI from API 433 rates + API 473 schedules is
-SM-5 — `emi` is the customer's behavioural headroom and `indicative_emi` is the product's
-typical ticket, both flagged `emi_source: "TYPICAL_EMI"`. The bank-enrichment provenance per
-column (`data/bank/provenance.json`) is SM-6.
+Everything SM-1/SM-2/SM-3 flagged here — `rm_id`, real EMI, the bank-enrichment overlay — landed
+at SM-4/SM-5/SM-6 (§ 13). What is still genuinely outside SANKET's scope: any real Atlas
+credential or endpoint approval (owned by the platform, `rrsquad-platform/batch/`); API 428
+`createLead` (never called — § 10 item 11); `meta.model_run_id` / `git_sha` / `criteria_sha` in
+the platform export, filled by the batch that runs this script, not by this script.
 
 ### For the platform batch
 
-`src/score_and_pack.py` keeps its zero-argument CLI and accepts `--out` (the export) and
-`--metrics-out`. **Pass `--metrics-out` explicitly** from a batch runner: it defaults to
-`data/model_metrics.json` inside this repo. A full five-seed run takes about 11 minutes;
-`--seeds 7 --quick` takes about 3 and skips the out-of-time, permuted-label and ladder
+`src/score_and_pack.py` keeps its zero-argument CLI and accepts `--out` (the export),
+`--metrics-out`, and now `--bank` (§ 13). **Pass `--metrics-out` explicitly** from a batch runner:
+it defaults to `data/model_metrics.json` inside this repo. A full five-seed run takes about 11
+minutes; `--seeds 7 --quick` takes about 3 and skips the out-of-time, permuted-label and ladder
 exhibits. The process exits 0 even when a band fails — a failing band is packed into
 `metrics.bands`, and it is the *batch verifier's* job to refuse to publish, not the scorer's.
+`--bank` adds one more file: `data/export/sanket_export.json`, in
+`rrsquad-platform/contracts/sanket_export.schema.json`'s shape rather than this repo's own —
+validate it with that repo's `contracts/validate.py sanket <path>` before publishing.
+
+---
+
+## 13. SM-4 / SM-5 / SM-6 — the RM roster, real EMI, and the bank-enrichment path
+
+### SM-4 — the RM roster (`src/model/roster.py`, `data/roster.yaml`)
+
+Source order, high to low: **1)** `data/bank/pulled.json`'s API 442 `accountManager` / API 508
+HRMS records, if the pull answered either — tagged `BANK_API`. **2)** `data/roster.yaml`, eight
+fabricated RMs across eight branches — tagged `SIMULATED`. No live Atlas pull has ever run against
+this book, so every run today uses the seeded roster; the `BANK_API` path is covered by
+`tests/test_model_roster.py` against a synthetic `pulled.json`, not a real sandbox response.
+Assignment is a **deterministic round-robin** keyed by `cust_id`, sorted lexicographically — never
+by score, month or queue position — over the *whole* drop-off population (not just one month's
+snapshot), so a customer keeps the same RM across runs and across model seeds. A suppressed lead
+is never assigned one. The `roster` top-level block carries the roster itself plus its provenance.
+
+### SM-5 — a real EMI (`src/model/emi.py`)
+
+A probe against the live IDBI Atlas sandbox on 2026-09-16 (API 433) returned exactly one canned
+JSON blob, regardless of the request body — the sandbox serves the same response to every
+endpoint (`rrsquad-platform/batch/enrich.py`'s docstring calls this BR-6a). Its `rateInfo`
+carries `effectiveRate: 12.75` (a rate-card reading, matching `data/bank/SCHEMA.md`'s 433 →
+`card_rate_pa` mapping); its `loanInfo` carries `netIntRate: 8.75` for an *existing* loan already
+in the blob, kept only as a sanity check on the amortisation formula
+(`tests/test_model_emi.py::test_the_sandbox_rate_sanity_checks_against_the_captured_loaninfo_blob`).
+Per the brief — "if the blob has one rate, use it for all and say so" — every product prices off
+the single 12.75% p.a. reading. API 473 (`generateLoanRepaymentScheduletest`) has never returned a
+body in this sandbox at all (the platform's own adapter docstring says so); the repayment schedule
+is **derived** with a standard reducing-balance annuity formula instead, tagged
+`DERIVED_FROM_433`. `TYPICAL_EMI` is retained as a fallback the code can actually reach (a broken
+reference table falls back to it, tagged `emi_source: "TYPICAL_EMI"`), not dead code — but it is
+not what a normal run reports. The reference ticket size and tenor per product
+(`REFERENCE_PRINCIPAL` / `REFERENCE_TENOR_MONTHS`) are `assumed`, the same convention
+`book/products.py` uses for the table SM-5 replaces.
+
+### SM-6 — the `--bank` enrichment path (`src/model/bank.py`, `src/model/export.py`)
+
+`--bank` on `src/score_and_pack.py` is the only thing SM-6 gates; without it the pipeline is
+byte-for-byte the SM-1–5 pipeline, every family `SIMULATED`. With it:
+
+1. Read `data/bank/pulled.json` (what each Atlas API answered) and `data/bank/provenance.json`
+   (the platform batch's own family/endpoint summary) if either exists.
+2. Apply `data/bank/SCHEMA.md`'s fallback rule exactly: an API that answered → `BANK_API`; an API
+   that exists but did not answer → `FIXTURE` (from `data/bank/fixture.json`); a family no Atlas
+   API supplies at all (`digital`, `consent`, `journey`) → always `SIMULATED`; the `model` family →
+   the weakest of the other seven.
+3. **Coverage is reported per customer, not just in aggregate.** `data/bank/fixture.json` covers
+   120 of the book's 60,000 customers (`cust_id` overlaps by construction — see
+   `tests/test_model_bank.py`). A customer outside those 120 reads `SIMULATED` for a family the
+   run's own summary calls `FIXTURE`, because nothing was actually substituted for them — the same
+   shape `data/bank/SCHEMA.md` describes for partial AA consent ("a book with approved 595/739
+   endpoints and no consents still yields `cross_bank: FIXTURE`... consent is per customer").
+4. Emit `data/export/sanket_export.json` in `rrsquad-platform/contracts/sanket_export.schema.json`'s
+   shape — a different, larger contract than `app/public/sanket_data.json`: it adds `customers[]`
+   (the whole scored snapshot pool, not just the ~320-lead queue), `journeys[]` (the most recent
+   application attempt per exported customer), and `amortisation_schedules{}` (one schedule per
+   product, keyed for reuse across every lead pitching it), and flattens most of `metrics` instead
+   of nesting it under `blended`.
+
+**Validated clean against `rrsquad-platform/contracts/validate.py` / the schema directly** (see
+`tests/test_model_export.py`, which skips if the sibling platform repo is absent) — **zero
+unexpected errors**, with exactly the three gaps the brief pre-authorised:
+`meta.model_run_id`, `meta.git_sha`, `meta.criteria_sha`, all filled with valid-shaped placeholders
+(a nil UUID, forty and sixty-four zero hex digits) that the platform's own batch is expected to
+overwrite. Two mapping decisions worth recording: the schema's `confidence_interval.method` enum
+(`wilson` / `bootstrap` / `delong` / `normal-approx`) has no slot for this repo's own
+`"hanley-mcneil"` AUC-interval label, mapped onto `"delong"` as the nearest of the four; and
+`amortisation_schedules[].provenance.schedule` is `"SIMULATED"`, never `"BANK_API"` — API 473 gave
+us nothing to claim a live pull for.
+
+### Provenance legend
+
+Three values only, everywhere a `provenance` block appears — per `data/bank/SCHEMA.md` and the
+platform contracts:
+
+| Value | Means |
+|---|---|
+| `BANK_API` | Pulled live from an Atlas sandbox endpoint that actually answered. |
+| `SIMULATED` | Produced by `src/book` / `src/journeys` because no Atlas API supplies this at all — the roster seed, EMI reference table, journey/consent/digital columns. |
+| `FIXTURE` | Stood in from the committed `data/bank/fixture.json` because a live pull was unavailable or incomplete for this customer. |
+
+Trust order `BANK_API > SIMULATED > FIXTURE` (best to least trusted); the `model` family badge is
+always the *weakest* of the other seven, so a screen never shows a stronger badge on the model
+than on the weakest input that fed it. `NOT_COLLECTED` is a fourth, separate value reserved for a
+column deliberately never fetched — API 408 (§ 5) is the one case of it in this repo.

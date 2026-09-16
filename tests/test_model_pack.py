@@ -24,6 +24,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from model import PRODUCTS
+from model import roster as RO
 from model.metrics import headline
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -197,13 +198,26 @@ def test_the_precision_curve_still_has_the_budgets_the_ui_pins(
 
 
 def test_the_new_lead_keys_are_all_present(packed: SimpleNamespace) -> None:
+    """SM-4 fills ``rm_id`` (queued leads only); SM-5 replaces the EMI source tag."""
+    seen_rm = False
     for lead in packed.out["leads"]:
         for k in ("product_menu", "negative_chips", "suppressed", "suppression_reason",
-                  "contact_by", "window_days", "provenance", "rm_id", "emi_source",
-                  "queued", "consent_marketing", "shopper_score", "probability"):
+                  "contact_by", "window_days", "provenance", "rm_id", "rm_name", "rm_branch",
+                  "emi_source", "queued", "consent_marketing", "shopper_score", "probability"):
             assert k in lead, (lead["id"], k)
-        assert lead["rm_id"] is None, "SM-4 owns rm_id; SM-1 leaves the hook empty"
-        assert lead["emi_source"] == "TYPICAL_EMI", "SM-5 owns the 433/473 EMI"
+        if lead["suppressed"]:
+            assert lead["rm_id"] is None, "a suppressed lead is never assigned an RM"
+            assert lead["rm_name"] is None and lead["rm_branch"] is None
+        else:
+            assert re.fullmatch(r"EIN-\d{6}", lead["rm_id"]), lead["rm_id"]
+            assert lead["rm_name"] and lead["rm_branch"]
+            seen_rm = True
+        assert lead["emi_source"] == "BANK_API_433_sandbox_fixture", "SM-5 owns the 433/473 EMI"
+        for item in lead["product_menu"]:
+            assert item["emi_source"] == "BANK_API_433_sandbox_fixture"
+            assert isinstance(item["emi"], int) and item["emi"] > 0
+            assert isinstance(item["indicative_emi"], str) and item["indicative_emi"]
+    assert seen_rm, "no queued lead in the export at all"
 
 
 # --------------------------------------------------------------------------- #
@@ -235,13 +249,24 @@ def test_the_fields_that_overlap_schema_md_are_spelled_the_same() -> None:
 
 
 def test_the_provenance_block_matches_the_eight_families(packed: SimpleNamespace) -> None:
+    """Without ``--bank`` every family is still ``SIMULATED`` — SM-6 only kicks in
+    behind the flag; SM-4/SM-5 (the roster and the EMI source) are unconditional,
+    and the ``hooks`` text now says so instead of pointing at a null.
+    """
     p = packed.out["provenance"]
     assert p["provenance_version"] == 1 and p["product"] == "sanket"
+    assert p["mode"] == "simulated"
     assert set(p["families"]) == {"identity", "casa_behaviour", "cross_bank", "holdings",
                                   "digital", "consent", "journey", "model"}
     assert set(p["families"].values()) == {"SIMULATED"}
-    assert p["hooks"]["rm_id"] is None
-    assert p["hooks"]["emi_source"] == "TYPICAL_EMI"
+    assert "SM-4" in p["hooks"]["rm_id"] and "roster" in p["hooks"]["rm_id"]
+    assert p["hooks"]["emi_source"] == "BANK_API_433_sandbox_fixture"
+    assert any("sanket_export.json" in x for x in p["hooks"]["pending"])
+
+    r = packed.out["roster"]
+    seeded = RO.load_roster(Path(__file__).resolve().parents[1] / "data")
+    assert r["source"] == "SIMULATED" and r["n_rms"] >= 1 and r["n_active"] <= r["n_rms"]
+    assert {rm["rm_id"] for rm in r["rms"]} == {rm.rm_id for rm in seeded.rms}
 
 
 # --------------------------------------------------------------------------- #

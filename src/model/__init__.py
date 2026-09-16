@@ -147,6 +147,11 @@ class ModelConfig:
     #: Skip the expensive one-off exhibits (permutation retrain, ablation-ready
     #: family map, baseline ladder) — used by the fast tests.
     quick: bool = False
+    #: SM-6 — read ``data/bank/pulled.json`` / ``provenance.json`` / ``fixture.json``
+    #: and emit ``data/export/sanket_export.json`` in the platform's contract
+    #: shape.  ``False`` (the default) is the pre-SM-6 pipeline: purely
+    #: synthetic, every provenance family ``SIMULATED``.  See ``model.bank``.
+    bank: bool = False
 
     lgbm: dict = field(default_factory=lambda: dict(
         n_estimators=600, learning_rate=0.04, num_leaves=31, min_child_samples=60,

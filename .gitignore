@@ -39,3 +39,4 @@ data/label_truth.csv
 data/model_metrics.json
 data/realism_report.json
 data/bank/pulled.json
+data/export/

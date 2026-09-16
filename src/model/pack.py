@@ -31,13 +31,16 @@ from . import (
     FORBIDDEN_INPUTS,
     PRODUCT_LABEL,
     PRODUCTS,
-    TYPICAL_EMI,
     WINDOW_DAYS,
     ModelConfig,
 )
+from . import bank as BK
 from . import copy as txt
+from . import emi as EMI
+from . import export as EXP
 from . import frame as F
 from . import metrics as M
+from . import roster as RO
 from .train import (
     Split,
     fit_ranker,
@@ -277,7 +280,7 @@ def _contrib_map(C: np.ndarray, feats: list[str], i: int) -> dict[str, float]:
 
 def build_queue(base: pd.DataFrame, P: np.ndarray, rk, shopper_score: np.ndarray,
                 uplift: np.ndarray, panel: pd.DataFrame, cfg: ModelConfig,
-                snap: int) -> tuple[list[dict], dict, dict]:
+                snap: int, rm_map: dict) -> tuple[list[dict], dict, dict]:
     """The cockpit queue at the snapshot month, plus the suppression exhibit.
 
     Suppressed rows are **scored and shown, never queued** — the rule the mentors
@@ -301,8 +304,10 @@ def build_queue(base: pd.DataFrame, P: np.ndarray, rk, shopper_score: np.ndarray
     snap_rows["uplift_pct"] = pd.Series(uplift[idx]).rank(pct=True).to_numpy()
 
     snap_rows["intent"] = np.where(elig, pd.Series(p_top).rank(pct=True).to_numpy(), 0.0)
+    # SM-5: the retained-income check against a bank-rate EMI, not a flat
+    # assumed constant — `EMI.REFERENCE_EMI` replaces `TYPICAL_EMI` here.
     cap = (snap_rows["safe_emi"].to_numpy(dtype=float)
-           / np.array([TYPICAL_EMI[p] for p in snap_rows["nbp"]], dtype=float))
+           / np.array([EMI.REFERENCE_EMI[p] for p in snap_rows["nbp"]], dtype=float))
     snap_rows["capacity"] = np.clip(cap, 0, 2) / 2
     snap_rows["blend"] = 0.65 * snap_rows["intent"] + 0.35 * snap_rows["capacity"]
 
@@ -337,10 +342,10 @@ def build_queue(base: pd.DataFrame, P: np.ndarray, rk, shopper_score: np.ndarray
     leads = []
     for pos in take.index:
         leads.append(_lead(snap_rows.loc[pos], pos_of[pos], Ps[pos], menu_i[pos], C, feats,
-                           n_snap, hist, snap_rows.loc[pos, "date"], queued=True))
+                           n_snap, hist, snap_rows.loc[pos, "date"], rm_map, queued=True))
     for pos in samp.index:
         leads.append(_lead(snap_rows.loc[pos], pos_of[pos], Ps[pos], menu_i[pos], C, feats,
-                           n_snap, hist, snap_rows.loc[pos, "date"], queued=False))
+                           n_snap, hist, snap_rows.loc[pos, "date"], rm_map, queued=False))
 
     reasons = (snap_rows.loc[~elig, "t_suppression_reason"].value_counts().to_dict())
     suppression = dict(
@@ -361,13 +366,15 @@ def build_queue(base: pd.DataFrame, P: np.ndarray, rk, shopper_score: np.ndarray
 
 
 def _lead(r, pos: int, probs: np.ndarray, menu_idx: np.ndarray, C: np.ndarray,
-          feats: list[str], n_snap: int, hist, date: str, queued: bool) -> dict:
+          feats: list[str], n_snap: int, hist, date: str, rm_map: dict, queued: bool) -> dict:
     top = PRODUCTS[int(menu_idx[0])]
     ctop = _contrib_map(C, feats, int(menu_idx[0]) * n_snap + pos)
     rs = txt.reasons_for(r, ctop) or ["Composite behavioural signal across credits, balances and browsing"]
     chips = txt.negative_chips(r, ctop)
 
-    emi = int(r.safe_emi) if r.safe_emi and r.safe_emi > 0 else TYPICAL_EMI[top]
+    # SM-5: the customer's own affordability if they have one, else the
+    # bank-rate reference EMI for the pitched product (was `TYPICAL_EMI`).
+    emi = int(r.safe_emi) if r.safe_emi and r.safe_emi > 0 else EMI.reference_emi(top)
     lang = "hi" if (int(str(r.cust_id).split("-")[1]) % 5) < 2 else "en"
     opener, why, obj_q, obj_a = (txt.PITCH_HI if lang == "hi" else txt.PITCH_EN)[top]
 
@@ -381,11 +388,14 @@ def _lead(r, pos: int, probs: np.ndarray, menu_idx: np.ndarray, C: np.ndarray,
             product=p, label=PRODUCT_LABEL[p], p=round(float(probs[int(j)]), 4),
             reason=txt.menu_reason(r, p, cj, PRODUCT_LABEL, w), window_days=w,
             contact_by=(as_at + pd.Timedelta(days=w)).strftime("%Y-%m-%d"),
-            # `emi` is what THIS customer's behaviour can carry; `indicative_emi`
-            # is the product's typical ticket.  Both are placeholders until SM-5
-            # replaces them with API 433 rates + API 473 schedules.
-            emi=int(r.safe_emi) if r.safe_emi and r.safe_emi > 0 else TYPICAL_EMI[p],
-            indicative_emi=TYPICAL_EMI[p], emi_source="TYPICAL_EMI",
+            # SM-5: `emi` is now the real number — the bank-rate EMI on this
+            # product's reference ticket (API 433 sandbox rate, standard
+            # amortisation formula).  `indicative_emi` is no longer a second
+            # number: it is a LABEL describing what `emi` is and where it came
+            # from, so a consumer never has to guess which of the two is the
+            # one to say out loud.  `emi_source` is the machine-readable tag.
+            emi=EMI.REFERENCE_EMI[p], indicative_emi=EMI.indicative_label(p),
+            emi_source=EMI.EMI_SOURCE[p],
         ))
 
     if float(r.uplift) < 0:
@@ -406,6 +416,7 @@ def _lead(r, pos: int, probs: np.ndarray, menu_idx: np.ndarray, C: np.ndarray,
         pass
 
     w_top = WINDOW_DAYS[top]
+    rm = rm_map.get(str(r.cust_id)) if queued else None
     return dict(
         id=str(r.cust_id), segment=str(r.segment), age=int(r.age), city_tier=int(r.city_tier),
         tenure_m=int(r.tenure_m),
@@ -431,9 +442,16 @@ def _lead(r, pos: int, probs: np.ndarray, menu_idx: np.ndarray, C: np.ndarray,
                    proof=[x.split(" — ")[0] for x in rs]),
         objection=dict(q=obj_q, a=obj_a.format(emi=emi)),
         nba=txt.NBA.get(str(r.tier), txt.NBA["cold"]) if queued else "",
-        rm_id=None, emi_source="TYPICAL_EMI",
+        # SM-4: round-robin assignment, baked in at export time.  Suppressed
+        # rows never get one — they are never going to be called, so tying
+        # them to a servicing RM in the export would claim a relationship the
+        # queue rule explicitly withholds.
+        rm_id=(rm.rm_id if rm is not None else None),
+        rm_name=(rm.rm_name if rm is not None else None),
+        rm_branch=(rm.rm_branch if rm is not None else None),
+        emi_source=EMI.EMI_SOURCE[top],
         provenance=dict(features="SIMULATED", journey="SIMULATED", campaign="SIMULATED",
-                        emi="TYPICAL_EMI", rates="NOT_COLLECTED"),
+                        emi=EMI.EMI_SOURCE[top], rates=EMI.EMI_SOURCE_BANK),
         spark=spark,
     )
 
@@ -514,9 +532,23 @@ def run(cfg: ModelConfig, out_json: Path | None = None,
               f"{sig['n_negative_unconstrained']}/4) | permuted AUC {perm:.3f}  "
               f"[{time.time() - t0:.0f}s]")
 
+    # ---- roster (SM-4) -------------------------------------------------------- #
+    # Round-robin, keyed by cust_id, over the whole drop-off population — not
+    # just this month's snapshot — so a customer keeps the same RM whether or
+    # not they make a given month's queue. Independent of `cfg.bank`: an RM
+    # directory is HRMS data, not the customer-column enrichment SM-6 gates.
+    roster_obj = RO.load_roster(cfg.data)
+    rm_map = RO.assign(base["cust_id"].unique(), roster_obj)
+
+    # ---- bank enrichment (SM-6, `--bank` only) ------------------------------- #
+    bank_ctx = BK.build_context(cfg.data, cfg.bank)
+    if verbose and cfg.bank:
+        print(f"  --bank: mode={bank_ctx.mode} families={bank_ctx.families} "
+              f"[{time.time() - t0:.0f}s]")
+
     # ---- queue -------------------------------------------------------------- #
     leads, counts, extra = build_queue(base, P, rk, shopper_all, u_all,
-                                       tables["panel"], cfg, snap)
+                                       tables["panel"], cfg, snap, rm_map)
     sup, n_pool = extra["suppression"], extra["n_contactable"]
     snap_rows, Psnap, elig_snap = extra["snap_rows"], extra["P"], extra["elig"]
 
@@ -708,20 +740,40 @@ def run(cfg: ModelConfig, out_json: Path | None = None,
         runtime_s=round(time.time() - t0, 1),
     )
     provenance = dict(
-        provenance_version=1, product="sanket", mode="simulated",
-        fixture_reason="No bank pull in this run: every column is generated by src/book and "
-                       "src/journeys and labelled SIMULATED.",
-        families={f: "SIMULATED" for f in ("identity", "casa_behaviour", "cross_bank", "holdings",
-                                           "digital", "consent", "journey", "model")},
-        hooks=dict(rm_id=None, emi_source="TYPICAL_EMI",
-                   pending=["SM-4 fills rm_id from API 442 accountManager / 508 HRMS",
-                            "SM-5 replaces TYPICAL_EMI with API 433 rates + API 473 schedules",
-                            "SM-6 emits data/bank/enriched.csv provenance per column"]),
+        provenance_version=1, product="sanket", mode=bank_ctx.mode if cfg.bank else "simulated",
+        fixture_reason=bank_ctx.reason if cfg.bank else
+            "No bank pull in this run: every column is generated by src/book and "
+            "src/journeys and labelled SIMULATED. Pass --bank to read data/bank/pulled.json "
+            "/ provenance.json / fixture.json instead.",
+        families=bank_ctx.families,
+        # SM-4/SM-5 landed (unconditionally, `--bank` or not); SM-6's bank
+        # overlay and platform export are what `--bank` still gates.
+        hooks=dict(
+            rm_id=f"SM-4 landed: round-robin over the {roster_obj.source} roster "
+                  f"({len(roster_obj.rms)} RMs, {len(roster_obj.active_rms)} active) — "
+                  "see the top-level `roster` block",
+            emi_source=EMI.EMI_SOURCE_BANK,
+            pending=["data/export/sanket_export.json (SM-6's platform contract shape) is "
+                     "only emitted when --bank is passed",
+                     "meta.model_run_id / git_sha / criteria_sha in that export are filled "
+                     "by the platform batch, not by this script"],
+        ),
     )
 
     out = dict(meta=meta, counts=counts, metrics=metrics, provenance=provenance,
-               gig_case_id=extra["gig_case_id"], leads=leads)
+               roster=RO.roster_block(roster_obj), gig_case_id=extra["gig_case_id"], leads=leads)
     _write(out, out_json, metrics_json, meta, metrics, verbose)
+
+    if cfg.bank and out_json is not None:
+        export_path = cfg.root / "data" / "export" / "sanket_export.json"
+        payload = EXP.build_export(cfg, meta, counts, metrics, leads, extra["gig_case_id"],
+                                   snap_rows, tables, rm_map, bank_ctx)
+        EXP.write(payload, export_path)
+        if verbose:
+            print(f"  --bank: wrote {export_path} "
+                  f"({len(payload['customers'])} customers, {len(payload['journeys'])} journeys, "
+                  f"{len(payload['leads'])} leads)  [{time.time() - t0:.0f}s]")
+
     return out
 
 

@@ -1,0 +1,52 @@
+# SM-4 — the seeded RM roster.
+#
+# Used by `src/model/roster.py` whenever `data/bank/pulled.json` does not name at
+# least one RM from API 442 `accountManager` / API 508 HRMS — which, absent a live
+# Atlas pull, is every run.  Every field below is fabricated: structurally
+# plausible Indian names, real IDBI-style branch names (reused from
+# `data/bank/fixture.json` for vocabulary consistency), and `rm_id` in the
+# `EIN-######` shape `data/bank/SCHEMA.md`'s `ein` id space and the platform's
+# `sanket_export.schema.json` both expect.
+#
+# Assignment (`src/model/roster.py:assign`) is a deterministic round-robin over
+# the `active` RMs below, keyed by `cust_id` sorted lexicographically — never by
+# score, month or queue position — so the same customer gets the same RM on
+# every run, regardless of model seed.
+_provenance: SIMULATED
+_note: >
+  Fabricated roster. No real employee, EIN or reporting line is represented.
+  Replaced automatically by data/bank/pulled.json's API 442/508 records once a
+  live Atlas pull exists.
+rms:
+  - rm_id: "EIN-402117"
+    rm_name: "Priya Sharma"
+    rm_branch: "Bandra Kurla Complex"
+    active: true
+  - rm_id: "EIN-402118"
+    rm_name: "Arjun Mehta"
+    rm_branch: "Andheri East"
+    active: true
+  - rm_id: "EIN-402119"
+    rm_name: "Sneha Iyer"
+    rm_branch: "Koramangala"
+    active: true
+  - rm_id: "EIN-402120"
+    rm_name: "Rohit Verma"
+    rm_branch: "Connaught Place"
+    active: true
+  - rm_id: "EIN-402121"
+    rm_name: "Anjali Nair"
+    rm_branch: "Salt Lake Sector V"
+    active: true
+  - rm_id: "EIN-402122"
+    rm_name: "Vikram Rao"
+    rm_branch: "T Nagar"
+    active: true
+  - rm_id: "EIN-402123"
+    rm_name: "Kavya Reddy"
+    rm_branch: "Sector 18 Noida"
+    active: true
+  - rm_id: "EIN-402124"
+    rm_name: "Aditya Kulkarni"
+    rm_branch: "Nariman Point"
+    active: true

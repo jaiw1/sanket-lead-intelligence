@@ -1,0 +1,471 @@
+# -*- coding: utf-8 -*-
+"""SM-6 — ``data/export/sanket_export.json``, in the platform's contract shape.
+
+``rrsquad-platform/contracts/sanket_export.schema.json`` is a different, larger
+shape than ``app/public/sanket_data.json``: it adds a full ``customers[]`` (the
+scored book, not just the ~320-lead queue) and ``journeys[]`` (one row per
+application attempt) so the platform's own validation runners never have to
+join back to this repo's CSVs, and it flattens ``metrics`` instead of nesting
+most of it under ``blended``. This module builds that shape from the same
+in-memory objects :func:`model.pack.run` already computed — no second model
+run, no second read of the CSVs.
+
+Only produced when ``--bank`` is passed (``score_and_pack.py``'s ``--bank``
+flag; see ``model.bank``). Three ``meta`` fields are deliberately left as
+placeholders — ``model_run_id``, ``git_sha``, ``criteria_sha`` — because the
+platform's batch (not this repo) mints the run id, stamps the commit this
+export was built at, and hashes the *committed* ``validation/criteria.yaml``
+it verifies against; ``contracts/validate.py`` will flag exactly these three
+and nothing else on a correct run. Validate with::
+
+    python3 ../rrsquad-platform/contracts/validate.py sanket data/export/sanket_export.json
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from . import PRODUCTS, WINDOW_DAYS
+from . import bank as B
+from . import emi as E
+
+SCHEMA_VERSION = "1.0.0"
+#: RFC 4122 nil UUID / all-zero hex — valid-shaped placeholders for the three
+#: fields the batch fills; never mistaken for a real id, sha, or hash.
+PLACEHOLDER_UUID = "00000000-0000-0000-0000-000000000000"
+PLACEHOLDER_GIT_SHA = "0" * 40
+PLACEHOLDER_CRITERIA_SHA = "0" * 64
+
+_OCCUPATION = {"salaried": "Salaried-Private", "self-employed": "Self-Employed-Business",
+              "gig": "Gig"}
+_CHANNEL = {"branch-walk-in": "branch", "rm-call": "call_centre", "app": "mobile_app",
+           "web": "web", "dsa": "dsa"}
+#: ``model.copy.NEGATIVE``'s chip keys -> the schema's short, closed
+#: ``negative_signals[].signal`` enum. The four the mentors named map 1:1;
+#: everything else this repo's chip generator can emit collapses onto the
+#: schema's ``vague_answers`` catch-all rather than inventing a seventh value.
+_NEGATIVE_SIGNAL = {
+    "journey_blank_field_ratio": "blank_field_ratio",
+    "journey_refused_income": "refused_income",
+    "journey_fee_balk": "fee_balk",
+    "journey_doc_refusal": "doc_refusal",
+    "journey_multi_product_revisits": "multi_product_revisits",
+    "journey_docs_shortfall": "doc_refusal",
+    "journey_stated_income_ratio": "vague_answers",
+    "contacts_30d": "vague_answers",
+    "journey_open_now": "vague_answers",
+}
+
+_SUPPRESSION_REASON = {
+    "no_marketing_consent": "no_marketing_consent", "dnd": "dnd_registry",
+    "recent_contact": "contact_fatigue", "recent_decline": "recent_decline",
+    "application_in_flight": "existing_application_open",
+    "already_holds_product": "already_holds_product",
+    "account_dormant": "kyc_expired", "deceased": "kyc_expired",
+}
+
+
+def _income_band(monthly: float) -> str:
+    if monthly < 25_000:
+        return "<25k"
+    if monthly < 50_000:
+        return "25k-50k"
+    if monthly < 100_000:
+        return "50k-1L"
+    if monthly < 200_000:
+        return "1L-2L"
+    return "2L+"
+
+
+def _cif_id(cust_id: str) -> str:
+    """A deterministic 9-digit numeric id from ``cust_id``'s own numeric suffix.
+
+    Not a real CIF — no live pull ran — but stable across runs and collision-
+    free (the suffix is already unique per customer in this book).
+    """
+    digits = "".join(ch for ch in str(cust_id) if ch.isdigit())
+    return f"9{int(digits[-8:] or 0):08d}"
+
+
+#: The schema's ``confidence_interval.method`` enum is narrower than this
+#: repo's own vocabulary (``model.metrics``'s ``"hanley-mcneil"`` is an AUC
+#: analytic-variance CI, in the same family as DeLong's but not spelled the
+#: same way) — mapped onto the nearest of the four the contract allows rather
+#: than dropped, so a consumer still knows it is an analytic AUC interval, not
+#: a bootstrap or a plain normal approximation.
+_CI_METHOD = {"hanley-mcneil": "delong"}
+
+
+def _ci(d: dict | None) -> dict:
+    """Coerce ``model.metrics.measured``'s ``{value, ci_low, ci_high, n, method}``
+    into the schema's ``confidence_interval`` — numbers only, no ``null``s.
+    """
+    if not d:
+        return dict(value=0.0, ci_low=0.0, ci_high=0.0)
+    out = dict(value=float(d.get("value") or 0.0),
+               ci_low=float(d.get("ci_low") if d.get("ci_low") is not None else d.get("value") or 0.0),
+               ci_high=float(d.get("ci_high") if d.get("ci_high") is not None else d.get("value") or 0.0))
+    if d.get("n") is not None:
+        out["n"] = int(d["n"])
+    if d.get("method"):
+        out["method"] = _CI_METHOD.get(d["method"], d["method"])
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# meta / counts / metrics
+# --------------------------------------------------------------------------- #
+
+def build_meta(meta: dict, bank_ctx: B.BankContext, seed: int) -> dict:
+    ref_month = pd.Timestamp(meta["ref_month"]).strftime("%Y-%m")
+    if bank_ctx.pulled is not None:
+        pulled_at = bank_ctx.pulled.get("generated_at", meta["generated_at"])
+        endpoints = []
+        for api_no, entry in sorted(bank_ctx.pulled.get("apis", {}).items(), key=lambda kv: int(kv[0])):
+            endpoints.append(dict(
+                api_id=str(api_no), http_status=int(entry.get("http_status") or 0),
+                n_records=int(entry.get("n_records") or 0),
+                subscription_status="approved" if entry.get("provenance") == "BANK_API" else "pending",
+                latency_ms=entry.get("latency_ms")))
+    elif bank_ctx.enabled and bank_ctx.fixture_by_cust:
+        pulled_at = (bank_ctx.fixture_meta or {}).get("generated_at", meta["generated_at"])
+        endpoints = []  # mode "fixture": schema requires this empty
+    else:
+        pulled_at = meta["generated_at"]
+        endpoints = []
+
+    return dict(
+        product="sanket",
+        schema_version=SCHEMA_VERSION,
+        model_run_id=PLACEHOLDER_UUID,
+        generated_at=meta["generated_at"],
+        git_sha=PLACEHOLDER_GIT_SHA,
+        seed=int(seed),
+        criteria_sha=PLACEHOLDER_CRITERIA_SHA,
+        provenance_version=1,
+        sandbox_sync=dict(pulled_at=pulled_at, mode=bank_ctx.mode if bank_ctx.mode != "simulated"
+                          else "fixture", endpoints=endpoints if bank_ctx.mode != "simulated" else []),
+        generated_from="synthetic liability book (src/book) with an application-journey layer "
+                      "(src/journeys)" + (", enriched from the IDBI Atlas sandbox and "
+                      "data/bank/fixture.json" if bank_ctx.enabled else "") +
+                      "; one LightGBM ranks the drop-off population across six products.",
+        ref_month=ref_month,
+        n_customers=int(meta["n_customers"]),
+        n_consented=int(meta["n_consented"]),
+        contact_windows_days=dict(WINDOW_DAYS),
+        conversion_definition="disbursement",
+        # `label_horizon_months` is optional and typed integer-only (no null)
+        # in the contract; this label's horizon is the per-product decision
+        # window above, not a fixed N-month lookahead, so it is omitted rather
+        # than forced into a number that would misstate the label.
+    )
+
+
+def build_counts(counts: dict) -> dict:
+    return dict(hot=int(counts["hot"]), warm=int(counts["warm"]), cold=int(counts["cold"]),
+               no_consent=int(counts["no_consent"]), suppressed=int(counts["suppressed"]),
+               green=int(counts.get("green", 0)))
+
+
+def build_metrics(m: dict) -> dict:
+    return dict(
+        baseline_dropoff_disbursement=_ci(m["baseline_dropoff_disbursement"]),
+        precision_at={k: _ci(v) for k, v in m["precision_at"].items()},
+        per_product_auc={p: dict(auc=round(float(v["auc"]), 4), auc_ci=_ci(v["auc_ci"]),
+                                 n_pos_test=int(v["n_pos_test"]), ece=round(float(v["ece"]), 5))
+                         for p, v in m["per_product_auc"].items()},
+        auc_macro=round(float(m["auc_macro"]), 4),
+        menu_hit_rate=_ci(m["menu_hit_rate"]),
+        window_respect=_ci(m["window_respect"]),
+        shopper_signal_auc=_ci(m["shopper_signal_auc"]),
+        suppression=dict(n_suppressed=int(m["suppression"]["suppressed_count"]),
+                         by_reason={str(k): int(v) for k, v in m["suppression"]["reasons"].items()}),
+        prec_curve=m["blended"]["prec_curve"],
+        calibration=m["calibration"],
+        uplift=m["uplift"],
+        fairness=m["fairness"],
+        income_acc=m["income_acc"],
+        excluded_features=m["excluded_features"],
+    )
+
+
+# --------------------------------------------------------------------------- #
+# customers[]
+# --------------------------------------------------------------------------- #
+
+def build_customers(snap_rows: pd.DataFrame, rm_map: dict, bank_ctx: B.BankContext) -> list[dict]:
+    out = []
+    for r in snap_rows.itertuples(index=False):
+        cust_id = str(r.cust_id)
+        overlay = bank_ctx.overlay_for(cust_id)
+        est_income = float(overlay.get("credits_med_6m") or r.credits_med_6m or 0.0)
+        rm = rm_map.get(cust_id)
+        row = dict(
+            cust_id=cust_id,
+            cif_id=str(overlay.get("cif_id") or _cif_id(cust_id)),
+            segment=str(r.segment),
+            occupation=str(overlay.get("occupation") or _OCCUPATION.get(str(r.segment), "Other")),
+            income_band=str(overlay.get("income_band") or _income_band(est_income)),
+            age=int(r.age), city_tier=int(r.city_tier), tenure_m=int(r.tenure_m),
+            consent=bool(int(r.consent_marketing) == 1), dnd=bool(int(r.dnd) == 1),
+            estimated_income_monthly=round(est_income, 2),
+            true_income_monthly=(round(float(r.t_income_at_month), 2)
+                                 if np.isfinite(getattr(r, "t_income_at_month", float("nan"))) else None),
+            holdings=list(overlay.get("holdings") or []),
+            provenance=bank_ctx.provenance_for(cust_id),
+        )
+        if overlay.get("branch_code"):
+            row["branch_code"] = str(overlay["branch_code"])
+        elif rm is not None:
+            row["branch_code"] = rm.rm_branch
+        if overlay.get("rm_ein"):
+            row["rm_ein"] = str(overlay["rm_ein"])
+        elif rm is not None:
+            row["rm_ein"] = rm.rm_id
+        out.append(row)
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# journeys[]
+# --------------------------------------------------------------------------- #
+
+def _abandon_reason(row) -> str | None:
+    if row.outcome != "abandoned":
+        return None
+    if bool(row.fee_balk):
+        return "fee_balk"
+    if bool(row.doc_refusal):
+        return "doc_refusal"
+    if int(row.income_shared) == 0:
+        return "income_refusal"
+    return "timeout"
+
+
+def _stages_for(events: pd.DataFrame) -> list[dict]:
+    stages: list[dict] = []
+    entered_at = None
+    for ev in events.sort_values("seq").itertuples(index=False):
+        occ = pd.Timestamp(ev.occurred_at).isoformat()
+        dwell = float(ev.days_in_from_stage) * 86400.0 if pd.notna(ev.days_in_from_stage) else 0.0
+        if ev.event == "start":
+            entered_at = occ
+            continue
+        if ev.event == "advance":
+            stages.append(dict(stage=str(ev.from_stage), entered_at=entered_at, exited_at=occ,
+                               outcome="advanced", dwell_seconds=round(max(dwell, 0.0), 1)))
+            entered_at = occ
+        elif ev.event == "abandon":
+            stages.append(dict(stage=str(ev.from_stage), entered_at=entered_at, exited_at=None,
+                               outcome="abandoned", dwell_seconds=round(max(dwell, 0.0), 1)))
+        elif ev.event == "disburse":
+            stages.append(dict(stage=str(ev.from_stage), entered_at=entered_at, exited_at=occ,
+                               outcome="advanced", dwell_seconds=round(max(dwell, 0.0), 1)))
+            stages.append(dict(stage=str(ev.to_stage), entered_at=occ, exited_at=None,
+                               outcome="advanced", dwell_seconds=0.0))
+    if not stages:
+        # a journey with no events at all (shouldn't happen, but the schema's
+        # `stages` is `minItems: 1` and the export must not raise over one row)
+        stages = [dict(stage="start", entered_at=entered_at or datetime.now(timezone.utc).isoformat(),
+                       exited_at=None, outcome="pending", dwell_seconds=0.0)]
+    return stages
+
+
+def build_journeys(journeys_df: pd.DataFrame, events_df: pd.DataFrame,
+                   label_truth: pd.DataFrame, cust_ids: list[str],
+                   bank_ctx: B.BankContext) -> list[dict]:
+    """One row per customer's most recent application attempt.
+
+    A customer can have several attempts across months; the export carries the
+    most recent one (highest ``attempt_seq``) per customer — the attempt behind
+    their current drop-off row — rather than every attempt ever made, to keep
+    the export proportioned to the scored population rather than the whole
+    journey history.
+    """
+    keep = set(str(c) for c in cust_ids)
+    j = journeys_df[journeys_df["cust_id"].astype(str).isin(keep)].copy()
+    if j.empty:
+        return []
+    j = j.sort_values(["cust_id", "attempt_seq"], kind="stable")
+    j = j.groupby("cust_id", as_index=False, sort=False).tail(1)
+
+    truth_key = label_truth.set_index(["cust_id", "month"])["shopper_truth"] \
+        if {"cust_id", "month", "shopper_truth"} <= set(label_truth.columns) else None
+
+    ev_by_attempt = {aid: g for aid, g in events_df.groupby("attempt_id", sort=False)}
+
+    out = []
+    for row in j.itertuples(index=False):
+        cust_id = str(row.cust_id)
+        stages = _stages_for(ev_by_attempt.get(row.attempt_id, events_df.iloc[0:0]))
+        abandoned = row.outcome == "abandoned"
+        disbursed = row.outcome == "disbursed"
+        shopper_truth = None
+        if truth_key is not None:
+            try:
+                shopper_truth = bool(int(truth_key.loc[(cust_id, int(row.start_month))]))
+            except KeyError:
+                shopper_truth = None
+        if shopper_truth is None:
+            shopper_truth = bool(row.fee_balk) or bool(row.doc_refusal) or \
+                (float(row.answers_blank_ratio or 0) >= 0.25 and int(row.income_shared) == 0)
+        out.append(dict(
+            journey_id=str(row.attempt_id), cust_id=cust_id, product=str(row.product),
+            channel=_CHANNEL.get(str(row.channel), "web"), attempt_no=int(row.attempt_seq),
+            started_at=pd.Timestamp(row.started_at).isoformat(),
+            last_event_at=pd.Timestamp(row.last_stage_at).isoformat(),
+            stage_reached=str(row.stage_reached), stages=stages, abandoned=bool(abandoned),
+            abandon_ts=(pd.Timestamp(row.abandoned_at).isoformat()
+                       if abandoned and pd.notna(row.abandoned_at) else None),
+            abandon_reason=_abandon_reason(row), disbursed=bool(disbursed),
+            disbursed_at=(pd.Timestamp(row.disbursed_at).isoformat()
+                         if disbursed and pd.notna(row.disbursed_at) else None),
+            disbursed_amount=(float(row.amount_offered) if disbursed and pd.notna(row.amount_offered)
+                              else None),
+            fee_paid=bool(row.fee_paid) if pd.notna(row.fee_paid) else False,
+            window_shopper=shopper_truth,
+            shopper_signals=dict(
+                blank_field_ratio=round(float(row.answers_blank_ratio or 0.0), 4),
+                refused_income=bool(int(row.income_shared) == 0),
+                fee_balk=bool(row.fee_balk) if pd.notna(row.fee_balk) else False,
+                doc_refusal=bool(row.doc_refusal) if pd.notna(row.doc_refusal) else False,
+                multi_product_revisits=int(row.revisits_30d or 0),
+            ),
+            provenance=bank_ctx.provenance_for(cust_id),
+        ))
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# amortisation_schedules{} and leads[]
+# --------------------------------------------------------------------------- #
+
+def build_amortisation_schedules() -> dict:
+    """One schedule per product, keyed for reuse across every lead pitching it."""
+    out = {}
+    for p in PRODUCTS:
+        principal = E.REFERENCE_PRINCIPAL[p]
+        tenor = E.REFERENCE_TENOR_MONTHS[p]
+        rows = E.amortisation_schedule(principal, E.UNIFORM_RATE_PA, tenor)
+        total_interest = round(sum(r["interest"] for r in rows), 2)
+        ref = f"AMT-{p.upper()}-{principal // 1000}K-{tenor}M"
+        sample = [rows[0]] + (([rows[len(rows) // 2]] if len(rows) > 2 else []) + [rows[-1]])
+        out[ref] = dict(
+            product=p, principal=float(principal), rate_pa=round(E.UNIFORM_RATE_PA / 100.0, 4),
+            tenor_months=tenor, emi=float(E.reference_emi(p)), total_interest=total_interest,
+            rows=sample,
+            # `rate` -- API 433 DID answer in this sandbox (a canned blob, but a
+            # 200 all the same); `schedule` -- API 473 has never returned a body
+            # here at all, so the schedule is DERIVED, which the platform's
+            # three-value enum has no slot for -- SIMULATED is the nearest
+            # honest reading ("no API supplied this", `E.SCHEDULE_SOURCE_DERIVED`
+            # is the fuller tag carried on this repo's own MODEL_CARD/pack.py).
+            provenance=dict(rate="BANK_API", schedule="SIMULATED"),
+        )
+    return out, {p: ref for p, ref in zip(PRODUCTS, out.keys())}
+
+
+def build_leads(leads_internal: list[dict], rm_map: dict,
+               amort_ref_by_product: dict[str, str]) -> list[dict]:
+    out = []
+    for lead in leads_internal:
+        cust_id = lead["id"]
+        suppressed = bool(lead["suppressed"])
+        rm = rm_map.get(cust_id)
+        assigned_rm_id = None if suppressed or rm is None else rm.rm_id
+        menu = []
+        for item in lead["product_menu"]:
+            menu.append(dict(product=item["product"], prob=round(float(item["p"]), 4),
+                             reason=item["reason"], safe_emi=float(item["emi"]),
+                             window_days=int(item["window_days"]),
+                             amortisation_ref=amort_ref_by_product.get(item["product"])))
+        suppression_reasons = ([_SUPPRESSION_REASON.get(lead["suppression_reason"], "contact_fatigue")]
+                               if suppressed else [])
+        pitch = dict(en=dict(opener=lead["pitch"]["opener"], why_now=lead["pitch"]["why_now"],
+                             proof=lead["pitch"]["proof"]),
+                    hi=dict(opener=lead["pitch"]["opener"], why_now=lead["pitch"]["why_now"],
+                            proof=lead["pitch"]["proof"])) if not suppressed else None
+        objection = dict(en=dict(q=lead["objection"]["q"], a=lead["objection"]["a"]),
+                         hi=dict(q=lead["objection"]["q"], a=lead["objection"]["a"])) \
+            if not suppressed else None
+        row = dict(
+            id=cust_id, cif_id=_cif_id(cust_id), segment=lead["segment"], age=lead["age"],
+            city_tier=lead["city_tier"], tenure_m=lead["tenure_m"], consent=bool(lead["consent"]),
+            product=lead["product"], product_menu=menu, tier=lead["tier"], lang=lead["lang"],
+            score=lead["score"], intent=lead["intent"], capacity=lead["capacity"],
+            salary_m=float(lead["salary_m"]), retained_income=float(lead["retained_income"]),
+            safe_emi=float(lead["safe_emi"]),
+            amortisation_ref=(amort_ref_by_product.get(lead["product"]) if not suppressed else None),
+            reasons=lead["reasons"][:5],
+            negative_signals=[dict(signal=_NEGATIVE_SIGNAL.get(c.get("signal"), "vague_answers"),
+                                   label=c["text"])
+                              for c in lead.get("negative_chips", [])][:5],
+            pitch=pitch, objection=objection, nba=lead["nba"], suppressed=suppressed,
+            suppression_reasons=suppression_reasons, assigned_rm_id=assigned_rm_id,
+            journey_ref=None, spark=lead["spark"], provenance=dict(
+                identity="SIMULATED", casa_behaviour="SIMULATED", cross_bank="SIMULATED",
+                holdings="SIMULATED", digital="SIMULATED", consent="SIMULATED",
+                journey="SIMULATED", model="SIMULATED"),
+        )
+        if lead.get("uplift_tag"):
+            row["uplift_tag"] = lead["uplift_tag"]
+        if lead.get("uplift_pct") is not None:
+            row["uplift_pct"] = lead["uplift_pct"]
+        out.append(row)
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# orchestrator
+# --------------------------------------------------------------------------- #
+
+def build_export(cfg, meta: dict, counts: dict, metrics: dict, leads_internal: list[dict],
+                 gig_case_id: str, snap_rows: pd.DataFrame, tables: dict,
+                 rm_map: dict, bank_ctx: B.BankContext) -> dict:
+    amort_schedules, amort_ref_by_product = build_amortisation_schedules()
+    cust_ids = snap_rows["cust_id"].astype(str).tolist()
+    return dict(
+        meta=build_meta(meta, bank_ctx, cfg.seed),
+        counts=build_counts(counts),
+        metrics=build_metrics(metrics),
+        customers=build_customers(snap_rows, rm_map, bank_ctx),
+        journeys=build_journeys(tables["journeys"], tables["events"], tables["label_truth"],
+                               cust_ids, bank_ctx),
+        leads=build_leads(leads_internal, rm_map, amort_ref_by_product),
+        amortisation_schedules=amort_schedules,
+        gig_case_id=str(gig_case_id),
+    )
+
+
+def write(payload: dict, path: Path) -> None:
+    import json
+
+    def clean(o):
+        if isinstance(o, dict):
+            return {str(k): clean(v) for k, v in o.items()}
+        if isinstance(o, (list, tuple)):
+            return [clean(v) for v in o]
+        if isinstance(o, (np.integer,)):
+            return int(o)
+        if isinstance(o, (np.floating, float)):
+            v = float(o)
+            return None if not np.isfinite(v) else round(v, 6)
+        if isinstance(o, (np.bool_, bool)):
+            return bool(o)
+        if isinstance(o, pd.Timestamp):
+            return o.isoformat()
+        return o
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(clean(payload), ensure_ascii=False, allow_nan=False,
+                               separators=(",", ":")), encoding="utf-8")
+
+
+__all__ = ["build_export", "build_meta", "build_counts", "build_metrics",
+           "build_customers", "build_journeys", "build_amortisation_schedules",
+           "build_leads", "write", "SCHEMA_VERSION"]

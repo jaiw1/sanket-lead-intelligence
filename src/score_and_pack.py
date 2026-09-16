@@ -60,10 +60,16 @@ def main(argv=None) -> int:
     ap.add_argument("--no-write", action="store_true", help="measure but write no files")
     ap.add_argument("--out", default=str(ROOT / "app" / "public" / "sanket_data.json"))
     ap.add_argument("--metrics-out", default=str(ROOT / "data" / "model_metrics.json"))
+    ap.add_argument("--bank", action="store_true",
+                    help="SM-6: read data/bank/pulled.json + provenance.json (falling back to "
+                         "data/bank/fixture.json) and additionally emit "
+                         "data/export/sanket_export.json in the platform's contract shape. "
+                         "Without this flag the pipeline is purely synthetic.")
     a = ap.parse_args(argv)
 
     seeds = tuple(int(s) for s in a.seeds.split(",") if s.strip())
-    cfg = ModelConfig(root=ROOT, seed=seeds[0], seeds=seeds, budget=a.budget, quick=a.quick)
+    cfg = ModelConfig(root=ROOT, seed=seeds[0], seeds=seeds, budget=a.budget, quick=a.quick,
+                      bank=a.bank)
     out = run(cfg,
               out_json=None if a.no_write else Path(a.out),
               metrics_json=None if a.no_write else Path(a.metrics_out))

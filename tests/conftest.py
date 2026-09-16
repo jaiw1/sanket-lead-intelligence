@@ -14,7 +14,8 @@ from types import SimpleNamespace
 
 import pytest
 
-SRC = Path(__file__).resolve().parents[1] / "src"
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
@@ -113,18 +114,66 @@ def model_run(model_dir: Path) -> SimpleNamespace:
 
 @pytest.fixture(scope="session")
 def packed(model_dir: Path, tmp_path_factory) -> SimpleNamespace:
-    """The whole ``score_and_pack`` export, run once on the small book."""
+    """The whole ``score_and_pack`` export, run once on the small book.
+
+    ``cfg.root`` is a throwaway pytest tmp dir (only ``model_dir``, monkey-
+    patched in below, holds real CSVs), so ``cfg.data`` does not point at this
+    repo's actual ``data/`` — SM-4's roster still needs the real, committed
+    ``data/roster.yaml``, so ``model.roster.load_roster`` is pointed at this
+    repo's root the same way ``model.pack.F.load_tables`` is pointed at
+    ``model_dir``. ``model.bank.build_context`` needs no such patch: a
+    nonexistent ``data/bank/`` degrades to all-``SIMULATED`` by design.
+    """
     from model import ModelConfig
     import model.pack as pack
 
     out = tmp_path_factory.mktemp("pack")
     cfg = ModelConfig(root=model_dir.parent, **MODEL_KW)
-    real = pack.F.load_tables
-    pack.F.load_tables = lambda _d: real(model_dir)
+    real_load_tables = pack.F.load_tables
+    real_load_roster = pack.RO.load_roster
+    pack.F.load_tables = lambda _d: real_load_tables(model_dir)
+    pack.RO.load_roster = lambda _d: real_load_roster(ROOT / "data")
     try:
         payload = pack.run(cfg, out_json=out / "sanket_data.json",
                            metrics_json=out / "model_metrics.json", verbose=False)
     finally:
-        pack.F.load_tables = real
+        pack.F.load_tables = real_load_tables
+        pack.RO.load_roster = real_load_roster
     return SimpleNamespace(out=payload, json_path=out / "sanket_data.json",
                            metrics_path=out / "model_metrics.json", cfg=cfg)
+
+
+@pytest.fixture(scope="session")
+def packed_bank(model_dir: Path, tmp_path_factory) -> SimpleNamespace:
+    """``packed``, with ``--bank`` on: exercises SM-6's overlay + platform export.
+
+    Points ``model.bank.build_context`` at this repo's real ``data/`` (the
+    committed ``data/bank/fixture.json``) for the same reason ``packed`` points
+    ``model.roster.load_roster`` there — the small book's customers overlap
+    the fixture's ``cust_id``\\ s by construction only when both come from the
+    real 60,000-row id space, which this session's tiny synthetic book does
+    not share. This fixture is about exercising the *mechanism* (the fallback
+    chain, the export shape), not about the small book's own customers landing
+    in the fixture's 120.
+    """
+    from model import ModelConfig
+    import model.pack as pack
+
+    out = tmp_path_factory.mktemp("pack_bank")
+    cfg = ModelConfig(root=model_dir.parent, **{**MODEL_KW, "bank": True})
+    real_load_tables = pack.F.load_tables
+    real_load_roster = pack.RO.load_roster
+    real_build_context = pack.BK.build_context
+    pack.F.load_tables = lambda _d: real_load_tables(model_dir)
+    pack.RO.load_roster = lambda _d: real_load_roster(ROOT / "data")
+    pack.BK.build_context = lambda _d, enabled: real_build_context(ROOT / "data", enabled)
+    try:
+        payload = pack.run(cfg, out_json=out / "sanket_data.json",
+                           metrics_json=out / "model_metrics.json", verbose=False)
+    finally:
+        pack.F.load_tables = real_load_tables
+        pack.RO.load_roster = real_load_roster
+        pack.BK.build_context = real_build_context
+    return SimpleNamespace(out=payload, json_path=out / "sanket_data.json",
+                           metrics_path=out / "model_metrics.json",
+                           export_path=cfg.root / "data" / "export" / "sanket_export.json", cfg=cfg)
