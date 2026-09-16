@@ -15,6 +15,52 @@ campaign/contact history. SD-S5 is shipped as a data structure (§4) and measure
 
 ---
 
+## Purpose
+
+SANKET ("Prospect Assist AI") needs a customer population, an application history and a
+contact/label table that do not exist in the Atlas sandbox — the sandbox is mock data only, and
+the fields this model needs (product-page dwell, journey stage outcomes, window-shopper signals,
+marketing consent, campaign history) are not collected by any of the 25 bank APIs in the first
+place (`data/bank/SCHEMA.md`, "Fields no API supplies"). This card is what makes that acceptable:
+every number in the README, the deck and the portal submission has to trace back to a generator,
+a parameter, and one of three provenance tags (§0) — not to a claim about India or about IDBI's
+real book. It is the single document a jury, a bank reviewer or a teammate reads to answer "where
+did this number come from, and how sure should I be of it."
+
+Read order for a first pass: this section → §0 (provenance legend) → §1 (files/grain) →
+**Generation pipeline** below → §13 (the complete parameter table) → §14 (the realism-check
+summary) → §15 (known unrealisms, merged) → §16 (what a jury will push on). The detailed
+per-lane sections (§2–§12) are the reference material everything above summarises.
+
+## Generation pipeline
+
+Four stages, run in this order, each reading only what the previous stage wrote — never
+regenerating it, never contradicting it:
+
+```
+1. python3 src/make_book.py                         # §2–§9   customer_panel.csv, customer_book.csv,
+                                                      #         liability_book_truth.csv
+2. python3 src/make_journeys.py                      # §11     journeys.csv, journey_events.csv,
+   (reads the book; never regenerates it)            #         journey_truth.csv
+                                                      # §12.4   campaigns.csv                (SD-S6)
+                                                      # §12.1–3 labels.csv, label_truth.csv   (SD-S4)
+                                                      #         journey_params.json (every solved
+                                                      #         knob and realised headline number)
+3. python3 src/score_and_pack.py   [frozen — SM-1's lane; not touched or run by SD-S7]
+4. python3 src/realism.py --out data/realism_report.json   # §14   independent realism audit over
+                                                             #       every CSV stages 1–2 wrote
+```
+
+Stage 1 is the only place any latent ground truth is decided — *who* converts, on which product,
+in which month (§3, §4). Stage 2 never re-decides that; it draws a *path* consistent with it
+(§11.2) and then, on top of the path, a contact history and a counterfactual label table under an
+*intervention* (§12.1–§12.2). Stage 4 (this lane, SD-S7) reads only the CSVs stages 1–2 wrote —
+it does not import or call either stage's own `check()` function, so it is a second, independent
+opinion rather than a re-run of the generator's opinion of itself (see `src/realism.py`'s module
+docstring).
+
+---
+
 ## 0. Provenance legend
 
 Every parameter in this card carries one of three labels.
@@ -27,6 +73,12 @@ Every parameter in this card carries one of three labels.
 
 Most of this book is `assumed`, and that is the honest position: a synthetic book's job is to be
 *coherent and hard*, not to claim it measured India.
+
+**SD-S7 verification (2026-09-16).** Every `sourced-approx` figure that existed at the time this
+lane started was checked against its named public source; see §13.1 for the URL, the retrieval
+date and the figure actually found. All seven checked out within 20% of the anchor the generator
+uses — none needed a discrepancy note for the owner, and the generator was not changed. `sourced`
+remains empty: nothing in this book claims to be a direct reproduction of a published figure.
 
 ---
 
@@ -1037,3 +1089,364 @@ shopper −0.70 · response split opened 0.46 / engaged 0.30 / declined 0.22 / o
 **Fatigue:** decay 0.72 per trailing-30-day contact, floor 0.12, hard 30-day window.
 **Suppression:** contact cool-off 7 days · decline cool-off 90 days · deceased 0.15% · dormant
 1.2% · pitch floor 0.35 · products holdable = home (`has_home_loan`), auto (`has_auto_emi`).
+
+---
+
+## 13. Complete parameter table (SD-S7, merged from §0–§12)
+
+Every parameter named anywhere in §2–§12, in one table, deduped against the per-section tables it
+is transcribed from. Large 2-D matrices that already have their own faithfully-rendered table
+elsewhere (the substitution matrix, the converter product mix, the per-gate product-effect
+matrix, the funnel-shape table, the seasonality table) are **indexed here, not retyped** — a
+second hand-copy of a 42-cell matrix is a second place for it to drift from the generator, not a
+consolidation. Everything else — every scalar and every short vector — is transcribed in full.
+
+### 13.1 Verified `sourced-approx` figures (SD-S7, 2026-09-16)
+
+The seven anchors SD-S1 flagged as needing verification. All seven were found within the ≤10
+minutes budgeted per item; none differ from the generator's anchor by more than 20%, so none
+needed a discrepancy note and **the generator was not changed**, per the SD-S7 brief.
+
+| # | Generator anchor | Public figure found | Source | Retrieved on |
+|---|---|---|---|---|
+| 1 | `population.py` segment mix: PLFS "near a fifth of all workers" are regular wage/salaried | **21.7%** regular wage/salaried workers, PLFS 2023-24 Annual Report (July 2023–June 2024) | [PIB — PLFS Annual Report July 2023–June 2024](https://www.pib.gov.in/PressReleasePage.aspx?PRID=2057970&reg=48&lang=2) | 2026-09-16 |
+| 2 | `products.py` `PRODUCT_MIX`: "RBI's *Sectoral Deployment of Bank Credit* makes housing the largest personal-loan category by value" | Confirmed — housing is the largest constituent of the personal-loan segment; housing credit +9.7% YoY, Aug 2025 | [RBI Sectoral Deployment of Bank Credit](https://rbi.org.in/Scripts/Data_Sectoral_Deployment.aspx); [ICICIdirect summary](https://www.icicidirect.com/research/equity/trending-news/rbi-non-food-credit-grows-by-10-in-august-2025) | 2026-09-16 |
+| 3 | `population.py` `has_card`: "RBI's credit-cards-in-force series ~110mn" | **111.2–114.9 million** cards in force through 2025 (May: 111.2mn; Nov: 114.9mn) | [Business Standard — cards in force, June 2025](https://www.business-standard.com/finance/news/credit-card-in-force-stays-flat-in-june-2025-125072201440_1.html) | 2026-09-16 |
+| 4 | `population.py` `card_spend_base`: "≈ ₹15k of spend per card per month" | **₹16,900–17,060/month** average spend per card, Jan–Feb 2025 (13% YoY *fall* per card even as cards-in-force grew) | [Business Standard — average spend per card falls 13% to ₹17,060](https://www.business-standard.com/finance/personal-finance/ticket-size-squeeze-average-spend-per-credit-card-falls-13-to-17-060-yoy-126022600164_1.html) | 2026-09-16 |
+| 5 | `population.py` `has_insurance`: "IRDAI's life-insurance penetration ≈ 3% of GDP" | **2.8%** in FY2023-24 (down from 3.0% in FY2022-23) | [Business Standard — IRDAI Annual Report 2023-24](https://www.business-standard.com/finance/insurance/irdai-annual-report-2023-24-insurance-penetration-decline-124122500470_1.html) | 2026-09-16 |
+| 6 | `population.py` `gold_holding_g`: "World Gold Council ≈ 25,000 t household gold" | **~25,000 t**, valued ≈ US$2.4tn (WGC's July 2023 figure, still the WGC-attributed anchor; note other non-WGC estimates now run 27,871–34,600 t) | [World Gold Council — India gold market series](https://www.gold.org/goldhub/research/gold-investment-market-and-financialisation-india-gold-market-series); [IMP.News summary of the WGC ~25,000t figure](https://imp.news/economy/indias-household-gold-estimated-at-25000-tonnes-87068/) | 2026-09-16 |
+| 7 | `population.py` / `channels.py` `upi_share`: "NPCI P2M is a majority of UPI volume, low ticket" | **63–64%** of UPI volume is P2M in 2025, up from 39% in mid-2020 | [SBI Research — New Insights from UPI Data, Aug 2025](https://sbi.bank.in/documents/13958/14472/New+Insights+from+UPI+Data_SBI+Research.pdf) | 2026-09-16 |
+| — | `channels.py` `MANDATE_FAIL_BASE`: "NPCI NACH debit success well below 100%, dominated by NBFC/MFI mandates — the bank's own base rate is deliberately far lower" | Ecosystem-wide NACH debit: **~67% success by volume, ~73% by value** (most recent public breakdown found; 2021, Aug). A 2025-specific NACH-debit success figure was not located inside the 10-minute budget for this one — the qualitative claim ("well below 100%") is confirmed; the exact current ecosystem number is not. | [Business Standard — auto-debit payment failures, 2021 NPCI data](https://www.business-standard.com/article/finance/auto-debit-payment-failures-ease-in-august-shows-npci-data-121090900013_1.html) | 2026-09-16 |
+
+Item 7's NACH figure is the one imperfect result: the source is four years old, not current. It
+still supports the claim the generator makes (well below 100%, which the 1.5% *base* rate for a
+bank's own prime savings customers is deliberately far below), so it is recorded as found rather
+than re-searched past the time budget. If a jury asks for the current figure, this is the row to
+update first.
+
+### 13.2 Population — `src/book/population.py`, `src/book/__init__.py` (§2)
+
+| Parameter | Value | Provenance |
+|---|---|---|
+| Segment mix (`SEGMENT_P`) | salaried 60% / self-employed 25% / gig 15% | `assumed`, direction `sourced-approx` (13.1 #1) |
+| Age | N(36, 9) clipped [21, 62] | `assumed` |
+| City tier | 1/2/3 at 38%/40%/22% | `assumed` |
+| Tenure (`tenure_m`) | U{8…179} months | `assumed` |
+| Consent share | 85% | `assumed` |
+| Base income (lognormal μ, σ) | salaried (11.05, 0.35) · self-employed (11.15, 0.50) · gig (10.45, 0.45); clip ₹18k–₹900k | `assumed`, `sourced-approx` (13.1 #1) |
+| Income drift (`inc_drift`) | N(0.004, 0.003)/month (~5%/yr) | `assumed` |
+| Income volatility | 5% salaried / 16% self-employed / 30% gig | `assumed` |
+| Rent | 55% pay, at 12–30% of income | `assumed` |
+| External EMI | 38% carry, at 6–22% of income | `assumed` |
+| Home EMI (existing) | 45% of owners (14% of book), 18–32% of income | `assumed`, `sourced-approx` (13.1 #2) |
+| Auto EMI flag | 22% | `assumed` |
+| School fees | 40% of over-29s, 4–10% of income | `assumed` |
+| FD balance | 45% hold, 1.5–8× monthly income | `assumed` |
+| Owns property | logistic(age, log income, tier) → 32% of book | `assumed` |
+| Gold holding | 70% hold; lognormal(log 45, 0.8), median ≈ 45g | `assumed`, `sourced-approx` (13.1 #6) |
+| Dependants | Poisson, mean rises with age, capped at 4 | `assumed` |
+| Has card | logistic(income, segment, tier) → 31% of book | `assumed`, `sourced-approx` (13.1 #3) |
+| Card spend (holders) | 5–28% of income | `assumed`, `sourced-approx` (13.1 #4) |
+| Has insurance | 55% | `assumed`, `sourced-approx` (13.1 #5) |
+| Insurance premium | 2–8% of annual credits, 30% monthly SI / 70% annual renewal | `assumed` |
+| Salary day (`SALARY_DAY_P`) | {1: 30%, 30: 18%, 2: 6%, 3: 5%, 5: 12%, 7: 12%, 10: 8%, 15: 5%, 25: 4%} | `assumed` |
+| Salary regularity | 97% salaried / 55% self-employed / 8% gig | `assumed` |
+| Salary sources | 1 (mostly) salaried · 1+Poisson(1.6) self-employed · 1+Poisson(2.4) gig | `assumed` |
+| Other-bank EMI share | 10% zero, else U(0.40, 1.0) | `assumed` |
+| UPI share / ticket | 55/46/36% by tier; ticket lognormal(log 300, 0.45) | `assumed`, `sourced-approx` (13.1 #7) |
+| AMB threshold | ₹10,000 / ₹5,000 / ₹2,500 by tier | `assumed` |
+| Fee sensitivity / doc reluctance | Beta(2,3) / Beta(2,4), shifted by segment | `assumed` |
+| `target_contact_conversion_3m` | 0.0135 | `assumed` (bank-stated ~1%, engineered) |
+| `first_event_month` | 9 | `assumed` |
+| `label_horizon_months` | 3 | `assumed` |
+
+### 13.3 Latent structure — `src/book/latent.py` (§3)
+
+| Parameter | Value | Provenance |
+|---|---|---|
+| Base curiosity | 0.02, scaled by eligibility | `assumed` |
+| Shadow-intent weight | 0.6 (on substitute products) | `assumed` |
+| Window-shopper intent | U(0.20, 0.40) | `assumed` |
+| Red-herring intent | U(0.05, 0.15); U(0.15, 0.32) if persuadable | `assumed` |
+| Ramp months by product | home 5–9 · lap 4–8 · gold 1–3 · auto 3–6 · education 3–6 · personal 2–5 | `assumed` |
+| Decision windows (days) | personal 1 · gold 1 · auto 3 · education 7 · home 14 · lap 14 | `assumed` (plan-given) |
+| Rent step-up (home) | ×(1 + 0.38·ks) | `assumed` |
+| Down-payment accretion (home) | 6–20% of credits · (0.5+sig) | `assumed` |
+| FD-break p (home / lap) | 0.20·s / 0.25·s past 60%/50% of ramp | `assumed` |
+| Fuel surge (auto) | ×(1 + 1.5·ks) primary / ×(1 + 0.6·ks) secondary | `assumed` |
+| EMI creep (personal) | +8%·ks primary / +3%·ks secondary of credits | `assumed` |
+| Pre-salary dip (personal) | 6–22% of credits · ks | `assumed` |
+| Gold dip / drawdown | 15–35% of credits · ks(market-adjusted); balance ×(1−0.12·ks) | `assumed` |
+| Education fee step | ×(1 + 0.90·ks), ×1.6 in Apr–Jun | `assumed` |
+| LAP drawdown | balance ×(1−0.05·ks) | `assumed` |
+| Primary / secondary tell expression | 78% / 72% of customers | `assumed` |
+| Gold market factor (AR(1)) | ρ = 0.75, σ = 0.35 | `assumed` |
+| Capacity essential floor | 0.38 × median credits, 6-month window | `assumed` |
+
+### 13.4 Substitution & product mix — `src/book/products.py` (§4)
+
+| Parameter | Value | Provenance |
+|---|---|---|
+| Substitution matrix (15 pairs) | gold↔personal 0.70 … home↔gold 0.10 — **see §4's rendered matrix**, not retyped | `assumed` |
+| Substitution sharpness | 4.0 (weights = affinity^4.0, ~13% take a substitute) | `assumed` |
+| Eligibility gates | home ×0.25 if owns property, ×0.35 outside age 24–48 · lap ×0 unless owns · gold ×0 unless holds gold · auto ×0.30 if auto EMI running · education ×0.15 if no dependants & age>35 | `assumed` |
+| Converter product mix by segment (18 values) | **see §4's `PRODUCT_MIX` table**, not retyped | `assumed`, ordering `sourced-approx` (13.1 #2) |
+
+### 13.5 Channels — `src/book/channels.py` (§5)
+
+| Parameter | Value | Provenance |
+|---|---|---|
+| Essential spend / fuel / e-commerce share | 30–45% / 1.5–4.5% / 2–8% of credits | `assumed` |
+| Balance persistence / floor / min-balance floor | 0.25 · ₹1,000 · ₹500 | `assumed` |
+| UPI adoption drift | +0.6%/month | `assumed`, `sourced-approx` (13.1 #7) |
+| UPI weights (essential/e-com/fuel) | 0.50 / 0.80 / 0.60 | `assumed` |
+| UPI max monthly count | 600 | `assumed` |
+| Salary-day jitter | {−2,−1,0,+1} at {10%,22%,56%,12%} | `assumed` |
+| Min-balance charge | enforced 85% of breaches, ₹150–600 | `assumed` |
+| Mandate failure | base 1.5%, squeeze 0.55, cap 45% | `assumed`, `sourced-approx` (13.1, NACH row) |
+| Address-change rate | base 0.4%/mo, ×6 late home-ramp, ×2 young renter | `assumed` |
+| Nominee-change rate | base 0.2%/mo, ×3 late ramp | `assumed` |
+| Ambient FD closure | 0.2%/month | `assumed` |
+| Seasonality multipliers | fee season ×1.6 (Apr–Jun) · festive e-com ×1.4 / card ×1.5 (Oct–Nov) — **see §5.3's table**, not retyped | `assumed` |
+| Bonus probability | FY-end 45% / festive 25% / other 2% (salaried); irregular 14% (self-employed/gig) | `assumed` |
+| Bonus size | salaried 0.35–1.60× a month's credits; irregular 0.20–0.90× | `assumed` |
+
+### 13.6 Hard negatives & uplift truth — `src/book/hard_negatives.py` (§6)
+
+| Parameter | Value | Provenance |
+|---|---|---|
+| `window_shopper` share | 9% of non-converters (8.4% of book) | `assumed` |
+| `dormant_rich` share | 7% (6.1%) | `assumed` |
+| `red_herring` share | 14% (12.8%) | `assumed` |
+| `near_miss` share | 3% (2.7%) | `assumed` |
+| `silent_converter` share | 12% of converters | `assumed` |
+| Dormant-rich balance multiple | 4.5× income | `assumed` |
+| Browser share | 60% of book | `assumed` |
+| `dnd` share | 12% of converters (1.1% of book) | `assumed` |
+| `persuadable` share | 55% of near-misses + 18% of red-herrings (3.7% of book) | `assumed` |
+
+### 13.7 Journeys — funnel, volumes, clock — `src/journeys/{funnel,attempts,build}.py` (§11.1–§11.5)
+
+| Parameter | Value | Provenance |
+|---|---|---|
+| Funnel abandon shares (`ABANDON_SHARE`) | start 18% · eligibility 14% · kyc 10% · docs 22% · fee 20% · offer 9% · accept 7% | `assumed` |
+| β (intent) / γ (capacity) | 2.20 / 1.60 | `assumed` |
+| Solved stage intercepts | start 2.03 · eligibility 2.83 · kyc 2.95 · docs 2.55 · fee 1.66 · offer 2.06 · accept 1.78 | **solved**, not a free parameter |
+| Shopper drag per gate | (+0.15, +0.10, 0, −0.85, −1.05, −0.25, −0.30) | `assumed` |
+| Channel gate effect | branch +0.35 · rm-call +0.25 · app 0 · web −0.15 · dsa −0.25 | `assumed` |
+| Per-product per-gate effect (42 values) | **see `funnel.PRODUCT_EFFECT`**, not retyped | `assumed` |
+| Friction weight vectors (10 × 7 values) | `D_BLANK`, `D_INCOME_REFUSED`, `D_INELIGIBLE`, `D_DOC_REFUSAL`, `D_DOC_SHORTFALL`, `D_DOC_RELUCTANCE`, `D_FEE_BALK`, `D_FEE_SENSITIVITY`, `D_OFFER_SHORTFALL`, `D_THIN_TENURE` — see `funnel.py` | `assumed` |
+| Thin-tenure threshold | 12 months | `assumed` |
+| `target_attempt_share` | 30% (band 25–35%) | `assumed` |
+| `target_recovery_rate` | 9% (band 8–10%) | `assumed`, mentor-stated |
+| `target_shopper_share_of_dropoffs` | 30% | `assumed` |
+| `first_attempt_month` | 6 | `assumed` |
+| `ineligible_noise_share` | 2% | `assumed` |
+| Apply weights by archetype | plain 1.0 · dormant-rich 0.45 · red-herring 3.0 · window-shopper 6.0 · near-miss 12.0; intent gain 2.6 | `assumed` |
+| Prior-attempt tilt | shopper 1.35 · fee-sensitivity 0.55 | `assumed` |
+| Second/third attempt probability | base 8.5%/2.0%, shopper +16%/+7.0% | `assumed` |
+| Min months between attempts | 2 | `assumed` |
+| Total duration fraction / split | 0.42 × window; split 5/8/12/30/12/18/15% across gates | `assumed` |
+| Advance shape / min step | 2.0 / 0.01 days | `assumed` |
+| Doc / fee stall fraction, shape | 0.24× / 0.26× window, shape 2.0 | `assumed` |
+| Timeout means (days @ 7-day product) | 2.5/4/6/11/8/9/12, shape 1.6, cap 45d | `assumed` |
+| Contact lead fraction | 0.12 × window | `assumed` |
+| Return gap | mean 26 days, shape 2.0, min 3 days | `assumed` |
+| Prior-attempt clearance | 2 days | `assumed` |
+
+### 13.8 Journeys — product/channel choice, the customer's answers — `src/journeys/attempts.py` (§11.6–§11.8)
+
+| Parameter | Value | Provenance |
+|---|---|---|
+| Intent sharpness (product/month draw) | 2.5, floor 0.004 | `assumed` |
+| Prior-same-product probability | 0.75 | `assumed` |
+| Channel mix by segment × tier (30 values) | **see `attempts.CHANNEL_MIX` / `CHANNEL_TIER_TILT`**, not retyped | `assumed` |
+| Channel commitment tilt | branch +0.35 · rm-call +0.30 · app −0.10 · web −0.25 · dsa −0.20 | `assumed` |
+| RM touch probability | branch 30% · rm-call 100% · app 18% · web 16% · dsa 25%; shopper non-response 55% | `assumed` |
+| Blank-answer ratio | Beta(1.9, 5.8); shopper +0.20, commitment −0.040, channel ±0.01–0.06 | `assumed` |
+| Income-share logit | base 1.75, shopper −2.00, blank −0.70, commitment +0.75, channel ±0.0–0.35 | `assumed` |
+| Stated-income inflation | sd 0.12; base 1.5%, self-employed +10%, gig +15%, shopper +13% | `assumed` |
+| Documents requested by product | home/lap 8 · education 6 · auto 5 · personal 4 · gold 3 | `assumed` |
+| Doc-refusal logit | base −1.25, shopper +1.60, reluctance +2.60, commitment −0.85, channel ±0.05–0.35 | `assumed` |
+| Doc-supply logit | base 1.85, refusal −2.10, shopper −1.20, reluctance −1.00, channel ±0.05–0.45 | `assumed` |
+| Fee-balk logit | base −0.85, shopper +1.60, sensitivity +2.30, burden +0.55, commitment −0.85; flat fee **₹1,000** | `assumed` (mentor-named fee) |
+| Ticket size (× monthly income) | home 58 · lap 34 · auto 11 · education 14 · gold 3.5 · personal 6.5; sd 0.35; per-product ₹ bounds | `assumed` |
+| EMI per ₹1 lakh | home 870 · lap 1,000 · auto 2,075 · education 1,200 · gold 4,500 · personal 2,540 | `assumed` (SM-5 replaces with API 433/473) |
+| Capacity → EMI share / haircut / offer floor | 0.55 / Beta(1.5, 12) / 0.25× the request | `assumed` |
+| Revisit / products-viewed draw | base 0.6, dwell gain 0.05, shopper gain 5.0, cap 25 · viewed dwell-min 0.5, shopper gain 3.2 | `assumed` |
+
+### 13.9 Journeys — the window-shopper latent — `src/journeys/shoppers.py` (§11.6–§11.7)
+
+| Parameter | Value | Provenance |
+|---|---|---|
+| Shopper logit weights | book window-shopper +4.30 · near-miss +0.90 · red-herring +0.40 · curiosity +0.70 · price-sensitivity +0.35 · doc-reluctance +0.18 · **is_converter −1.60** · peak-intent −1.10 | `assumed` |
+| Curiosity | Beta(2,3); browses bonus +0.20, window-shopper bonus +0.15 | `assumed` |
+| Commitment latent | 1.10·is_converter + 0.55·z(peak intent) + N(0, 0.60); read through N(0, 0.90) per-channel noise | `assumed` |
+| Return propensity | base 0.55, shopper drag −0.85, intent gain 0.45×0.25 | `assumed` |
+
+### 13.10 Campaigns and suppression — `src/journeys/campaigns.py` (§12.4)
+
+| Parameter | Value | Provenance |
+|---|---|---|
+| Campaign intensity | λ ~ lognormal(median 0.14, σ 0.90), cap 1.20; monthly wave U(0.55, 1.85) | `assumed` |
+| Channel mix | SMS 50% / email 32% / RM-call 18% | `assumed` |
+| Response logit | base −1.55; channel sms −0.55/email −0.80/rm-call +0.95; commitment +0.55; shopper −0.70 | `assumed` |
+| Response split (conditional) | opened 46% / engaged 30% / declined 22% / opted-out 2% | `assumed` |
+| Fatigue decay / floor | 0.72 per trailing-30-day contact, floor 0.12, hard 30-day window | `assumed` |
+| Contact / decline cool-off | 7 days / 90 days | `assumed` |
+| Mortality / dormancy | 0.15% deceased, 1.2% dormant, both drawn uniformly | `assumed` (drawn, not derived — §15) |
+| Pitch sharpness / floor | 1.0 / 0.35 (of the top-ranked product's score) | `assumed` |
+| Held-product columns | home → `has_home_loan`, auto → `has_auto_emi` | — |
+
+### 13.11 The drop-off population and labels — `src/journeys/labels.py` (§12.1–§12.3)
+
+| Parameter | Value | Provenance |
+|---|---|---|
+| Drop-off look-back | 365 days | `assumed` |
+| First label month | 7 | `assumed` |
+| Latent-index weights | commitment 1.00 · intent 0.70 · stage 0.45 · recency 0.40 · capacity 0.35 · shopper −0.55 | `assumed` |
+| `LABEL_SIGNAL_TO_NOISE` | starting point 1.0 → **solved** ≈ 0.60 at the default seed | `assumed` starting point; **solved** value |
+| `theta_contact_effect` | **solved** ≈ 1.23–1.30 across seeds 7–11 | **solved**, not a free parameter |
+| Oracle precision target | 0.32 (band 25–35%, deliberately upper-half) | `assumed` |
+| Contact budget | 10% | `assumed` (plan-given RM capacity) |
+| Solver brackets | θ ∈ [0.005, 40] · S/N ∈ [0.02, 8], 48 bisection steps each | `assumed` (solver mechanics, not a modelling choice) |
+| Random-contact target | 9% (band 8–10%) | `assumed`, mentor-stated |
+| Contact-to-disbursement lag | mean 0.44 × window, Gamma shape 2.6; stall p 5.0%, stall mean 0.85 × window | `assumed` |
+| Product-choice sharpness / substitution anchor | intent sharpness 1.6; substitution-anchor exponent 2.0 on `book.products.SUBSTITUTION`; menu size 4 | `assumed` |
+
+---
+
+## 14. Realism-check summary (SD-S7) — `src/realism.py`, `data/realism_report.json`
+
+Run via `python3 src/realism.py --out data/realism_report.json`. Every check prints PASS/FAIL
+with the observed value, the expected value/band, and a one-line rationale; the script exits 1 if
+any check fails. It never imports or calls `book.build.check()` / `journeys.build.check()` /
+`journeys.labels.check()` — it re-derives every number from the CSVs on disk, independently.
+
+**Result at the default size (60,000 × 30, seed 20260709, 2026-09-16): 119/119 checks PASS, 0
+FAIL.** Also run clean (119/119) on an 8,000 × 30 book at the same seed — see
+`tests/test_realism.py` for why 8,000 rather than the originally-specified 3,000 (the small-book
+test path, below).
+
+| Group | Checks | What it covers |
+|---|---|---|
+| `seed_reproducibility` | 3 | Book and journey-layer hashes match across two independent generations at a fixed tiny (1,500×13) config; the solved θ/S/N knobs reproduce exactly |
+| `funnel_shape` | 8 | Per-stage abandon share vs `ABANDON_SHARE` (±8pp); `p_complete(disbursed) > p_complete(abandoned)` |
+| `product_mix` | 4 | All six products taken by some converter; per-segment converter mix within 12pp of `PRODUCT_MIX` |
+| `time_to_disburse` | 14 | Window-respect rate ≥ 90% (SK-04) and < 100% (the stall tail isn't dead); per-product median lag and inside-window share |
+| `upi_trend` | 4 | Monthly mean UPI value/count rising with panel month (Spearman ≥ 0.85); last quarter > first quarter |
+| `salary_day_concentration` | 4 | Day-1 is the mode and materially above uniform; top-3 days ≥ 30% share; day-28 (where day-30 clips to) elevated |
+| `income_balance_correlation` | 1 | Pearson(true_income, mean bal_avg) ∈ (0.05, 0.90) |
+| `emi_burden` | 4 | No negative EMI outflow anywhere; EMI/income ratio capped and its p99 reasonable |
+| `marginals` | 9 | Age/tenure ranges; segment, city-tier and consent shares within 5pp of the assumed table |
+| `seasonality` | 5 | School-fee, festive-ecommerce and festive-card seasonality present at the documented multipliers; fuel_cab and mandate-failures (two channels with **no** designed calendar term) show none, as a control |
+| `duplicate_keys` | 9 | Primary-key uniqueness on all nine CSVs |
+| `referential_integrity` | 13 | Every foreign key (customer, attempt, product, channel) resolves; `label_truth`/`labels` and `journey_truth`/`journeys` key sets match exactly |
+| `impossible_states` | **42** | See §15's cross-reference — disburse-before-start, fee-paid-without-reaching-Fee, events-after-abandon, negative/sub-floor balances, contacted-while-suppressed, label-positive-on-suppressed-row, minors-with-home-loans, gold-loan-without-gold, and 34 more; asserted ≥ 25 ran |
+
+**By-construction, not by luck.** Every one of these is independently re-derived from the CSVs a
+consumer (the model, the app, a jury's own script) would actually read — none of them re-uses the
+generator's own in-memory `check()` results. A regression in `src/book/**` or `src/journeys/**`
+that still passed those files' own gates would still have to pass this independent audit too.
+
+---
+
+## 15. Known unrealisms — complete, merged, numbered
+
+Merges §9 (the book, items 1–16), §11.11 (the journey layer, items 1–12) and §12.6 (the label and
+campaign layers, items 1–8) into one running, numbered list. Original wording is preserved
+verbatim; only the numbering is new, so a reference to (say) "§11.11 item 3" and "merged item 20"
+below name the same fact. Nothing here is softened and nothing is removed — every item that
+existed before SD-S7 is present exactly as written.
+
+**From §9 (the book):**
+
+1. ~~**No application journey.**~~ **Fixed at SD-S2/SD-S3** — see §11. The book itself still carries conversion as a single `event_month`; the stages, the drop-offs, the ₹1,000 fee balk and the document refusal live in `data/journeys.csv` beside it.
+2. **No delinquency.** The liability book never defaults, so the capacity estimate is never validated against actual repayment. Capacity is an assumption about affordability, not a measured outcome.
+3. **One product, once.** Every converter takes exactly one product exactly once in the panel. No repeat borrowing, no rejection, no prepayment, no cross-sell sequence, no top-up.
+4. **Balances are too high, so balance-stress channels are too rare.** Median minimum balance is ≈ ₹53k against a tier-1 AMB floor of ₹10k, so `min_balance_charge_flag` fires in under 1% of months and mandate failures in under 2%. Inherited from the pre-SD-S1 income and balance model, kept for equivalence.
+5. **`bal_min` is a draw, not a path.** No intra-month transaction sequence; anything depending on transaction *ordering* within a month is unavailable.
+6. **UPI ticket vs UPI count cannot both match NPCI.** We chose to match frequency; the implied average ticket (₹270) lands below NPCI's reported P2M average.
+7. **`credits` excludes bonuses.** A real core-banking statement shows one stream; separating them is a convenience the model should not rely on.
+8. **Everything is observed.** No missing data, no garbled narration, no unclassified merchants, no customer with under six months of history.
+9. **Dwell assumes a clean analytics-to-CIF join.** In practice that join is partial and biased toward app users.
+10. **Consent is static.** DPDP consent is time-varying, purpose-scoped and revocable; a constant flag flatters the consent story.
+11. **Seasonality is a fixed calendar multiplier.** Identical every year; no macro shocks of any kind.
+12. **The gold market factor is invented.** An AR(1) series, not the gold price.
+13. **Substitution is resolved once, at event time.** A real customer's product choice depends on what they were offered, at what price, and by whom — none of which exists in this book yet.
+14. **Thin demographics by design.** No pin code, no gender, no religion, no caste, no marital status — a policy choice, but geography-driven realism is absent as a result.
+15. **No lifecycle.** No joint accounts, no NRI accounts, no minors, no dormancy, no account closure, no salary-account churn to another bank, no fraud or mule behaviour.
+16. **Three of six products are invisible to the current scorer.** `score_and_pack.py` still trains only home/auto/personal (SM-1's fix), so the ~28% of converters taking lap/gold/education are scored as negatives.
+
+**From §11.11 (the journey layer), continuing the numbering:**
+
+17. **Nobody is rejected.** Every abandonment is the *customer* walking away — no credit decline, no policy rejection, no negative bureau pull, no fraud decline. A model trained here cannot tell a customer's "no" from the bank's "no".
+18. **The ₹1,000 fee is flat across all six products.** Real schedules of charges scale with ticket size and are routinely waived in campaigns.
+19. **An attempt is for exactly one product.** No cross-sell mid-journey — the exact behaviour the "menu of four" is meant to exploit, so its value cannot be measured on this data alone.
+20. **The offer is a one-shot number.** No negotiation, no counter-offer, no re-pricing, no rate shopping against another lender.
+21. **No partial disbursement, no cancellation after disbursement, no top-up.**
+22. **6.3% of attempts begin one month after the month whose latents drove them**, because an earlier attempt of the same customer was still open. Always the safe direction (older information, never newer); `journey_truth.latent_month` records which month was used.
+23. **Stage durations are independent draws.** A customer slow at KYC is not slow at Docs; real files have a persistent "this one is dragging" character this misses.
+24. **Timeouts are the only abandonment mechanism** — no "abandoned in three seconds because the form asked for a PAN". The `start` stage absorbs all of that into one distribution.
+25. **No seasonality in applications.** The book has fee-season and festive spending effects; the journey layer has none on application *volumes*, which is wrong — loan applications are strongly seasonal.
+26. **Channel is fixed for the whole journey.** Nobody starts on the app and finishes in a branch, which is the most common real pattern of all.
+27. ~~**The recovery population is generated, not observed.**~~ **Closed by SD-S4** — what an RM call is worth now lives in `labels.csv`. The cost of that split is its own unrealism, at item 29 below.
+28. **Every application is attributed to exactly one customer in the book.** No walk-in prospect, no joint application, no co-applicant, no guarantor — consistent with lead-generation being out of scope, but the funnel has no top-of-funnel at all.
+
+**From §12.6 (the label and campaign layers), continuing the numbering:**
+
+29. **`labels.csv` positives are not `journeys.csv` disbursements, and cannot be.** The label is the outcome *if contacted*; the journey layer is the world in which almost nobody was. The counterfactual is generated, not validated — nothing here proves 8–10% is what a call is really worth; it is what the mentors said and what θ was solved to reproduce.
+30. **Mortality and account dormancy are drawn, not derived.** 0.15% die and 1.2% go dormant at a uniformly drawn month; a real bank reads both off the CIF.
+31. **No arrears suppression.** SANKET's book is a liability book with no loan performance in it, so "never pitch anyone in arrears" cannot be enforced from this data.
+32. **Contact is a monthly, binary decision.** No call attempts that do not connect, no voicemail, no callback scheduling, no time-of-day effects; an RM call costs the same as an SMS in the model even though the product exists because it does not.
+33. **The campaign product pitched is drawn from latent intent** — the pre-SANKET bank is already mildly targeted. A genuinely untargeted baseline would make the model look better; this is the conservative choice, but not a measured one.
+34. **One RM call per month, and the label window starts at the month boundary.** A drop-off called on the 28th has the same row as one called on the 2nd.
+35. **171 observed recoveries (14% of them) were dropped** because their contact month fell on a row the suppression rule forbids calling — most often no marketing consent (correct), a few a 7-day cool-off. Those are real disbursements the label table cannot represent.
+36. **Fatigue has no recovery curve.** It depends only on the trailing-30-day count, so a customer hammered four times last month is fully rested 31 days later.
+
+**Merged in at SD-S7, from §8 (not previously numbered as an "unrealism", but load-bearing for anyone quoting a single-run number):**
+
+37. **Single-seed headline numbers are not stable.** Across four seeds the vectorised book generator spans macro AUC 0.871–0.899 and top-2% precision 24.7–42.9% on the frozen scorer (§8); the legacy and new books' single-seed numbers (0.849/0.877/0.954 vs 0.824/0.830/0.961) sit inside that same spread. **Any number quoted without a seed range or a CI — in a README, a deck slide, or a portal answer — should be read as an anecdote, not a result.** This is exactly why `validation/criteria.yaml` pre-registers ≥ 5 seeds (SK-20/SK-21) with confidence intervals rather than a point estimate.
+
+---
+
+## 16. What a jury will push on
+
+The short list, for anyone prepping to defend this data card in the room. Each links back to a
+merged unrealism (§15) or a named interpretation call already on the record.
+
+1. **"Where does the 8–10% baseline actually come from?"** Three candidate denominators exist and
+   they are two orders of magnitude apart (§11.3): a random consented customer (~0.1%), a random
+   application attempt (25.8%), or a drop-off recovery (9.0%, adopted). The choice is a *reading*
+   of the mentors' words, recorded as a dated amendment (`validation/criteria.yaml`
+   `amendments:`), not a fact — say so before being asked.
+2. **"Is the 26× contact lift real?"** No — both ends are pinned (Y(1) at 8–10% by the mentors,
+   Y(0) at the observed self-return rate), and the *stricter* reading of Y(0) was chosen. Counting
+   every observed recovery as spontaneous instead would put the lift near 10× (§12.3's block
+   quote). This is an owner/L9 call, explicitly flagged as such in the generator's own code.
+3. **"You said no credit declines — doesn't that make the model look artificially good?"** Yes
+   (merged item 17). Every abandonment here is the customer walking away; a real funnel loses a
+   material share of applications to the bank's own "no", and this model has never seen that.
+4. **"No delinquency in the book at all?"** Correct (merged item 2). Capacity is an assumption
+   about affordability that is never checked against actual repayment behaviour.
+5. **"Single-seed numbers in an earlier README turned out to be unstable — how do we know these
+   aren't too?"** They were (merged item 37): macro AUC swung 0.871–0.899 and top-2% precision
+   24.7–42.9% across four seeds on the *same* generator. Every number that matters is now
+   pre-registered with ≥ 5 seeds and a CI (`validation/criteria.yaml` SK-20/SK-21) for exactly
+   this reason.
+6. **"Application volumes have no seasonality, but spending does — isn't that inconsistent?"**
+   Yes, and disclosed as such (merged item 25). Loan applications are strongly seasonal in
+   reality; this generator's journey layer is not.
+7. **"A customer starts on the app and finishes at a branch all the time — where's that here?"**
+   Not modelled (merged item 26). Channel is fixed for the whole journey, which the card names as
+   "the most common real pattern of all" being absent.
+8. **"14% of your own observed recoveries don't fit your label table — what happened to them?"**
+   171 of 1,220 observed recoveries (merged item 35) landed on a row the suppression rule forbids
+   calling (mostly correctly — no consent) and were dropped rather than forced in.
+9. **"Balances look too healthy for a real savings book."** Confirmed (merged item 4): median
+   minimum balance ≈ ₹53k against a ₹10k tier-1 floor, so balance-stress channels under-fire
+   relative to a real book. Inherited from the pre-SD-S1 model, kept for equivalence, flagged as
+   due for revisiting once the equivalence constraint is retired.
+10. **"Is anything here actually `sourced`?"** No — every parameter is `assumed` or
+    `sourced-approx` (§0, §13.1). That is the honest position: a synthetic book's job is to be
+    coherent and hard, not to claim it measured India.
