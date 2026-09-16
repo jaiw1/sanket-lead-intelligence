@@ -107,6 +107,9 @@ _STREAM_ID: Final[dict[str, int]] = {
     "signals": 104,
     "funnel": 105,
     "timing": 106,
+    "campaigns": 107,
+    "labels": 108,
+    "measurement": 109,
 }
 
 

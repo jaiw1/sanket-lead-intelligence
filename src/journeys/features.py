@@ -65,12 +65,23 @@ def _dt(s: pd.Series) -> pd.Series:
 
 
 def journey_features_as_at(journeys: pd.DataFrame, events: pd.DataFrame,
-                           as_at: pd.Timestamp | str) -> pd.DataFrame:
+                           as_at: pd.Timestamp | str,
+                           campaigns: pd.DataFrame | None = None,
+                           labels: pd.DataFrame | None = None) -> pd.DataFrame:
     """One row per customer with at least one attempt open or closed by ``as_at``.
 
     Consumers left-join this onto the book; a customer with no row simply has no
     application history at ``as_at``, which is different from having a bad one and
     should be encoded as such (a ``has_journey`` flag, not a zero).
+
+    Pass ``campaigns`` (and optionally ``labels``) to get the SD-S6 additions —
+    ``contacts_30d``, ``contacts_90d``, ``campaign_contacts_6m``,
+    ``last_contact_days``, ``last_campaign_product``, ``suppressed`` and
+    ``suppression_reason``.  They carry no ``journey_`` prefix because they are
+    facts about the *bank's* behaviour, not the customer's application.
+    ``suppressed`` / ``suppression_reason`` come from ``labels`` when a row for
+    this ``as_at`` month exists there, because the suppression rule is decided
+    once, in ``journeys.labels``, and never re-derived by a consumer.
     """
     as_at = pd.Timestamp(as_at)
     j = journeys.copy()
@@ -147,4 +158,61 @@ def journey_features_as_at(journeys: pd.DataFrame, events: pd.DataFrame,
         (np.datetime64(as_at) - g.last_event_at.max().to_numpy()) / np.timedelta64(1, "D"), 2)
     out["journey_days_since_first_start"] = np.round(
         (np.datetime64(as_at) - g.started_at.min().to_numpy()) / np.timedelta64(1, "D"), 2)
+
+    # ---- SD-S6 additions: what the bank has already done to this customer --- #
+    if campaigns is not None:
+        out = out.join(contact_features_as_at(campaigns, as_at, out.index))
+    if labels is not None:
+        out = out.join(suppression_as_at(labels, as_at, out.index))
+    return out
+
+
+def contact_features_as_at(campaigns: pd.DataFrame, as_at: pd.Timestamp | str,
+                           index: pd.Index) -> pd.DataFrame:
+    """Trailing contact counters for ``index``, using only touches at or before ``as_at``.
+
+    A customer with no touch is a genuine zero here (the bank really has not
+    contacted them), unlike the journey block where an absent row means "no
+    application history" — hence the fills.
+    """
+    as_at = pd.Timestamp(as_at)
+    c = campaigns[_dt(campaigns.sent_at) <= as_at].copy()
+    c["sent_at"] = _dt(c["sent_at"])
+    age = (as_at - c.sent_at).dt.total_seconds() / 86400.0
+    c = c.assign(_age=age)
+    g = c.sort_values(["cust_id", "sent_at"], kind="stable").groupby("cust_id")
+
+    def within(days: float) -> pd.Series:
+        return (c[c._age < days].groupby("cust_id").size()
+                .reindex(index).fillna(0).astype(np.int16))
+
+    out = pd.DataFrame(index=index)
+    out["contacts_30d"] = within(30)
+    out["contacts_90d"] = within(90)
+    out["campaign_contacts_6m"] = within(183)
+    out["last_contact_days"] = np.round(g._age.min().reindex(index), 2)
+    out["last_contact_date"] = g.sent_at.max().reindex(index).dt.strftime("%Y-%m-%d").fillna("")
+    out["last_campaign_product"] = g["product"].last().reindex(index).fillna("")
+    return out
+
+
+def suppression_as_at(labels: pd.DataFrame, as_at: pd.Timestamp | str,
+                      index: pd.Index) -> pd.DataFrame:
+    """``suppressed`` / ``suppression_reason`` for the population row at ``as_at``.
+
+    Decided once, in ``journeys.labels``, and read back here — a consumer that
+    re-derived it would drift from the table the labels were built against.
+    Customers with no population row at this month are not in the drop-off queue
+    at all: they come back ``suppressed = 0``, reason ``not_in_population``.
+    """
+    as_at = pd.Timestamp(as_at)
+    rows = labels[_dt(labels.as_at) <= as_at]
+    if rows.empty:
+        latest = rows
+    else:
+        latest = rows.sort_values(["cust_id", "as_at"], kind="stable").groupby("cust_id").tail(1)
+    latest = latest.set_index("cust_id")
+    out = pd.DataFrame(index=index)
+    out["suppressed"] = latest.suppressed.reindex(index).fillna(0).astype(np.int8)
+    out["suppression_reason"] = latest.suppression_reason.reindex(index).fillna("not_in_population")
     return out

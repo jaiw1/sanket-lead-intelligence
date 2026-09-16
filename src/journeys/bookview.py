@@ -32,7 +32,7 @@ BOOK_COLUMNS: tuple[str, ...] = (
     "window_shopper", "dormant_rich", "red_herring", "near_miss",
     "silent_converter", "browses", "dnd", "persuadable",
     "ramp_start", "ramp_end", "sig_strength",
-    "has_auto_emi", "owns_property", "gold_holding_g", "dependants",
+    "has_auto_emi", "has_home_loan", "owns_property", "gold_holding_g", "dependants",
     "salary_regular", "fee_sensitivity", "doc_reluctance",
 )
 

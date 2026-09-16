@@ -33,3 +33,6 @@ data/journeys.csv
 data/journey_events.csv
 data/journey_truth.csv
 data/journey_params.json
+data/campaigns.csv
+data/labels.csv
+data/label_truth.csv

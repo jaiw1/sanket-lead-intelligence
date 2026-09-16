@@ -43,12 +43,23 @@ def small_book(tmp_path_factory) -> Path:
 
 @pytest.fixture(scope="session")
 def journeys(small_book: Path) -> SimpleNamespace:
-    """The journey layer generated on :func:`small_book`, plus its checked stats."""
-    from journeys import JourneyConfig
-    from journeys.build import check, generate
+    """The whole lane generated on :func:`small_book`, plus its checked stats.
+
+    One ``generate_all`` for the session: the journey layer (SD-S2/S3), the
+    campaign history (SD-S6) and the drop-off population with its labels
+    (SD-S4), so the label tests are measuring the same draw the journey tests
+    are.
+    """
+    from journeys import JourneyConfig, substream
+    from journeys.build import check, generate_all
+    from journeys.labels import check as label_check
 
     cfg = JourneyConfig(book_dir=small_book, out_dir=small_book)
-    j, e, t, params = generate(cfg)
-    stats = check(cfg, j, e, t, small_book)
-    return SimpleNamespace(cfg=cfg, book_dir=small_book, journeys=j, events=e,
-                           truth=t, params=params, stats=stats, anchor=(2024, 4))
+    b = generate_all(cfg)
+    stats = check(cfg, b.journeys, b.events, b.truth, small_book)
+    lstats = label_check(b.labels, b.label_truth, b.params["labels"],
+                         substream(cfg.seed, "measurement"))
+    return SimpleNamespace(cfg=cfg, book_dir=small_book, journeys=b.journeys, events=b.events,
+                           truth=b.truth, campaigns=b.campaigns, labels=b.labels,
+                           label_truth=b.label_truth, params=b.params, stats=stats,
+                           label_stats=lstats, anchor=(2024, 4))

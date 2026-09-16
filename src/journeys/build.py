@@ -3,13 +3,19 @@
     python3 src/make_journeys.py                      # reads data/, writes data/
     python3 src/make_journeys.py --seed 8
     python3 src/make_journeys.py --book-dir /tmp/b --out /tmp/b
+    python3 src/make_journeys.py --seeds 7,8,9,10,11   # re-solve on 5 seeds, write nothing
 
 Outputs (into ``--out``, default ``data/``)
 
 ``journeys.csv``        one row per application attempt
 ``journey_events.csv``  one row per stage transition, with its timestamp
 ``journey_truth.csv``   one row per attempt of latent drivers — **never a feature**
-``journey_params.json`` the solved intercepts and the realised headline numbers
+``campaigns.csv``       one row per outbound marketing touch (SD-S6)
+``labels.csv``          one row per (customer, month) of the drop-off population,
+                        with the pre-registered label (SD-S4)
+``label_truth.csv``     the label layer's latents — **never a feature**
+``journey_params.json`` the solved intercepts, the solved contact effect theta and
+                        S/N knob, and every realised headline number
 
 The book must already exist (``python3 src/make_book.py``): the journey layer
 reads it, never regenerates it, and never contradicts it.
@@ -20,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -29,7 +36,7 @@ from book.products import DECISION_WINDOW_DAYS, PRODUCTS
 
 from . import CHANNELS, N_GATES, ROOT, STAGES, JourneyConfig, substream
 from . import attempts as at
-from . import bookview, funnel as fn, shoppers as sh
+from . import bookview, campaigns as cp, funnel as fn, labels as lb, shoppers as sh
 from .attempts import Attempts
 
 #: Where inside the Eligibility conversation the fee is quoted and the document
@@ -77,6 +84,13 @@ def _timestamps(days: np.ndarray, base: pd.Timestamp) -> pd.Series:
 
 def generate(cfg: JourneyConfig) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
     """Build ``(journeys, events, truth, params)``."""
+    _view, _lat, j, e, t, p = _core(cfg)
+    return j, e, t, p
+
+
+def _core(cfg: JourneyConfig) -> tuple[bookview.BookView, sh.ShopperLatents,
+                                       pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
+    """The journey layer, plus the book view and latents SD-S4/SD-S6 need."""
     view = bookview.load(cfg.book_dir)
     r_shop = substream(cfg.seed, "shoppers")
     r_app = substream(cfg.seed, "applicants")
@@ -124,7 +138,54 @@ def generate(cfg: JourneyConfig) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFra
     if not keep.all():
         att, f = _subset(att, f, keep)
 
-    return _frames(cfg, view, att, f, lat)
+    return (view, lat, *_frames(cfg, view, att, f, lat))
+
+
+# --------------------------------------------------------------------------- #
+# SD-S6 + SD-S4: campaign history, the drop-off population and its labels
+# --------------------------------------------------------------------------- #
+
+@dataclass
+class Bundle:
+    """Everything one run of the journey lane produces."""
+
+    journeys: pd.DataFrame
+    events: pd.DataFrame
+    truth: pd.DataFrame
+    campaigns: pd.DataFrame
+    labels: pd.DataFrame
+    label_truth: pd.DataFrame
+    params: dict
+
+
+def generate_all(cfg: JourneyConfig) -> Bundle:
+    """The journey layer *and* the campaign / label layers on top of it."""
+    view, lat, journeys, events, truth, params = _core(cfg)
+
+    pitch = cp.pitch_scores(view)
+    r_camp = substream(cfg.seed, "campaigns")
+    r_lab = substream(cfg.seed, "labels")
+
+    deceased_day, dormant_day = cp.draw_flags(view, r_camp)
+    campaigns = cp.build_campaigns(view, lat, deceased_day, pitch, r_camp)
+    state = cp.build_state(view, campaigns, journeys, deceased_day, dormant_day, pitch)
+    labels, label_truth, lparams = lb.generate(
+        view, lat, journeys, state, pitch, campaigns, r_lab)
+
+    params["campaigns"] = {
+        "contacts": int(len(campaigns)),
+        "contacts_per_customer_per_month": round(len(campaigns) / (view.n * view.months), 4),
+        "channel_mix": {k: round(v, 4) for k, v in
+                        campaigns.channel.value_counts(normalize=True).items()},
+        "response_mix": {k: round(v, 4) for k, v in
+                         campaigns.response.value_counts(normalize=True).items()},
+        "fatigue_decay": cp.FATIGUE_DECAY,
+        "contact_cooloff_days": cp.CONTACT_COOLOFF_DAYS,
+        "decline_cooloff_days": cp.DECLINE_COOLOFF_DAYS,
+    }
+    params["labels"] = lparams
+    return Bundle(journeys=journeys, events=events, truth=truth, campaigns=campaigns,
+                  labels=labels, label_truth=label_truth, params=params)
 
 
 def _subset(att: Attempts, f: fn.Funnel, keep: np.ndarray) -> tuple[Attempts, fn.Funnel]:
@@ -403,7 +464,7 @@ def check(cfg: JourneyConfig, journeys: pd.DataFrame, events: pd.DataFrame,
 # CLI
 # --------------------------------------------------------------------------- #
 
-def parse_args(argv: list[str] | None = None) -> JourneyConfig:
+def parse_args(argv: list[str] | None = None) -> tuple[JourneyConfig, list[int] | None]:
     ap = argparse.ArgumentParser(prog="make_journeys", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--seed", type=int, default=20260709, help="RNG seed (default: 20260709)")
@@ -413,29 +474,78 @@ def parse_args(argv: list[str] | None = None) -> JourneyConfig:
                     help="share of book customers with at least one attempt (default: 0.30)")
     ap.add_argument("--recovery-rate", type=float, default=None,
                     help="share of drop-offs that later disburse (default: 0.09)")
+    ap.add_argument("--seeds", type=str, default=None,
+                    help="comma-separated seeds: re-solve theta and the S/N knob on each "
+                         "and print the spread, writing nothing (e.g. --seeds 7,8,9,10,11)")
     a = ap.parse_args(argv)
     book_dir = a.book_dir if a.book_dir is not None else ROOT / "data"
-    return JourneyConfig(
+    cfg = JourneyConfig(
         book_dir=book_dir, out_dir=a.out if a.out is not None else book_dir, seed=a.seed,
         target_attempt_share=a.attempt_share if a.attempt_share is not None else 0.30,
         target_recovery_rate=a.recovery_rate if a.recovery_rate is not None else 0.09,
     )
+    return cfg, ([int(s) for s in a.seeds.split(",")] if a.seeds else None)
+
+
+#: The numbers a seed sweep reports, and how to format each.
+SWEEP_FIELDS = (
+    ("theta", "{:.4f}"), ("signal_to_noise", "{:.4f}"),
+    ("random_contact_disbursement_rate", "{:.4f}"), ("oracle_precision_at_10pct", "{:.4f}"),
+    ("window_respect_rate", "{:.4f}"), ("suppressed_share", "{:.4f}"),
+    ("contact_lift", "{:.2f}"),
+)
+
+
+def seed_sweep(cfg: JourneyConfig, seeds: list[int]) -> dict[str, list[float]]:
+    """Re-solve both knobs on each seed and print the spread.  Writes nothing.
+
+    This is the re-checkability the plan asks of SD-S4: the two asserted bands
+    must hold on at least five seeds, not on the one that happened to be run.
+    """
+    from dataclasses import replace
+
+    out: dict[str, list[float]] = {name: [] for name, _ in SWEEP_FIELDS}
+    for s in seeds:
+        b = generate_all(replace(cfg, seed=s))
+        st = lb.check(b.labels, b.label_truth, b.params["labels"],
+                      substream(s, "measurement"))
+        for name, _ in SWEEP_FIELDS:
+            out[name].append(st[name])
+        print(f"  seed {s:>6}: " + "  ".join(
+            f"{name}={fmt.format(st[name])}" for name, fmt in SWEEP_FIELDS))
+    print(f"\nspread over {len(seeds)} seeds")
+    for name, fmt in SWEEP_FIELDS:
+        v = np.array(out[name])
+        print(f"  {name:<36} min {fmt.format(v.min())}  max {fmt.format(v.max())}  "
+              f"mean {fmt.format(v.mean())}")
+    return out
 
 
 def main(argv: list[str] | None = None) -> None:
-    cfg = parse_args(argv)
+    cfg, seeds = parse_args(argv)
+    if seeds:
+        seed_sweep(cfg, seeds)
+        return
+
     t0 = time.perf_counter()
-    journeys, events, truth, params = generate(cfg)
+    b = generate_all(cfg)
     t_gen = time.perf_counter() - t0
+    journeys, events, truth, params = b.journeys, b.events, b.truth, b.params
 
     stats = check(cfg, journeys, events, truth, cfg.book_dir)
+    lstats = lb.check(b.labels, b.label_truth, params["labels"],
+                      substream(cfg.seed, "measurement"))
     params["realised"] = {k: round(v, 5) for k, v in stats.items()}
+    params["labels"]["realised"] = {k: round(v, 5) for k, v in lstats.items()}
 
     cfg.out_dir.mkdir(parents=True, exist_ok=True)
     t1 = time.perf_counter()
     journeys.to_csv(cfg.out_dir / "journeys.csv", index=False)
     events.to_csv(cfg.out_dir / "journey_events.csv", index=False)
     truth.to_csv(cfg.out_dir / "journey_truth.csv", index=False)
+    b.campaigns.to_csv(cfg.out_dir / "campaigns.csv", index=False)
+    b.labels.to_csv(cfg.out_dir / "labels.csv", index=False)
+    b.label_truth.to_csv(cfg.out_dir / "label_truth.csv", index=False)
     (cfg.out_dir / "journey_params.json").write_text(json.dumps(params, indent=2) + "\n")
     t_io = time.perf_counter() - t1
 
@@ -447,13 +557,25 @@ def main(argv: list[str] | None = None) -> None:
           f"{stats['abandoned_share_of_attempts']:.1%} | still open {stats['in_flight_share_of_attempts']:.1%}")
     print("drop-off stage mix: " + " | ".join(
         f"{s} {stats[f'abandon_at_{s}']:.0%}" for s in STAGES[:N_GATES]))
-    print(f"RANDOM-CONTACT DISBURSEMENT (drop-off recovery): {stats['recovery_rate']:.2%} "
-          f"(bank-stated 8-10%)")
+    print(f"observed drop-off recovery (customer level, journey layer): {stats['recovery_rate']:.2%}")
     print(f"window shoppers: {stats['shopper_share_of_dropoffs']:.1%} of drop-offs, "
           f"{stats['shopper_share_of_disbursed']:.1%} of disbursements")
-    print(f"window respect (RM contact -> disbursement within the product window): "
-          f"{stats['window_respect']:.1%} | median journey {stats['median_journey_days']:.1f} d")
     print(f"product mix: {mix}")
+    print(f"\ncampaigns: {len(b.campaigns):,} touches | "
+          + " ".join(f"{k} {v:.0%}" for k, v in
+                     b.campaigns.channel.value_counts(normalize=True).items())
+          + f" | response {1 - b.campaigns.response.eq('no_response').mean():.1%}")
+    print(f"drop-off population: {len(b.labels):,} (customer, month) rows over "
+          f"{int(lstats['customers']):,} customers | suppressed {lstats['suppressed_share']:.1%}")
+    print(f"solved theta {lstats['theta']:.4f} (contact lift {lstats['contact_lift']:.1f}x) | "
+          f"S/N {lstats['signal_to_noise']:.4f}")
+    print(f"RANDOM-CONTACT DISBURSEMENT (SK-01, amended): "
+          f"{lstats['random_contact_disbursement_rate']:.2%} (band 8-10%)")
+    print(f"ORACLE PRECISION @10% (SK-02 ceiling): "
+          f"{lstats['oracle_precision_at_10pct']:.2%} (band 25-35%)")
+    print(f"window respect {lstats['window_respect_rate']:.1%} (floor 90%) | "
+          f"no-contact rate {lstats['no_contact_disbursement_rate']:.2%} | "
+          f"menu-of-4 coverage {lstats['menu_of_4_coverage']:.1%}")
     print(f"generated in {t_gen:.1f}s, written in {t_io:.1f}s -> {cfg.out_dir}")
 
 
