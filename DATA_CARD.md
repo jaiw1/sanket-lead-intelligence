@@ -1,12 +1,13 @@
 # DATA CARD — SANKET synthetic liability book and application journeys
 
 **Artefact:** `data/customer_panel.csv`, `data/customer_book.csv`, `data/liability_book_truth.csv`,
-`data/journeys.csv`, `data/journey_events.csv`, `data/journey_truth.csv`, `data/journey_params.json`
+`data/journeys.csv`, `data/journey_events.csv`, `data/journey_truth.csv`, `data/campaigns.csv`,
+`data/labels.csv`, `data/label_truth.csv`, `data/journey_params.json`
 **Generator:** `src/book/` (CLI: `src/make_book.py`) and `src/journeys/` (CLI: `src/make_journeys.py`)
-**Version:** SD-S2 / SD-S3 (plan §B/L6), 2026-09-16 · builds on SD-S1
-**Status:** SD-S4 (label windows + contact effect θ), SD-S5 (substitution scoring), SD-S6
-(campaign/contact history) and SD-S7 (realism suite) are **not yet implemented**; §9 says so
-explicitly. §11 documents the application-journey layer.
+**Version:** SD-S4 / SD-S6 (plan §B/L6), 2026-09-16 · builds on SD-S1 / SD-S2 / SD-S3
+**Status:** SD-S7 (realism suite) is **not yet implemented**; §9 and §12.6 say what is missing.
+§11 documents the application-journey layer, §12 the drop-off population, its labels and the
+campaign/contact history. SD-S5 is shipped as a data structure (§4) and measured in §12.7.
 
 > This is synthetic data. It is engineered to bank-stated baselines, not sampled from any real
 > customer book. No IDBI, Atlas-sandbox or customer record is used anywhere in this file or in
@@ -39,7 +40,10 @@ Most of this book is `assumed`, and that is the honest position: a synthetic boo
 | `data/journeys.csv` | application attempt | 21,682 (49 columns) | no — features are derived from it, point-in-time (§11.9) |
 | `data/journey_events.csv` | stage transition | 119,793 (8 columns) | no |
 | `data/journey_truth.csv` | application attempt | 21,682 (17 columns) | **never.** Window-shopper truth and the hazard's own odds. |
-| `data/journey_params.json` | one run | — | no — the solved intercepts and the realised headline numbers |
+| `data/campaigns.csv` | outbound marketing touch | 373,800 (10 columns) | no — contact features are derived from it, point-in-time (§12.5) |
+| `data/labels.csv` | customer × month, drop-off population | 127,767 (38 columns) | no — **this is the table L7 trains and L9 grades on** (§12) |
+| `data/label_truth.csv` | customer × month | 127,767 (13 columns) | **never.** The latent index, both potential outcomes and the oracle score. |
+| `data/journey_params.json` | one run | — | no — the solved intercepts, the solved θ and S/N knob, and every realised headline number |
 
 ```bash
 python3 src/make_book.py                        # 60,000 customers × 30 months, 6 products
@@ -289,7 +293,7 @@ of the propensity ranking.
 | `target_contact_conversion_3m` | 0.0135 | Bank-stated cold-calling baseline (~1%, engineered to 1.3%). The converter share is **back-solved** from this rather than hard-coded, so moving the target moves the whole book coherently: `converter_share = target × (months − first_event_month) / horizon`. |
 | `first_event_month` | 9 | Earliest disbursement month — a run-up needs history in front of it. |
 | `label_horizon_months` | 3 | The label window `score_and_pack` measures, `(m, m+3]`. |
-| `theta_contact_effect` | `None` | **Not yet solved.** SD-S4 fills this in when it fits the contact effect so random-contact disbursement lands in [8%, 10%] on the *journey* label. |
+| `theta_contact_effect` | `None` here | **Solved, but in the journey lane, not this one.** SD-S4 fits it against the drop-off population, not the book, so it is written to `journey_params.json` (`labels.theta_contact_effect`, 1.283 at the default seed) rather than back into `BaseRates`. See §12.3. |
 
 `build.check()` asserts the realised 3-month random-contact rate stays within 0.6 pp of the
 target, and that the hard-negative shares stay in band, so a generator regression fails the run
@@ -396,6 +400,7 @@ Written down deliberately. Every one of these is a place a jury could push.
 
 | Version | Date | Change |
 |---|---|---|
+| SD-S4 / SD-S6 | 2026-09-16 | Drop-off population, labels and contact effect in `src/journeys/labels.py`; campaign history, fatigue and the suppression rule in `src/journeys/campaigns.py`. Three new artefacts (`campaigns.csv`, `labels.csv`, `label_truth.csv`). Two knobs solved numerically and asserted in-script across five seeds: the contact effect θ (SK-01, 8-10%) and one signal-to-noise knob (SK-02 ceiling, 25-35%). Scoring population amended in `validation/criteria.yaml` — no band moved. §12. |
 | SD-S2 / SD-S3 | 2026-09-16 | Application-journey layer in `src/journeys/`: eight stages, a discrete-time hazard with solved intercepts, per-stage timeouts, multi-attempt histories, five channels, and window shopping as a causal latent read through four independent signal channels. Three new artefacts plus a params manifest; point-in-time-safe feature builder for L7. |
 | SD-S1 | 2026-09-16 | Vectorised into `src/book/`; 60,000 × 30; six products (`pl` → `personal` with a compat alias); 14 new channels; explicit latent intent/capacity exported to `liability_book_truth.csv`; cross-product substitution matrix; back-solved base rate; equivalence and performance tests. |
 | pre-SD-S1 | 2026-07-10 | `src/make_book.py` row loop: 15,000 × 27, three products. |
@@ -516,13 +521,20 @@ rate near one in eleven is what an untargeted call-back campaign on a stale drop
 converters that carry an earlier abandoned attempt so the realised rate lands on 9%, and
 `check()` fails the run outside [8%, 10%].
 
-**What SD-S4 and L9 have to decide.** `validation/criteria.yaml` SK-01 registers
+**DECIDED, 2026-09-16 — the dated amendment at the foot of `validation/criteria.yaml`.** SK-01 registered
 `random_contact_disbursement_rate ∈ [0.08, 0.10]` against a label definition written at the
-*(cust_id, month)* grain of the book. On that grain the number is ~0.1%, not 9%. Either SK-01's
-scoring population is the drop-off list (the reading above), or the contact effect θ has to be
-large enough to *cause* 8–10% of random contacts to disburse within days, which would not be
-credible. This lane has no authority to amend a pre-registered criterion; it is flagged here, in
-`journey_params.json`, and in the SD-S2 hand-off.
+*(cust_id, month)* grain of the **book**, before the journey layer existed. The band is
+unchanged; the **scoring population** is now written down as the drop-off population, and the
+metric is measured on `data/labels.csv`, not here. The architect's ruling and its rationale are
+quoted in full in the `amendments:` block at the foot of `validation/criteria.yaml`; §12 below is
+the generator side of it.
+
+The 8.96% in the table above is therefore **not** SK-01 any more. It is the journey layer's own
+*customer-level* recovery rate — of the customers who abandoned something, the share who ever
+disbursed over the whole 30-month panel — and it remains asserted in
+`journeys.build.check()` because it is the shape SD-S2 solved `attempts.select()` against. SK-01
+is a **monthly, contact-conditional** rate over the same people (§12.3), and the two agree with
+each other by construction: the observed recoveries counted here are forced positives there.
 
 ### 11.4 Volumes
 
@@ -730,9 +742,293 @@ These are additional to §9, which covers the book.
    the journey layer has none on volumes, which is wrong — loan applications are strongly seasonal.
 10. **Channel is fixed for the whole journey.** Nobody starts on the app and finishes in a branch,
     which is the most common real pattern of all.
-11. **The recovery population is generated, not observed.** Which drop-offs come back is drawn from
-    a latent return propensity (§11.3); no contact, campaign or nudge causes it, because the contact
-    effect θ is SD-S4's to fit. Until then, "what an RM call is worth" is not in this data.
+11. ~~**The recovery population is generated, not observed.**~~ **Closed by SD-S4.** Inside
+    `journeys.csv` a recovery is still drawn from a latent return propensity with no campaign
+    causing it — that file is the *observational* world. What an RM call is worth now lives one
+    layer up, in `labels.csv`, where contact multiplies that same return propensity by the solved
+    θ (§12.3). The cost of that split is its own unrealism, recorded at §12.6 item 1.
 12. **Every application is attributed to exactly one customer in the book.** There is no walk-in
     prospect, no joint application, no co-applicant, no guarantor — consistent with lead generation
     being out of scope, but it means the funnel has no top-of-funnel at all.
+
+---
+
+## 12. The drop-off population, its labels and the contact history — `src/journeys/labels.py`, `src/journeys/campaigns.py`
+
+> **The mandate.** Conversion is **disbursement**; the population that matters is the
+> **drop-offs**; each product has its own **decision window**; the baseline for RM-called
+> prospects is **8–10%** and the target is **30%**; and nobody should be called who is on the DND
+> list, opted out, was called last week, already has an application in flight or already holds the
+> product. §11 built the drop-offs. §12 is the thing an RM actually acts on: *which of them do we
+> call this month, and what happens if we do.*
+
+```bash
+python3 src/make_book.py && python3 src/make_journeys.py    # writes labels.csv + campaigns.csv
+python3 src/make_journeys.py --seeds 7,8,9,10,11            # re-solve both knobs on 5 seeds
+```
+
+### 12.1 The scoring unit, and what the label means
+
+`data/labels.csv` is **one row per (customer, month)** for customers in the drop-off pool, with
+membership decided at the **first instant of the month** — the moment an RM picks the list up —
+so nothing that happens inside the month can put a row into the population it is then scored in.
+
+| Field | Meaning |
+|---|---|
+| `in_dropoff_pool` | at least one abandoned attempt in the trailing **365 days** at `as_at`. Always 1 in this file; the file *is* the pool. |
+| `suppressed` / `suppression_reason` | the SD-S6 rule (§12.4). |
+| `eligible_for_contact` | `= 1 - suppressed`. **This is the SK-01 / SK-02 scoring population.** |
+| `label_disbursed_in_window` | **the pre-registered label.** 1 if, contacted at this month, the customer disburses *some* product within *that product's* decision window. |
+| `label_product`, `label_product_<p>` × 6 | which product, and the six mutually exclusive per-product labels that partition the row label (the menu-of-4 target for SK-13 / SK-08). |
+| `window_days` = `contact_window_days` | that product's window: personal 1, gold 1, auto 3, education 7, home 14, lap 14. |
+| `window_respected`, `days_to_disbursement` | of the returns that *did* complete, whether the disbursement landed inside the window, and by how much. `NaN` where nobody returned. |
+| `label_no_contact` | **Y(0)** — the same month with no call. Feeds uplift/Qini and the SK-25 baseline ladder. |
+| `contacted`, `label_observed` | the campaign the bank actually ran this month, and the outcome under it. **`contacted` is a treatment, not a feature** — it happens after `as_at` and must never reach a model as an input. |
+| `realised_recovery` | this row is a drop-off who really did come back in `journeys.csv` (§12.2). |
+
+The label is a **potential outcome under contact**, `Y(1)`. It has to be: SK-01 contacts a
+uniformly random 10% of the population and SK-02 contacts the model's top 10% of the *same*
+population, so a value of `Y(1)` has to exist for every row or neither band is gradeable. This is
+the same randomised-campaign construction the repo's uplift module already uses, applied to the
+drop-off list instead of the book.
+
+**Realised, default seed:** 127,767 rows over 13,258 customers (9.6 rows per customer), 76.2% of
+them contactable.
+
+### 12.2 How `labels.csv` and `journeys.csv` stay honest about each other
+
+`journeys.csv` is the **observed** world — almost nobody in it was called, and only the book's
+converters ever disburse. `labels.csv` is the world **under an intervention**. Three constructions
+tie them together, and they are the answer to the obvious objection ("your label says this
+customer disbursed and your book says they never did"):
+
+1. **Every observed recovery is forced.** A drop-off who really came back, really had an RM on the
+   file and really disbursed inside the window is a forced **positive** at the month of that
+   contact, for the product the book names. One that disbursed *outside* its window is a forced
+   **negative** — a real disbursement the pre-registered label does not count. 1,220 observed
+   recoveries; 1,088 matched a population row; 171 of those fell on a row the bank may not call
+   and were dropped (§12.4). All three counts are in `journey_params.json`.
+2. **Y(0) is calibrated, not assumed.** `spontaneous_return` is *solved* so the mean no-contact
+   label rate equals the per-row rate at which drop-offs really did come back **with no RM on the
+   file** in `journeys.csv` (0.377%). The contact lift is then a derived number.
+3. **The latents are the same latents.** `return_propensity`, `commitment`, the window-shopper tilt
+   and the book's own intent and capacity tensors drive both layers, so "who is ready" never
+   disagrees between them.
+
+### 12.3 The two solved knobs
+
+Both are solved numerically on every run and **asserted in-script**; the run fails outside the
+band rather than reporting a pretty number.
+
+**θ, the contact effect.** Contact multiplies the customer's `return_propensity` — SD-S2's hook:
+
+```
+P(returns | contacted)      = clip(θ · return_propensity · fatigue, 0, 1)
+P(completes | returned)     = sigmoid(S/N · signal_z + N(0, 1))
+label                       = returned AND completed AND inside the window
+```
+
+θ is bisected so the disbursement rate over the eligible population lands on 0.09.
+
+**The signal-to-noise knob**, `LABEL_SIGNAL_TO_NOISE` — **one number, and the only one.** It is
+applied to *every* latent channel: as the coefficient on the standardised latent index in the
+completion logit, and as an exponent shrinking `return_propensity` toward its own mean
+(`mean · (ret/mean) ** min(S/N, 1)`). Both, because a knob that scaled only the logit has a floor
+it cannot go below — `return_propensity` is itself a latent, it is correlated with the index
+(shoppers neither return nor complete), and at S/N = 0 ranking on the index alone still reached
+**35.3%** precision, outside the registered band with the knob at the bottom of its bracket.
+
+It is solved so that an **oracle** ranker — one that sees `signal_z` itself, which no model ever
+can — reaches precision@10% of **0.32**. That number is a **ceiling**, not a prediction: L7's model
+reads those latents only through noisy observables and will land below it. The target sits in the
+upper half of the registered 25–35% band *deliberately and for that reason* — registering the
+ceiling at the midpoint would make SK-02 unreachable by construction. **The frozen scorer
+(`src/score_and_pack.py`) is not used for this tuning**: it is a three-product, whole-book,
+three-month-horizon model that answers a different question.
+
+The latent index (all weights `assumed`): commitment 1.00 · eligibility-weighted latent intent at
+`m` 0.70 · stage the last attempt reached 0.45 · recency of the abandonment 0.40 · capacity ratio
+0.35 · window-shopper tilt −0.55, standardised over the population.
+
+**Realised, and across the five registered seeds (7, 8, 9, 10, 11) on the 60,000 × 30 book:**
+
+| Quantity | Band | Seed 20260709 | min | max | mean |
+|---|---|---|---|---|---|
+| θ | — (solved) | 1.2832 | 1.2765 | 1.3024 | 1.2881 |
+| S/N knob | — (solved) | 0.6013 | 0.5895 | 0.6024 | 0.5976 |
+| `random_contact_disbursement_rate` (SK-01) | **[0.08, 0.10]** | **0.0906** | 0.0881 | 0.0918 | 0.0899 |
+| `oracle_precision_at_10pct` (SK-02 ceiling) | **[0.25, 0.35]** | **0.3236** | 0.3144 | 0.3244 | 0.3212 |
+| `window_respect_rate` (SK-04) | **≥ 0.90** | **0.9331** | 0.9272 | 0.9309 | 0.9293 |
+| `suppressed_share` | — | 0.2384 | 0.2351 | 0.2428 | 0.2400 |
+| contact lift θ / spontaneous | — | 26.2× | 24.0× | 26.5× | 25.3× |
+
+The band is asserted on the **estimand** — the rate over the whole eligible population — because a
+uniformly random 10% sample estimates exactly that without bias, and a generator gate that could
+fail on the Monte Carlo noise of one measurement draw is a flake, not a gate. One actual 10% draw
+is reported beside it: 9.19% against an estimand of 9.06%, s.e. 0.29 pp, n = 9,730.
+
+> **The number to argue about is the 26× contact lift.** It is not a free parameter — both ends are
+> pinned. Y(1) is pinned at 8–10% by the mentors; Y(0) is pinned at 0.377%/month by how rarely a
+> drop-off in `journeys.csv` came back with nobody on the phone. If a reviewer thinks 26× is too
+> generous to the product, the thing to change is the **Y(0) anchor**, not θ: counting *every*
+> observed recovery as spontaneous (rather than only the ones with no RM on the file) would put
+> Y(0) near 0.9%/month and the lift near 10×. We took the stricter reading — a recovery with an RM
+> contact on it is a `Y(1)` observation, not a `Y(0)` one — and record the alternative here rather
+> than choosing the flattering one silently. **Owner/L9 call, not this lane's.**
+
+### 12.4 The contact history, fatigue and the suppression rule — `campaigns.py`
+
+`data/campaigns.csv`: **373,800 outbound touches**, 0.208 per customer-month, SMS 50% / email 32% /
+RM-call 18%, response 10.2% (opened 4.7 · engaged 3.0 · declined 2.2 · opted out 0.2). Intensity is
+log-normal per customer on top of a bursty monthly wave, because real campaign lists are not
+uniform — the same "hot" names get pushed month after month, which is the over-contacting the
+fatigue term exists to punish. Nothing is sent to a customer without marketing consent, on the DND
+list, or after they die.
+
+**Fatigue.** Every touch in the trailing 30 days multiplies the response probability — and, in the
+label layer, the probability of returning to an abandoned application — by `0.72`, geometrically in
+the trailing-30-day count, floored at 0.12:
+
+| contacts in the last 30 days | 0 | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|---|
+| multiplier | 1.00 | 0.72 | 0.52 | 0.37 | 0.27 | 0.19 |
+
+The window is a **hard 30-day edge, not a half-life**, so the feature the model sees
+(`contacts_30d`) is exactly the quantity that drove the behaviour. Tested both as a pure function
+and as a realised effect: the response rate and the label rate both fall with the count.
+
+**Suppression.** Eight reasons, evaluated in a fixed priority order, first match wins — which is
+what makes `suppression_reason` a single mutually exclusive enum rather than a set. A row is
+suppressed **iff** its reason is not `none`, and a suppressed row **never** carries a positive
+contact label (asserted in `labels.check()` and in `tests/test_journeys_campaigns.py`).
+
+| # | `suppression_reason` | Fires when | Share of rows |
+|---|---|---|---|
+| — | `none` | contactable | 76.16% |
+| 1 | `deceased` | died before `as_at` | 0.10% |
+| 2 | `no_marketing_consent` | `consent_marketing = 0`, **or** opted out of a campaign before `as_at` | 15.62% |
+| 3 | `dnd` | on the do-not-disturb list | 1.00% |
+| 4 | `account_dormant` | CASA account dormant before `as_at` | 0.88% |
+| 5 | `application_in_flight` | an application is open with the bank right now | 0.43% |
+| 6 | `recent_decline` | declined or opted out within 90 days | 1.49% |
+| 7 | `recent_contact` | last touched fewer than 7 days ago | 4.19% |
+| 8 | `already_holds_product` | the product their need points at is one they already hold, and nothing else clears the pitch floor (0.35 × top score) | 0.14% |
+
+Field names follow `data/bank/SCHEMA.md`: `consent_marketing`, `dnd`, `campaign_contacts_6m`,
+`last_contact_date`, `contact_window_days`, and `already_holds_product` is the reason that file
+names for the `holdings` family (APIs 391/402/362/538). **`in_arrears` is absent and that is a
+gap, not an oversight** — SANKET's book is a *liability* book with no loan performance in it, so
+"never pitch anyone in arrears" cannot be enforced from this data. It is recorded at §12.6.
+
+Every parameter above is `assumed`.
+
+### 12.5 What L7 / SM-3 get, and the point-in-time rule
+
+`journeys.features.journey_features_as_at(journeys, events, as_at, campaigns=…, labels=…)` now
+also emits, with **no `journey_` prefix** because these are facts about the *bank's* behaviour
+rather than the customer's application:
+
+`contacts_30d` · `contacts_90d` · `campaign_contacts_6m` · `last_contact_days` ·
+`last_contact_date` · `last_campaign_product` · `suppressed` · `suppression_reason`
+
+Three rules for consumers:
+
+1. **`suppressed` / `suppression_reason` are read back from `labels.csv`, never re-derived.** The
+   rule is decided once, in the lane that owns the timestamps; a consumer that re-derived it would
+   drift from the table the labels were built against. A customer with no population row at that
+   month comes back `suppressed = 0`, reason `not_in_population` — they are not in the queue at all.
+2. **A contact counter of 0 is a genuine zero** (the bank really has not called them), unlike the
+   `journey_*` block where an absent row means *no application history* and must be encoded with a
+   `has_journey` flag rather than filled with zeros.
+3. **`contacted`, `contacted_at`, `label_*` are outcomes.** They are timestamped at or after
+   `as_at` by construction (asserted) and must never be model inputs.
+
+Point-in-time safety is enforced, not asserted: the counters are computed by `searchsorted` over a
+customer-keyed, day-sorted array, so "everything strictly before T" is the only query the data
+structure supports. `tests/test_journeys_campaigns.py::test_contact_features_use_no_future_information`
+recomputes every counter from a campaign table **physically truncated** at `as_at` and requires the
+two frames to be identical — the same test SD-S2 applies to the journey features, for the same
+reason (SK-17, zero tolerance).
+
+### 12.6 Known unrealisms — the label and campaign layers
+
+Additional to §9 (the book) and §11.11 (the journeys).
+
+1. **`labels.csv` positives are not `journeys.csv` disbursements**, and cannot be. The label is the
+   outcome *if contacted*; the journey layer is the world in which almost nobody was. Every
+   observed recovery does appear as a forced label (§12.2), but the reverse does not hold: a
+   customer the book says never converted can carry a positive counterfactual label. Anyone
+   reconciling row counts between the two files will find they do not match, and that is the design,
+   not a bug. The cost is that **the counterfactual is generated, not validated** — nothing here
+   proves 8–10% is what a call is really worth; it is what the mentors said and what θ was solved
+   to reproduce.
+2. **Mortality and account dormancy are drawn, not derived.** Every customer in the book has a
+   credit in every month, so neither is inferable from it. 0.15% die and 1.2% go dormant, at a
+   uniformly drawn month. A real bank reads both off the CIF.
+3. **No arrears suppression.** See §12.4.
+4. **Contact is a monthly, binary decision.** No call attempts that do not connect, no voicemail, no
+   callback scheduling, no time-of-day effects, and an RM call costs the same as an SMS in the
+   model even though the whole product exists because it does not.
+5. **The campaign product pitched is drawn from latent intent**, i.e. the *pre-SANKET* bank is
+   already mildly targeted. A genuinely untargeted baseline would make the model look better; this
+   is the conservative choice, but it is not a measured one.
+6. **One RM call per month, and the label window starts at the month boundary.** A drop-off called
+   on the 28th has the same row as one called on the 2nd.
+7. **171 observed recoveries (14% of them) were dropped** because their contact month fell on a row
+   the suppression rule forbids calling — most often because the customer has no marketing consent,
+   which is correct, but a few because a campaign touch landed inside the 7-day cool-off. Those are
+   real disbursements the label table cannot represent.
+8. **Fatigue has no recovery curve.** It depends only on the trailing-30-day count, so a customer
+   hammered four times last month is fully rested 31 days later.
+
+### 12.7 SD-S5 — does the substitution matrix make the menu of four worth anything?
+
+Reported, not gated. Measured on the default seed.
+
+| Question | Answer |
+|---|---|
+| Converters whose realised product differs from their **latent need** (`driver_product`) | **12.5%** (the book's `substituted` flag, §4) |
+| Converters whose realised product differs from their **first-viewed** product (first application attempt) | **1.5%** overall; **7.0%** among the 1,220 converters with more than one attempt |
+| Label positives taking a product other than the one they **abandoned** | **28.9%** |
+| **Top-4 by latent intent covers the realised product** (converters, at the disbursement month) | **83.5%** — clears the ≥ 80% plan band |
+| Top-1 / top-2 / top-3, same ranking | 18.9% / 39.8% / 61.2% |
+| Top-4 coverage on the label table, intent-only ranking | **89.8%** |
+| Top-4 coverage on the label table, intent **+ the substitution anchor** on the abandoned product | **99.3%** (the Bayes ceiling for SK-13) |
+
+Read together: the menu of four is doing real work. A single recommendation is right 19% of the
+time; four cover 83.5–89.8%, and adding the one feature a model definitely has — which product
+they walked away from — takes it to 99.3%. The **1.5% first-viewed figure is the weak one**: it is
+low because `attempts.assign_product` pins a converter's *final* attempt to the book's product and
+gives their earlier abandoned attempt a 0.75 probability of being the same one, so only
+multi-attempt converters can differ at all. The parameter that would move it is
+`attempts.PRIOR_SAME_PRODUCT_P` (SD-S2's, not this lane's) — lowering it from 0.75 raises the
+share of drop-offs who shopped a different product before settling. **Not changed here**: it is
+another lane's constant and the ≥ 80% band it feeds already passes.
+
+The top-4 band passes with 3.5 pp of headroom, which is thin. The parameter that moves it is
+`book.products.SUBSTITUTION_SHARPNESS` (currently 4.0): raising it concentrates realised products
+back onto the latent driver and lifts top-k coverage at every k. **Not changed here** — it is
+SD-S1's constant, it is already documented at §4, and moving it would move the book's realised
+product mix underneath a generator that three other lanes have already consumed.
+
+### 12.8 Every `assumed` parameter in §12
+
+All of them. Nothing in this layer is `sourced` or `sourced-approx`.
+
+**Population:** 365-day drop-off look-back · first labelled month 7 · membership decided at the
+month's first instant.
+**Latent index:** commitment 1.00, intent 0.70, stage 0.45, recency 0.40, capacity 0.35, shopper
+−0.55 · unit-variance idiosyncratic noise.
+**Solve targets:** random-contact 0.09 (band [0.08, 0.10]) · oracle precision 0.32 (band
+[0.25, 0.35]) · contact budget 10% · θ bracket [0.005, 40], S/N bracket [0.02, 8], 48 bisection
+steps each.
+**The clock:** contact-to-disbursement lag mean 0.44 × window, Gamma shape 2.6 · stall tail
+probability 0.050 with mean 0.85 × window.
+**Product choice:** intent sharpness 1.6 · substitution-anchor exponent 2.0 on
+`book.products.SUBSTITUTION` · menu size 4.
+**Campaigns:** λ median 0.14, σ 0.90, cap 1.20 · monthly wave U(0.55, 1.85) · channel mix
+0.50 / 0.32 / 0.18 · response base −1.55, channel effects −0.55 / −0.80 / +0.95, commitment +0.55,
+shopper −0.70 · response split opened 0.46 / engaged 0.30 / declined 0.22 / opted out 0.02.
+**Fatigue:** decay 0.72 per trailing-30-day contact, floor 0.12, hard 30-day window.
+**Suppression:** contact cool-off 7 days · decline cool-off 90 days · deceased 0.15% · dormant
+1.2% · pitch floor 0.35 · products holdable = home (`has_home_loan`), auto (`has_auto_emi`).
