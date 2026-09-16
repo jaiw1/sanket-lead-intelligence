@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { Fragment, useMemo } from 'react'
 import {
   Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, ReferenceLine, Tooltip, XAxis, YAxis,
 } from 'recharts'
@@ -442,6 +442,32 @@ const VERDICT_TONE = {
 }
 
 /**
+ * `bands[*].observed` (and its older sibling `value`) is a plain number for every gating
+ * band, but three `op: "report"` bands ship a structured breakdown instead of one figure —
+ * SK-03 (precision at two extra budgets), SK-06 (the headline's two per-100 counts) and
+ * SK-10 (AUC/precision cut by seven dimensions). `src/model/pack.py` packs that shape on
+ * purpose; the table just has to read it defensively rather than hand React an object as a
+ * child (a hard crash) or hand the viewer raw JSON (unreadable, and it can run to a few KB
+ * for SK-10). Anything recognised is summarised in one line; anything else is named as a
+ * multi-part figure rather than either crashing or being rendered as if it were empty.
+ */
+function formatObserved(value, verdict) {
+  if (value === null || value === undefined) {
+    return verdict === 'not_measured' || verdict === 'not_run' ? 'not measured' : '—'
+  }
+  if (typeof value !== 'object') return value
+  if (value.at_5pct && value.at_20pct) {
+    return `${pct(value.at_5pct.precision, 1)} @5% · ${pct(value.at_20pct.precision, 1)} @20%`
+  }
+  if (value.baseline_per_100 != null && value.model_per_100 != null) {
+    return `${value.baseline_per_100} → ${value.model_per_100} / 100`
+  }
+  if (Array.isArray(value)) return `${value.length} row${value.length === 1 ? '' : 's'} reported`
+  const keys = Object.keys(value)
+  return keys.length ? `reported, ${keys.length} part${keys.length === 1 ? '' : 's'} — see MODEL_CARD.md` : 'reported'
+}
+
+/**
  * The pre-registered criteria, with their verdicts as recorded.
  *
  * `validation/criteria.yaml` is committed before the first result, so the git timestamp is
@@ -454,7 +480,13 @@ function ValidationTable({ metrics, live, packError, packLoading }) {
   const rows = useMemo(() => (bands ? Object.entries(bands).map(([id, v]) => ({ id, ...v })).sort((a, b) => a.id.localeCompare(b.id)) : null), [bands])
   const tally = useMemo(() => {
     if (!rows) return null
-    return rows.reduce((acc, r) => { acc[r.verdict] = (acc[r.verdict] || 0) + 1; return acc }, {})
+    const acc = rows.reduce((acc, r) => { acc[r.verdict] = (acc[r.verdict] || 0) + 1; return acc }, {})
+    // A band can pass on the packed seed and fail on the 5-seed mean (SK-04 is the
+    // pre-registered example) — `agrees_across_seeds: false` is the disclosure signal.
+    // That is a second, separately-counted honest fail, not folded into `acc.fail`,
+    // which only ever reflects the packed-seed verdict rendered in the main column.
+    acc.seedMeanFail = rows.filter((r) => r.verdict_on_seed_mean && r.verdict_on_seed_mean !== r.verdict && r.verdict_on_seed_mean === 'fail').length
+    return acc
   }, [rows])
 
   return (
@@ -468,6 +500,7 @@ function ValidationTable({ metrics, live, packError, packLoading }) {
         <span className="text-xs text-txt-mid">
           <b className="text-signal-teal">{tally.pass || 0} pass</b>
           {tally.fail ? <> · <b className="text-signal-rose">{tally.fail} fail</b></> : null}
+          {tally.seedMeanFail ? <> · <b className="text-signal-rose">{tally.seedMeanFail} fail{tally.seedMeanFail === 1 ? '' : 's'} on 5-seed mean</b></> : null}
           {tally.report ? <> · <b className="text-signal-amber">{tally.report} report-only</b></> : null}
           {tally.not_measured ? <> · {tally.not_measured} not measured</> : null}
         </span>
@@ -509,18 +542,44 @@ function ValidationTable({ metrics, live, packError, packLoading }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className="border-t border-ink-600/40">
-                  <th scope="row" className="px-3 py-2 text-left font-mono font-normal text-txt-mid">{r.id}</th>
-                  <td className="px-3 py-2 text-txt-lo">{r.band || r.criterion || r.description || '—'}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-txt-hi">
-                    {r.observed ?? r.value ?? (r.verdict === 'not_measured' ? 'not measured' : '—')}
-                  </td>
-                  <td className={`px-3 py-2 text-right text-[10px] font-bold uppercase ${VERDICT_TONE[r.verdict] || 'text-txt-lo'}`}>
-                    {String(r.verdict || 'unknown').replace(/_/g, ' ')}
-                  </td>
-                </tr>
-              ))}
+              {rows.map((r) => {
+                // Disclosed dual verdict: a band can clear its threshold on the seed the
+                // export packs and still miss it on the mean across seeds (SK-04 is the
+                // pre-registered example — see README "The two honest fails"). Whenever
+                // the pack carries both verdicts and they disagree, the seed-mean verdict
+                // gets its own row directly under the packed-seed one rather than being
+                // silently dropped.
+                const seedMeanRow = r.verdict_on_seed_mean && r.verdict_on_seed_mean !== r.verdict
+                return (
+                  <Fragment key={r.id}>
+                    <tr className="border-t border-ink-600/40">
+                      <th scope="row" className="px-3 py-2 text-left font-mono font-normal text-txt-mid">{r.id}</th>
+                      <td className="px-3 py-2 text-txt-lo">{r.band || r.criterion || r.description || '—'}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-txt-hi">
+                        {formatObserved(r.observed ?? r.value, r.verdict)}
+                      </td>
+                      <td className={`px-3 py-2 text-right text-[10px] font-bold uppercase ${VERDICT_TONE[r.verdict] || 'text-txt-lo'}`}>
+                        {String(r.verdict || 'unknown').replace(/_/g, ' ')}
+                        {seedMeanRow ? <span className="ml-1 normal-case text-txt-lo">(packed seed)</span> : null}
+                      </td>
+                    </tr>
+                    {seedMeanRow && (
+                      <tr className="border-t border-ink-600/20 bg-ink-900/40">
+                        <th scope="row" className="px-3 py-1.5 pl-7 text-left font-mono text-[10px] font-normal text-txt-lo">↳ 5-seed mean</th>
+                        <td className="px-3 py-1.5 text-[11px] text-txt-lo">
+                          {r.agrees_across_seeds === false ? 'disagrees across seeds — disclosed, not smoothed over' : 'mean across the seeds actually run'}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-txt-hi">
+                          {formatObserved(r.seed_mean, r.verdict_on_seed_mean)}
+                        </td>
+                        <td className={`px-3 py-1.5 text-right text-[10px] font-bold uppercase ${VERDICT_TONE[r.verdict_on_seed_mean] || 'text-txt-lo'}`}>
+                          {String(r.verdict_on_seed_mean).replace(/_/g, ' ')}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>
