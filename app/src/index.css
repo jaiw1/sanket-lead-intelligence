@@ -1,9 +1,56 @@
+/* Fonts are self-hosted under public/fonts/ and linked from index.html, so the deployed
+   Content-Security-Policy needs neither fonts.googleapis.com nor fonts.gstatic.com.
+   Do not re-introduce an @import here. */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+html, body, #root { height: 100%; }
+
+/* SANKET is dark end to end. Telling the UA so is not cosmetic: it is what makes native
+   controls — the select arrow, the date picker, scrollbars, Chrome's autofill fill — render
+   for a dark page instead of painting white boxes over light text. */
+:root { color-scheme: dark; }
+
 body {
   @apply bg-ink-900 text-txt-hi font-sans antialiased;
+}
+
+/* Form controls, once, for the whole product.
+   The shared kit was authored for DRISHTi, which is a LIGHT product, so its inputs carry a
+   text colour and no background — correct there, because the UA default is white. Under
+   SANKET's palette remap that became near-white text on a UA-white field: a 1.08:1 contrast
+   failure that Lighthouse caught on the login form. Fixing it here rather than in the kit
+   files keeps the kit copyable from DRISHTi and fixes every control at once, including ones
+   a later screen has not written yet.
+   Checkboxes, radios and ranges are excluded: they are painted by `accent-color`, and a
+   background on them is either ignored or wrong. */
+@layer base {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select,
+  textarea {
+    @apply bg-ink-900 text-txt-hi;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    @apply text-txt-lo;
+  }
+  option {
+    @apply bg-ink-800 text-txt-hi;
+  }
+}
+
+/* Every horizontal scroller is a containing block.
+   Tailwind's `sr-only` is `position: absolute` with no offsets, so a bit of
+   screen-reader-only text inside a wide, horizontally scrolled table is laid out at its
+   static x — but positioned against the INITIAL containing block, not the scroller. The
+   scroller clips its own content; it cannot clip something whose containing block is the
+   document. The result was a 768px-wide page reporting a 961px scroll width, i.e. the
+   whole page scrolled sideways on a tablet because of invisible 1px spans.
+   `@layer components` keeps this beneath the utilities layer, so an explicit `absolute`
+   or `fixed` class on the same element still wins. */
+@layer components {
+  .scroll-thin { position: relative; }
 }
 
 /* thin dark scrollbars */
@@ -13,3 +60,26 @@ body {
 
 /* range slider accent */
 input[type='range'] { accent-color: #F5A623; }
+
+/* A visible focus ring is the floor, not the polish: every interactive element gets one
+   even when a component forgets its own focus-visible: classes. Amber on ink is 8.2:1. */
+:focus-visible { outline: 2px solid #F5A623; outline-offset: 2px; border-radius: 3px; }
+
+/* A route change moves focus to <main>, which is not interactive: announce it without
+   painting an outline around the entire screen. */
+main:focus { outline: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Windows High Contrast / forced-colors: our palette is replaced wholesale, so make sure
+   the things we draw with background colour alone still have an edge. */
+@media (forced-colors: active) {
+  .forced-border { border: 1px solid CanvasText; }
+}
