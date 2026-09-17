@@ -99,6 +99,15 @@ export function getFunnel({ signal } = {}) {
   return apiFetch('/sanket/funnel', { signal })
 }
 
+/**
+ * `sanketValidation` — GET /sanket/validation — x-roles M, A, same as `getFunnel`.
+ * The pre-registered report plus, when the model run recorded one, the accepted-failure
+ * overlay: which failing criteria were named in advance and why.
+ */
+export function getValidation({ signal } = {}) {
+  return apiFetch('/sanket/validation', { signal })
+}
+
 // --------------------------------------------------------------------------- //
 // consent / Account Aggregator
 // --------------------------------------------------------------------------- //

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { screen } from '@testing-library/react'
 import ModelTrust from './ModelTrust'
-import { renderScreen } from '../test/render'
-import { PACK } from '../test/fixtures/sanket'
+import { renderScreen, session } from '../test/render'
+import { errorResponse, jsonResponse, mockFetchRoutes } from '../test/http'
+import { FUNNEL, PACK } from '../test/fixtures/sanket'
 import sanketData from '../../public/sanket_data.json'
 
 describe('ModelTrust — the validation table survives the committed pack', () => {
@@ -70,5 +71,111 @@ describe('ModelTrust — SK-04’s dual verdict', () => {
     expect(sanketData.metrics.seeds.n).toBe(5)
     const seedMeanRow = screen.getByText('↳ 5-seed mean').closest('tr')
     expect(seedMeanRow).toHaveTextContent('fail')
+  })
+})
+
+// SK-02 fails in PACK's bundled bands (`verdict: 'fail'`, no acceptance info — the pack
+// never carries any). A live-mode acceptance overlay from GET /sanket/validation is the
+// only thing that can mark it as accepted, and it must never launder it into a pass.
+const ACCEPTED_VALIDATION = {
+  report: { criteria: [] },
+  criteria_states: { 'SK-01': 'pass', 'SK-02': 'accepted_failure', 'SK-03': 'not_measured' },
+  accepted_failure_ids: ['SK-02'],
+  accepted_failures: {
+    accepted: ['SK-02'],
+    criteria: [{
+      id: 'SK-02',
+      metric: 'precision_at_10',
+      severity: 'high',
+      status: 'fail',
+      value: 0.21,
+      threshold: 0.25,
+      op: '>=',
+      n: 12,
+      detail: null,
+      reason: 'Precision at the 10% budget is a real property of this model on this slice, disclosed and accepted for launch rather than tuned away.',
+    }],
+    still_blocking: [],
+    listed_but_passing: [],
+    listed_not_in_report: [],
+    recorded_at: '2026-09-10T00:00:00Z',
+    source: 'operator',
+    note: null,
+  },
+  available: true,
+  criteria_sha: 'sha-test',
+  verify_result: 'ok',
+  note: null,
+}
+
+const funnelRoute = jsonResponse(200, { data: FUNNEL, meta: { model_run_id: 'run-1', provenance_mode: 'fixture' } })
+
+describe('ModelTrust — an accepted validation failure', () => {
+  it('renders SK-02 as a failure, never a pass, and shows its reason', async () => {
+    mockFetchRoutes({
+      '/api/v1/sanket/funnel': funnelRoute,
+      '/api/v1/sanket/validation': jsonResponse(200, { data: ACCEPTED_VALIDATION, meta: {} }),
+    })
+    renderScreen(<ModelTrust />, { path: '/trust', mode: 'live', user: session('manager'), pack: PACK })
+
+    const row = await screen.findByText('SK-02')
+    const tr = row.closest('tr')
+    expect(tr).toHaveTextContent('FAIL — ACCEPTED')
+    expect(tr.textContent.toLowerCase()).not.toMatch(/\bpass\b/)
+
+    // The reason is shown as a sub-row, not invented and not omitted.
+    expect(await screen.findByText(/disclosed and accepted for launch/)).toBeInTheDocument()
+
+    // The tally counts it as its own disclosed thing — PACK has exactly one genuine pass
+    // (SK-01); if SK-02 had been folded into `pass` this would read "2 pass".
+    expect(screen.getByText('1 pass')).toBeInTheDocument()
+    expect(screen.getByText(/1 accepted failure/)).toBeInTheDocument()
+  })
+})
+
+describe('ModelTrust — the validation table degrades cleanly without acceptance', () => {
+  it('static mode never sees acceptance: SK-02 stays a plain, unaccepted fail', async () => {
+    // Static mode has no live fetch at all — this is also the pre-existing behaviour this
+    // change must not disturb.
+    renderScreen(<ModelTrust />, { path: '/trust', mode: 'static', user: null, pack: PACK })
+    const row = await screen.findByText('SK-02')
+    const tr = row.closest('tr')
+    expect(tr).toHaveTextContent('fail')
+    expect(tr).not.toHaveTextContent('ACCEPTED')
+    expect(screen.getByText('1 pass')).toBeInTheDocument()
+  })
+
+  it('a failed /sanket/validation fetch leaves the table exactly as it renders without one', async () => {
+    mockFetchRoutes({
+      '/api/v1/sanket/funnel': funnelRoute,
+      '/api/v1/sanket/validation': errorResponse(400, { code: 'bad_request', message: 'Malformed request.' }),
+    })
+    renderScreen(<ModelTrust />, { path: '/trust', mode: 'live', user: session('manager'), pack: PACK })
+    const row = await screen.findByText('SK-02')
+    const tr = row.closest('tr')
+    expect(tr).toHaveTextContent('fail')
+    expect(tr).not.toHaveTextContent('ACCEPTED')
+    expect(screen.getByText('1 pass')).toBeInTheDocument()
+    // The rest of the screen survives too — the side-fetch failure never blanks it.
+    expect(screen.getByRole('table', { name: /pre-registered validation criteria/i })).toBeInTheDocument()
+  })
+
+  it('a validation response with no acceptance fields leaves the table unchanged', async () => {
+    mockFetchRoutes({
+      '/api/v1/sanket/funnel': funnelRoute,
+      '/api/v1/sanket/validation': jsonResponse(200, {
+        data: {
+          report: null, criteria_states: {}, accepted_failure_ids: [], accepted_failures: null,
+          available: false, criteria_sha: null, verify_result: null, note: 'not run for this model run',
+        },
+        meta: {},
+      }),
+    })
+    renderScreen(<ModelTrust />, { path: '/trust', mode: 'live', user: session('manager'), pack: PACK })
+    const row = await screen.findByText('SK-02')
+    const tr = row.closest('tr')
+    expect(tr).toHaveTextContent('fail')
+    expect(tr).not.toHaveTextContent('ACCEPTED')
+    expect(screen.getByText('1 pass')).toBeInTheDocument()
   })
 })

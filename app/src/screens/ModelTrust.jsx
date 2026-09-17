@@ -13,7 +13,7 @@ import PermissionDenied from '../components/states/PermissionDenied'
 import { useAuth } from '../auth/AuthContext'
 import useResource from '../data/useResource'
 import { usePack } from '../data/PackContext'
-import { getFunnel } from '../lib/sanket'
+import { getFunnel, getValidation } from '../lib/sanket'
 import { readMetrics } from '../lib/pack'
 import { PRODUCTS, num, pct, suppressionLabel } from '../lib/fmt'
 
@@ -27,14 +27,24 @@ const ciText = (m) => (m?.lo != null && m?.hi != null ? `95% CI ${pct(m.lo, 1)}�
  * manager-and-admin only in live mode. That is a CONTRACT GAP, not a design choice, and it
  * is written down in the L11 report rather than worked around by widening a guard.
  *
- * The pre-registered validation table comes from the BUNDLED EXPORT rather than the API,
- * for the same reason, and its panel says so in its own words. Mixing two sources on one
- * screen is only acceptable because each panel names the one it used.
+ * The pre-registered validation table's rows still come from the BUNDLED EXPORT — the
+ * SK-* verdicts `src/model/pack.py` writes, including the seed-mean disclosure — because
+ * no route serves that pack's per-band detail. `GET /sanket/validation` (x-roles M, A,
+ * same as `getFunnel`) does exist, and in live mode the table asks it for one thing only:
+ * which of those failing criteria were named in advance and accepted on this model run,
+ * and why. That acceptance overlay never changes a verdict — it can only mark an existing
+ * failure as one somebody signed for. Mixing two sources on one screen is only acceptable
+ * because each panel names the one it used, and the overlay fetch failing, or returning
+ * nothing, leaves the table exactly as it renders without it.
  */
 export default function ModelTrust() {
   const { isStatic, role } = useAuth()
   const pack = usePack()
   const live = useResource(({ signal }) => getFunnel({ signal }), [], { enabled: !isStatic })
+  // Acceptance-only: no criteria/verdicts come from here, just which failing SK-* ids on
+  // this run were accepted in advance, and their reasons. `useResource` degrades to
+  // `data: null` on any error, which is exactly "no accepted failures" downstream.
+  const validation = useResource(({ signal }) => getValidation({ signal }), [], { enabled: !isStatic })
 
   const source = isStatic ? pack.data?.metrics : live.data?.published_metrics
   const metrics = useMemo(() => readMetrics(source), [source])
@@ -133,7 +143,13 @@ export default function ModelTrust() {
             </div>
 
             <Excluded metrics={metrics} source={badge} detail={detail} />
-            <ValidationTable metrics={packMetrics} live={!isStatic} packError={pack.error} packLoading={pack.loading} />
+            <ValidationTable
+              metrics={packMetrics}
+              live={!isStatic}
+              packError={pack.error}
+              packLoading={pack.loading}
+              acceptance={isStatic ? null : validation.data}
+            />
           </>
         )}
       </div>
@@ -474,20 +490,52 @@ function formatObserved(value, verdict) {
  * the pre-registration. `src/model/pack.py` writes each SK-* band's verdict into the packed
  * export. Nothing is re-graded here: a `fail` renders as a fail, and a `not_measured`
  * renders as not measured rather than being quietly omitted to make the table look better.
+ *
+ * `acceptance` is the *only* thing that ever comes from `GET /sanket/validation`, and only
+ * in live mode — `acceptance.accepted_failure_ids` names which of these already-failing
+ * criteria an operator recorded acceptance for in advance, and
+ * `acceptance.accepted_failures.criteria[]` carries each one's pre-registered `reason`. It
+ * never supplies a verdict: an accepted id still renders as a failure, just one somebody
+ * signed for, never as a pass and never as a bare "accepted". A missing, errored or
+ * `available: false` `acceptance` degrades to "no accepted failures" and changes nothing
+ * else about the table.
  */
-function ValidationTable({ metrics, live, packError, packLoading }) {
+function ValidationTable({ metrics, live, packError, packLoading, acceptance }) {
   const bands = metrics?.bands
   const rows = useMemo(() => (bands ? Object.entries(bands).map(([id, v]) => ({ id, ...v })).sort((a, b) => a.id.localeCompare(b.id)) : null), [bands])
+
+  const acceptedIds = useMemo(() => {
+    const ids = acceptance?.available === false ? null : acceptance?.accepted_failure_ids
+    return Array.isArray(ids) && ids.length ? new Set(ids) : null
+  }, [acceptance])
+  const acceptedReasons = useMemo(() => {
+    const map = new Map()
+    const criteria = acceptance?.accepted_failures?.criteria
+    if (Array.isArray(criteria)) {
+      for (const c of criteria) {
+        if (c?.id && c.reason) map.set(c.id, c.reason)
+      }
+    }
+    return map
+  }, [acceptance])
+
   const tally = useMemo(() => {
     if (!rows) return null
-    const acc = rows.reduce((acc, r) => { acc[r.verdict] = (acc[r.verdict] || 0) + 1; return acc }, {})
+    const acc = rows.reduce((acc, r) => {
+      // An accepted failure is tallied on its own, never folded into `pass` (nor into
+      // `fail`/`report`/anything else) — it is a distinct, disclosed thing, not a count
+      // that happens to land in the same bucket a raw verdict would.
+      if (acceptedIds?.has(r.id)) acc.accepted = (acc.accepted || 0) + 1
+      else acc[r.verdict] = (acc[r.verdict] || 0) + 1
+      return acc
+    }, {})
     // A band can pass on the packed seed and fail on the 5-seed mean (SK-04 is the
     // pre-registered example) — `agrees_across_seeds: false` is the disclosure signal.
     // That is a second, separately-counted honest fail, not folded into `acc.fail`,
     // which only ever reflects the packed-seed verdict rendered in the main column.
     acc.seedMeanFail = rows.filter((r) => r.verdict_on_seed_mean && r.verdict_on_seed_mean !== r.verdict && r.verdict_on_seed_mean === 'fail').length
     return acc
-  }, [rows])
+  }, [rows, acceptedIds])
 
   return (
     <Card
@@ -500,6 +548,7 @@ function ValidationTable({ metrics, live, packError, packLoading }) {
         <span className="text-xs text-txt-mid">
           <b className="text-signal-teal">{tally.pass || 0} pass</b>
           {tally.fail ? <> · <b className="text-signal-rose">{tally.fail} fail</b></> : null}
+          {tally.accepted ? <> · <b className="text-signal-rose">{tally.accepted} accepted failure{tally.accepted === 1 ? '' : 's'}</b></> : null}
           {tally.seedMeanFail ? <> · <b className="text-signal-rose">{tally.seedMeanFail} fail{tally.seedMeanFail === 1 ? '' : 's'} on 5-seed mean</b></> : null}
           {tally.report ? <> · <b className="text-signal-amber">{tally.report} report-only</b></> : null}
           {tally.not_measured ? <> · {tally.not_measured} not measured</> : null}
@@ -508,10 +557,12 @@ function ValidationTable({ metrics, live, packError, packLoading }) {
     >
       {live && (
         <p className="mb-3 rounded-lg border border-line-strong bg-ink-800 px-3 py-2 text-[11px] leading-relaxed text-txt-mid">
-          <b className="text-txt-hi">This panel reads a different source from the rest of the screen.</b>{' '}
-          The platform API has a <code className="font-mono">drishti/validation</code> route and no SANKET
-          counterpart, so the pre-registered table comes from the bundled export rather than the published
-          model run. Everything above comes from the run.
+          <b className="text-txt-hi">This panel reads two sources.</b>{' '}
+          The criteria and their verdicts are the bundled export's — <code className="font-mono">app/public/sanket_data.json</code>,
+          the same pack the "5-seed mean" row below reads — because no route serves that per-band detail from
+          the published model run. <code className="font-mono">GET /sanket/validation</code> now exists, and this
+          table asks it for exactly one thing: which of these failures were accepted in advance on the run, and
+          why. Everything above this panel comes from the run.
         </p>
       )}
       {packLoading && <Loading label="Loading the bundled export…" />}
@@ -550,6 +601,12 @@ function ValidationTable({ metrics, live, packError, packLoading }) {
                 // gets its own row directly under the packed-seed one rather than being
                 // silently dropped.
                 const seedMeanRow = r.verdict_on_seed_mean && r.verdict_on_seed_mean !== r.verdict
+                // Accepted failure: an operator named this id in advance and the acceptance
+                // was recorded on the run. It still failed — the verdict cell must say so,
+                // never "pass" and never a bare "accepted" — so this overrides only the
+                // rendered label and tone, never `r.verdict` itself.
+                const accepted = acceptedIds?.has(r.id)
+                const acceptedReason = accepted ? acceptedReasons.get(r.id) : null
                 return (
                   <Fragment key={r.id}>
                     <tr className="border-t border-ink-600/40">
@@ -558,11 +615,17 @@ function ValidationTable({ metrics, live, packError, packLoading }) {
                       <td className="px-3 py-2 text-right tabular-nums text-txt-hi">
                         {formatObserved(r.observed ?? r.value, r.verdict)}
                       </td>
-                      <td className={`px-3 py-2 text-right text-[10px] font-bold uppercase ${VERDICT_TONE[r.verdict] || 'text-txt-lo'}`}>
-                        {String(r.verdict || 'unknown').replace(/_/g, ' ')}
+                      <td className={`px-3 py-2 text-right text-[10px] font-bold uppercase ${accepted ? 'text-signal-rose' : (VERDICT_TONE[r.verdict] || 'text-txt-lo')}`}>
+                        {accepted ? 'FAIL — ACCEPTED' : String(r.verdict || 'unknown').replace(/_/g, ' ')}
                         {seedMeanRow ? <span className="ml-1 normal-case text-txt-lo">(packed seed)</span> : null}
                       </td>
                     </tr>
+                    {accepted && acceptedReason && (
+                      <tr className="border-t border-ink-600/20 bg-ink-900/40">
+                        <th scope="row" className="px-3 py-1.5 pl-7 text-left font-mono text-[10px] font-normal text-txt-lo">↳ accepted failure</th>
+                        <td colSpan={3} className="px-3 py-1.5 text-[11px] text-txt-lo">{acceptedReason}</td>
+                      </tr>
+                    )}
                     {seedMeanRow && (
                       <tr className="border-t border-ink-600/20 bg-ink-900/40">
                         <th scope="row" className="px-3 py-1.5 pl-7 text-left font-mono text-[10px] font-normal text-txt-lo">↳ 5-seed mean</th>
