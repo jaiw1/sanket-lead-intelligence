@@ -89,36 +89,80 @@ def test_roster_block_carries_provenance(tmp_path: Path) -> None:
 # data/bank/pulled.json — the BANK_API path (SM-4 checks this first)
 # --------------------------------------------------------------------------- #
 
-def _write_pulled(bank_dir: Path, api_508_records: list[dict] | None = None,
-                  api_442_records: list[dict] | None = None) -> None:
+def _write_pulled(bank_dir: Path, api_442_records: list[dict] | None = None) -> None:
     bank_dir.mkdir(parents=True, exist_ok=True)
     apis = {}
-    if api_508_records is not None:
-        apis["508"] = dict(api_id="508", provenance="BANK_API", records=api_508_records)
     if api_442_records is not None:
         apis["442"] = dict(api_id="442", provenance="BANK_API", records=api_442_records)
     (bank_dir / RO.PULLED_NAME).write_text(json.dumps(dict(apis=apis)), encoding="utf-8")
 
 
-def test_pulled_json_508_hrms_wins_over_the_seeded_roster(tmp_path: Path) -> None:
-    data_dir = tmp_path / "data"
-    _write_pulled(data_dir / "bank", api_508_records=[
-        dict(rm_ein="SANDBOX-EIN-1", rm_name="Sample Customer", branch_name="Pune"),
-        dict(rm_ein="EIN-SANDBOX-BRANCH-1", rm_name="Pawan Sharma", branch_name="Mumbai"),
-    ])
-    r = RO.load_roster(data_dir)
-    assert r.source == RO.SOURCE_BANK_API
-    assert {rm.rm_id for rm in r.rms} == {"EIN-SANDBOX-EIN-1", "EIN-SANDBOX-BRANCH-1"}
+def _seed(data_dir: Path) -> None:
+    data_dir.mkdir(parents=True, exist_ok=True)
+    (data_dir / "roster.yaml").write_text(
+        "rms:\n  - rm_id: EIN-999999\n    rm_name: Test RM\n    rm_branch: Test Branch\n",
+        encoding="utf-8")
 
 
-def test_pulled_json_442_account_manager_is_a_fallback_reading(tmp_path: Path) -> None:
+def test_508_is_not_a_roster_source_because_the_bank_rejected_it() -> None:
+    """The refusal is a fact about the catalogue, so it is asserted, not described."""
+    assert "508" not in RO.ROSTER_APIS
+    assert RO.ROSTER_APIS == ("442",)
+
+
+def test_the_live_442_shape_is_read_and_reported(tmp_path: Path) -> None:
+    """Verbatim from the 2026-09-17 pull: the one CIF the sandbox answers for."""
     data_dir = tmp_path / "data"
-    _write_pulled(data_dir / "bank", api_442_records=[
-        dict(hrmsInfo=dict(supEin="SANDBOX-BRANCH-1", fullNameTitle="Ms Sample Customer", location="Mumbai")),
-    ])
+    _seed(data_dir)
+    _write_pulled(data_dir / "bank", api_442_records=[dict(
+        customerSummary=dict(customerName="SAMPLE CUSTOMER", custCifId="SANDBOX-CIF-2",
+                             accountManager="SYSCODE", customerID="SANDBOX-CIF-1", custRating="NA"),
+        exposureSummary=dict(totalLimit=dict(amount="11821212.00", currency="INR")),
+    )])
+    found = RO.account_managers(json.loads((data_dir / "bank" / RO.PULLED_NAME).read_text()))
+    assert len(found) == 1
+    assert found[0]["cif_id"] == "SANDBOX-CIF-2"
+    assert found[0]["customer_id"] == "SANDBOX-CIF-1"
+    assert found[0]["customer_name"] == "SAMPLE CUSTOMER"
+    assert found[0]["account_manager"] == "SYSCODE"
+
+
+def test_a_bare_account_manager_code_does_not_become_an_rm(tmp_path: Path) -> None:
+    """`SYSCODE` is a bank system code with no name and no branch. It is reported as what
+    442 returned and the roster stays SIMULATED — a blank-branch "RM: SYSCODE" in front of a
+    relationship manager would be a worse claim than an honestly-labelled seed."""
+    data_dir = tmp_path / "data"
+    _seed(data_dir)
+    _write_pulled(data_dir / "bank", api_442_records=[dict(
+        customerSummary=dict(customerName="SAMPLE CUSTOMER", custCifId="SANDBOX-CIF-2",
+                             accountManager="SYSCODE", customerID="SANDBOX-CIF-1"))])
+    r = RO.load_roster(data_dir)
+    assert r.source == RO.SOURCE_SIMULATED
+    assert r.rms[0].rm_id == "EIN-999999"
+    assert len(r.bank_managers) == 1 and r.bank_managers[0]["account_manager"] == "SYSCODE"
+    assert "SYSCODE" in r.bank_reason and "SIMULATED" in r.bank_reason
+    block = RO.roster_block(r)
+    assert block["bank_account_managers"][0]["cif_id"] == "SANDBOX-CIF-2"
+    assert block["bank_source_note"] == r.bank_reason
+    assert all(rm["source"] == RO.SOURCE_SIMULATED for rm in block["rms"])
+
+
+def test_442_with_a_real_manager_name_wins_over_the_seeded_roster(tmp_path: Path) -> None:
+    """The source really is ranked first — the moment 442 carries a name, it is used.
+    This is not the shape the sandbox returns today; it is the shape the code is for."""
+    data_dir = tmp_path / "data"
+    _seed(data_dir)
+    _write_pulled(data_dir / "bank", api_442_records=[dict(
+        customerSummary=dict(customerName="SAMPLE CUSTOMER", custCifId="SANDBOX-CIF-2",
+                             accountManager="SANDBOX-BRANCH-1", accountManagerName="Sample Customer",
+                             branchName="Mumbai"))])
     r = RO.load_roster(data_dir)
     assert r.source == RO.SOURCE_BANK_API
-    assert len(r.rms) == 1 and r.rms[0].rm_id == "EIN-SANDBOX-BRANCH-1"
+    assert len(r.rms) == 1
+    assert r.rms[0].rm_id == "EIN-SANDBOX-BRANCH-1"
+    assert r.rms[0].rm_name == "Sample Customer"
+    assert r.rms[0].rm_branch == "Mumbai"
+    assert r.rms[0].source == RO.SOURCE_BANK_API
 
 
 def test_pulled_json_present_but_empty_falls_back_to_seeds(tmp_path: Path) -> None:
@@ -127,7 +171,7 @@ def test_pulled_json_present_but_empty_falls_back_to_seeds(tmp_path: Path) -> No
     (data_dir / "roster.yaml").write_text(
         "rms:\n  - rm_id: EIN-999999\n    rm_name: Test RM\n    rm_branch: Test Branch\n",
         encoding="utf-8")
-    _write_pulled(data_dir / "bank", api_508_records=[])
+    _write_pulled(data_dir / "bank", api_442_records=[])
     r = RO.load_roster(data_dir)
     assert r.source == RO.SOURCE_SIMULATED
     assert r.rms[0].rm_id == "EIN-999999"

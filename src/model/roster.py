@@ -6,14 +6,31 @@ Source order, high to low, matching ``data/bank/SCHEMA.md``'s trust order
 roster is a directory, not a customer column, so there is nothing for
 ``data/bank/fixture.json`` to stand in for):
 
-1. **``data/bank/pulled.json``** — API 442 ``accountManager`` / API 508 HRMS
-   records, if the pull answered either.  Tagged ``BANK_API``.  Checked
-   unconditionally (not gated behind ``--bank``): who services a customer is
-   HRMS directory data, not the customer-column enrichment SM-6 gates.
+1. **``data/bank/pulled.json``** — API 442's ``customerSummary.accountManager``,
+   if the pull answered.  Tagged ``BANK_API``.  Checked unconditionally (not gated
+   behind ``--bank``): who services a customer is directory data, not the
+   customer-column enrichment SM-6 gates.
 2. **``data/roster.yaml``** — a small seeded roster (fabricated names,
    branches and EINs, structurally plausible per ``data/bank/SCHEMA.md``'s
-   ``ein`` id space).  Tagged ``SIMULATED``.  This is what every run without a
-   live Atlas pull uses — i.e. every run today.
+   ``ein`` id space).  Tagged ``SIMULATED``.
+
+**API 508 (HRMS) is gone from that list, and the bank is why.** It was the
+endpoint that would have given this roster real people — names, grades, branch,
+reporting line — and the bank **rejected** it. ``rrsquad-platform``'s
+``app/atlas/policy.py`` refuses it to both products, so no pull can ever put a 508
+record in ``pulled.json`` and there is no 508 branch here to be unreachable.
+
+**What 442 actually returns, and why the roster is still simulated.** A live pull
+on 2026-09-17 walked all five documented CIFs. One answered — ``SANDBOX-CIF-2``
+(SAMPLE CUSTOMER) — and its ``accountManager`` reads ``"SYSCODE"``: a bank system code,
+with **no manager name and no branch beside it**. That is genuine bank data and it
+is carried through to :func:`roster_block` as evidence, but it is not a person, and
+putting ``RM: SYSCODE`` with a blank branch in front of a relationship manager would
+be a worse claim than an honestly-labelled seeded roster, not a better one. So the
+442 source is wired, ranked first, and reports what it found — and
+:func:`usable_managers` admits an entry to the roster only once one carries a name.
+Today none does, the roster is ``SIMULATED``, and :attr:`Roster.bank_reason` says
+exactly that in one sentence a screen can render.
 
 Assignment is a deterministic **round-robin** over the *active* roster: leads
 are sorted by ``cust_id`` — never by score, month or queue position — and
@@ -45,9 +62,17 @@ PULLED_NAME = "pulled.json"
 SOURCE_BANK_API = "BANK_API"
 SOURCE_SIMULATED = "SIMULATED"
 
-#: API numbers `data/bank/SCHEMA.md` names for the roster: 508 is HRMS proper,
-#: 442 carries `accountManager` on the CIF-exposure response as a cross-check.
-ROSTER_APIS: tuple[str, ...] = ("508", "442")
+#: The only roster API left. `data/bank/SCHEMA.md` also names 508 (HRMS proper);
+#: the bank rejected it, so it is not in this tuple and nothing calls it.
+ROSTER_APIS: tuple[str, ...] = ("442",)
+
+#: An ``accountManager`` value this short and this shaped is a bank system code, not a
+#: person — ``SYSCODE`` is the migration user on the one CIF the sandbox answers for. Such a
+#: value is still reported; it is just not promoted to an RM identity on its own.
+def _looks_like_a_name(value: str) -> bool:
+    """A manager name has a space or is long enough to be one. ``SYSCODE`` is neither."""
+    text = str(value or "").strip()
+    return bool(text) and (" " in text or len(text) >= 8)
 
 
 @dataclass(frozen=True)
@@ -56,12 +81,21 @@ class RM:
     rm_name: str
     rm_branch: str
     active: bool = True
+    #: Per RM, not per roster: a roster can hold a real account manager beside seeded ones,
+    #: and a screen has to be able to badge them differently.
+    source: str = "SIMULATED"
 
 
 @dataclass(frozen=True)
 class Roster:
     rms: tuple[RM, ...]
     source: str  # BANK_API | SIMULATED
+    #: What API 442 actually returned, whether or not any of it became an RM. One dict per
+    #: answered CIF: ``{cif_id, customer_id, customer_name, account_manager}``. This is the
+    #: genuine bank field a disclosure screen shows beside the simulated roster.
+    bank_managers: tuple[dict, ...] = ()
+    #: Why :attr:`bank_managers` did or did not become the roster, in one sentence.
+    bank_reason: str = ""
 
     @property
     def active_rms(self) -> tuple[RM, ...]:
@@ -91,14 +125,19 @@ def _from_seeds(data_dir: Path) -> Roster:
     return Roster(rms=rms, source=SOURCE_SIMULATED)
 
 
-def _hrms_records(pulled: dict) -> list[dict]:
-    """API 508 HRMS rows, else API 442's ``accountManager`` field, from ``pulled.json``.
+def account_managers(pulled: dict) -> list[dict]:
+    """Every API 442 ``accountManager`` in ``pulled.json``, with the customer it belongs to.
 
-    ``pulled.json``'s shape (``rrsquad-platform/batch/enrich.py::build_pulled``)
-    is ``{"apis": {"<api_no>": {"provenance": "BANK_API"|"NOT_COLLECTED",
-    "records": [...]}}}``.  A record's field names follow whichever Atlas
-    response shape that API returns — ``hrmsInfo`` on 442's blob, or a flat
-    HRMS row on 508 — so several aliases are tried per field.
+    ``pulled.json``'s shape (``rrsquad-platform/batch/enrich.py::build_pulled``) is
+    ``{"apis": {"<api_no>": {"provenance": "BANK_API"|"NOT_COLLECTED", "records": [...]}}}``.
+    A 442 record is the live ``{customerSummary, exposureSummary, customerLimits}`` shape;
+    the spreadsheet contract nested the same thing under ``customerLimitDetailsResponse``,
+    so both spellings are read and neither is assumed.
+
+    Returns what the bank said, unfiltered — including a manager that is a bare system code.
+    Deciding what is usable is :func:`usable_managers`' job, and keeping the two apart is
+    what lets a screen show "442 answered, and this is what it said" even when nothing in
+    the answer is fit to name an RM.
     """
     apis = pulled.get("apis", {}) if isinstance(pulled, dict) else {}
     out: list[dict] = []
@@ -109,46 +148,91 @@ def _hrms_records(pulled: dict) -> list[dict]:
         for rec in entry.get("records", []):
             if not isinstance(rec, dict):
                 continue
-            hrms = rec.get("hrmsInfo") if isinstance(rec.get("hrmsInfo"), dict) else {}
-            ein = (rec.get("ein") or rec.get("rm_ein") or rec.get("accountManagerEin")
-                   or rec.get("accountManager") or hrms.get("supEin") or rec.get("empId"))
-            name = (rec.get("rm_name") or rec.get("empName") or hrms.get("fullNameTitle")
-                    or rec.get("name"))
-            branch = (rec.get("branch_name") or rec.get("branchName") or hrms.get("location")
-                      or rec.get("branchId"))
-            if not ein:
+            summary = rec.get("customerSummary")
+            if not isinstance(summary, dict):
+                nested = rec.get("customerLimitDetailsResponse")
+                summary = nested if isinstance(nested, dict) else rec
+            manager = str(summary.get("accountManager") or "").strip()
+            if not manager:
                 continue
-            out.append(dict(ein=str(ein), name=str(name or ein), branch=str(branch or "Unknown")))
+            out.append(dict(
+                api=str(api_no),
+                cif_id=str(summary.get("custCifId") or summary.get("cifId") or ""),
+                customer_id=str(summary.get("customerID") or summary.get("custId") or ""),
+                customer_name=str(summary.get("customerName") or ""),
+                account_manager=manager,
+                manager_name=str(summary.get("accountManagerName") or ""),
+                branch=str(summary.get("branchName") or summary.get("branch") or ""),
+            ))
     return out
 
 
-def _from_pulled(bank_dir: Path) -> Roster | None:
+def usable_managers(managers: list[dict]) -> list[dict]:
+    """The subset fit to name an RM: one that came with a manager *name*, not just a code.
+
+    ``accountManager: "SYSCODE"`` is a real value from a real bank endpoint and it is still
+    reported — it is simply not somebody a relationship manager can be told they are. An
+    entry qualifies once ``accountManagerName`` arrives, or once ``accountManager`` itself
+    reads like a name rather than a code.
+    """
+    return [m for m in managers
+            if _looks_like_a_name(m.get("manager_name") or "")
+            or _looks_like_a_name(m.get("account_manager") or "")]
+
+
+def _from_pulled(bank_dir: Path) -> tuple[Roster | None, tuple[dict, ...], str]:
+    """``(roster_or_None, what_442_said, why)``.
+
+    A ``None`` roster with a non-empty second element is the interesting case and the one
+    that holds today: the bank answered, and what it answered cannot name an RM.
+    """
     path = Path(bank_dir) / PULLED_NAME
     if not path.exists():
-        return None
+        return None, (), "no data/bank/pulled.json: no Atlas pull has run on this checkout."
     try:
         pulled = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return None
-    recs = _hrms_records(pulled)
-    if not recs:
-        return None
+        return None, (), f"{path.name} could not be read; fell back to the seeded roster."
+    managers = account_managers(pulled)
+    if not managers:
+        return None, (), ("API 442 answered for no customer in this pull, so it named no "
+                          "account manager; API 508 (HRMS) was rejected by the bank and is "
+                          "never called.")
+    usable = usable_managers(managers)
+    if not usable:
+        shown = ", ".join(sorted({m["account_manager"] for m in managers}))
+        return None, tuple(managers), (
+            f"API 442 answered for {len(managers)} customer(s) and gave "
+            f"accountManager {shown} — a bank system code with no manager name and no "
+            "branch beside it, which cannot name an RM. The roster stays SIMULATED; the "
+            "code itself is reported above rather than dressed up as a person.")
     seen: dict[str, RM] = {}
-    for r in recs:
-        ein = _ein(r["ein"])
-        seen.setdefault(ein, RM(rm_id=ein, rm_name=r["name"], rm_branch=r["branch"]))
-    if not seen:
-        return None
-    return Roster(rms=tuple(seen.values()), source=SOURCE_BANK_API)
+    for m in usable:
+        name = m.get("manager_name") or m["account_manager"]
+        rm_id = _ein(m["account_manager"])
+        seen.setdefault(rm_id, RM(rm_id=rm_id, rm_name=name,
+                                  rm_branch=m.get("branch") or "Unknown",
+                                  source=SOURCE_BANK_API))
+    return (Roster(rms=tuple(seen.values()), source=SOURCE_BANK_API,
+                   bank_managers=tuple(managers),
+                   bank_reason=f"API 442 named {len(seen)} account manager(s); "
+                               "they rank above data/roster.yaml and are tagged BANK_API."),
+            tuple(managers), "")
 
 
 def load_roster(data_dir: Path) -> Roster:
-    """``data/bank/pulled.json`` if it names at least one RM, else ``data/roster.yaml``."""
+    """``data/bank/pulled.json`` if API 442 named at least one RM, else ``data/roster.yaml``.
+
+    Either way the roster carries what 442 said and why it was or was not used, so the
+    fallback is a stated finding rather than a silent default.
+    """
     data_dir = Path(data_dir)
-    r = _from_pulled(data_dir / "bank")
-    if r is not None:
-        return r
-    return _from_seeds(data_dir)
+    roster, managers, reason = _from_pulled(data_dir / "bank")
+    if roster is not None:
+        return roster
+    seeded = _from_seeds(data_dir)
+    return Roster(rms=seeded.rms, source=seeded.source,
+                  bank_managers=managers, bank_reason=reason)
 
 
 def assign(cust_ids: Iterable[str], roster: Roster) -> dict[str, RM]:
@@ -172,10 +256,16 @@ def roster_block(roster: Roster) -> dict:
         source=roster.source,
         n_rms=len(roster.rms),
         n_active=len(roster.active_rms),
-        rms=[dict(rm_id=r.rm_id, rm_name=r.rm_name, rm_branch=r.rm_branch, active=r.active)
+        rms=[dict(rm_id=r.rm_id, rm_name=r.rm_name, rm_branch=r.rm_branch, active=r.active,
+                  source=r.source)
              for r in roster.rms],
+        # The genuine bank field, shown whether or not it became an RM. A screen that can
+        # only render the roster would never be able to say "we asked, and here is what
+        # came back"; this is what lets it.
+        bank_account_managers=[dict(m) for m in roster.bank_managers],
+        bank_source_note=roster.bank_reason,
     )
 
 
-__all__ = ["RM", "Roster", "load_roster", "assign", "roster_block",
-           "SOURCE_BANK_API", "SOURCE_SIMULATED"]
+__all__ = ["RM", "Roster", "load_roster", "assign", "roster_block", "account_managers",
+           "usable_managers", "ROSTER_APIS", "SOURCE_BANK_API", "SOURCE_SIMULATED"]

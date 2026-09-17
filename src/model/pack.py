@@ -449,6 +449,9 @@ def _lead(r, pos: int, probs: np.ndarray, menu_idx: np.ndarray, C: np.ndarray,
         rm_id=(rm.rm_id if rm is not None else None),
         rm_name=(rm.rm_name if rm is not None else None),
         rm_branch=(rm.rm_branch if rm is not None else None),
+        # Per RM, because a roster can be mixed: a real account manager API 442
+        # named sits beside seeded ones, and a screen has to badge them apart.
+        rm_source=(rm.source if rm is not None else None),
         emi_source=EMI.EMI_SOURCE[top],
         provenance=dict(features="SIMULATED", journey="SIMULATED", campaign="SIMULATED",
                         emi=EMI.EMI_SOURCE[top], rates=EMI.EMI_SOURCE_BANK),
@@ -751,8 +754,13 @@ def run(cfg: ModelConfig, out_json: Path | None = None,
         hooks=dict(
             rm_id=f"SM-4 landed: round-robin over the {roster_obj.source} roster "
                   f"({len(roster_obj.rms)} RMs, {len(roster_obj.active_rms)} active) — "
-                  "see the top-level `roster` block",
-            emi_source=EMI.EMI_SOURCE_BANK,
+                  "see the top-level `roster` block, whose `bank_account_managers` "
+                  "carries what API 442 actually returned and `bank_source_note` says "
+                  "whether it could name an RM",
+            # The distribution, not one tag: SM-5's ladder is 473 schedule ->
+            # 433 rate -> TYPICAL_EMI, and a single string here would hide which
+            # products took which step.
+            emi_source={p: EMI.EMI_SOURCE[p] for p in PRODUCTS},
             pending=["data/export/sanket_export.json (SM-6's platform contract shape) is "
                      "only emitted when --bank is passed",
                      "meta.model_run_id / git_sha / criteria_sha in that export are filled "
