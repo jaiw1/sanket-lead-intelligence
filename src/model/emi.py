@@ -159,8 +159,10 @@ def amortisation_schedule(principal: float, annual_rate_pct: float,
                           tenor_months: int) -> list[dict]:
     """Month-by-month reducing-balance schedule: opening/emi/interest/principal/closing.
 
-    Tagged :data:`SCHEDULE_SOURCE_DERIVED` by every caller — API 473 has never
-    answered in this sandbox, so this *is* the schedule, not a stand-in for one.
+    Tagged :data:`SCHEDULE_SOURCE_DERIVED` by every caller. It is the *fallback* now —
+    :func:`schedule_for` prefers a fetched API 473 schedule and reaches this only for a
+    ticket the bank did not amortise — and it is also the check: the two agree to the
+    paise on every reference ticket, and ``tests/test_model_emi.py`` says so if they stop.
     """
     emi = annuity_emi(principal, annual_rate_pct, tenor_months)
     r = (annual_rate_pct / 100.0) / 12.0

@@ -144,21 +144,30 @@ mirrored in `rrsquad-platform/app/atlas/README.md`):
 | `FIXTURE` | Stood in from the committed `data/bank/fixture.json` because a live pull was unavailable or incomplete for that specific customer. |
 | `NOT_COLLECTED` | Deliberately never fetched — the one case is API 408 (CIBIL/bureau), see below. |
 
-**The sandbox itself is a static mock, not a live data source.** All 23 readable approved
+**The sandbox itself is mock data, not a live data source.** All 23 readable approved
 APIs were called for real on 2026-09-17. Every one answered HTTP 200 with **no auth header
 and no subscription check**, and every one answered with **its own structured mock record** —
 the earlier reading, that the sandbox served one shared 106-key blob everywhere, generalised
 from API 433, which is the single endpoint that does return a composite record carrying a
-slice for every API. What holds everywhere is that the request body is ignored: the same
-sample customer comes back whatever you ask for. So a `BANK_API` tag here means "the wiring
-works and the sandbox answered," not "this is a real customer's data," and it always travels
-with `sandbox_fixture: true`. `data/bank/pulled.json` has never existed for this repo — no live Atlas pull has
-ever run against SANKET's book — so every run to date is `mode: fixture` or
-`mode: simulated`; the current shipped app export
-(`app/public/sanket_data.json` → `provenance`) reads `"mode": "fixture"`, with
-`identity`/`casa_behaviour`/`holdings`/`cross_bank` = `FIXTURE` for the 120 of 60,000
-customers the committed `data/bank/fixture.json` covers, and `SIMULATED` for everyone
-else and for `digital`/`consent`/`journey`. `MODEL_CARD.md` §12–13; `DATA_CARD.md` §0.
+slice for every API. What is true everywhere is that the data is fabricated and the store is
+**small**: it holds a handful of sample customers and accounts, and it really does look the
+key up (see the next section). So a `BANK_API` tag here means "the wiring works and the
+sandbox answered," not "this is a real customer's data," and it always travels with
+`sandbox_fixture: true`.
+
+**And "the endpoint answered" is not "the endpoint answered about you."** An enrichment pass
+has now run against SANKET's book, so `data/bank/pulled.json` exists and a `--bank` run reads
+`mode: mixed` — a family whose API answered is `BANK_API` at **run** level. Per customer it
+stays honest: `src/model/bank.py` records the identifiers the pull actually came back with and
+badges a customer `BANK_API` only if they are one of them. The sandbox's sample ids and this
+book's generated ids are disjoint, so **no customer row carries `BANK_API`**; each reads
+`FIXTURE` if the committed `data/bank/fixture.json` covers them (120 of 60,000) and `SIMULATED`
+otherwise, exactly as before the pull. The genuine bank data in a `--bank` export is the
+run-level endpoint block, the fetched amortisation schedules and what the account-manager API
+returned — all carried and badged where they are. The currently shipped app export
+(`app/public/sanket_data.json` → `provenance`) predates the pull and still reads
+`"mode": "fixture"`; the metrics beside it are identical either way, since nothing the pull
+returned reaches a model input. `MODEL_CARD.md` §12–13; `DATA_CARD.md` §0.
 
 **Which of the 25 requested APIs SANKET uses.** Of the 25 APIs the team requested
 across both tracks, **22** are in SANKET's own surface: nine shared with DRISHTi
@@ -364,11 +373,14 @@ them checked in.
   for UAT/production is written and tested only against a mock token endpoint; the
   bank has not published the real token URL, and nothing here has ever exercised it
   against a live one.
-- **No live Atlas pull has ever run against SANKET's book at all.** `data/bank/pulled.json`
-  has never existed for this repo. The committed `data/bank/fixture.json` covers 120
-  of 60,000 customers as an offline stand-in; every `BANK_API`-tagged code path is
-  exercised in tests against a synthetic fixture, not a real sandbox response, with the
-  single exception of the one live API 433 probe recorded above.
+- **A live Atlas pull has now run, and it reached none of this book's customers.**
+  `data/bank/pulled.json` exists (gitignored), so a `--bank` run is `mode: mixed` rather
+  than `mode: fixture`; what it holds is the sandbox's own handful of sample records — real
+  responses, fabricated data — and none of their identifiers is a customer in this book.
+  So no customer row is badged `BANK_API`: the committed `data/bank/fixture.json` still
+  covers 120 of 60,000 as the offline stand-in and everyone else stays `SIMULATED`. What
+  the pull genuinely contributed is run-level: the endpoint block, the fetched amortisation
+  schedules behind `emi_source`, and what the account-manager API returned.
 - **The `pl` product-vocabulary shim is still present in `src/book/`**, kept for one
   legacy-equivalence test (`tests/test_book_equivalence.py`) and because
   `src/journeys/**` reads the canonical `product_canonical` spelling regardless — no

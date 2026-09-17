@@ -514,11 +514,16 @@ is the finding; it is never hidden and never tuned toward.
    coverage shape `data/bank/SCHEMA.md` documents for real AA consent — "consent is per customer
    and the customer may say no" — reproduced honestly rather than papered over with an aggregate
    `FIXTURE` badge that would overstate what happened for any one row.
-10. **`data/bank/pulled.json` has never existed for this book.** No live Atlas credentials have
-    run against SANKET; every `BANK_API`-path test in `tests/test_model_bank.py` /
-    `tests/test_model_roster.py` exercises the *mechanism* against a synthetic `pulled.json`, not
-    a real sandbox response. The only real sandbox response this repo has ever seen is the single
-    API 433 rate blob SM-5 hardcodes (§ item 7).
+10. **A live pull exists now, and it reached no customer in this book.** `data/bank/pulled.json`
+    is written by the platform's enrichment stage (gitignored), so a `--bank` run reads
+    `mode: mixed`. Every identifier the sandbox answered about belongs to its own handful of
+    sample records, none of which is a customer here, so **no customer row is badged
+    `BANK_API`** — the run-level family badge and the per-row badge are deliberately different
+    statements (§ the provenance legend). The `BANK_API`-path tests in `tests/test_model_bank.py`
+    / `tests/test_model_roster.py` still drive the *mechanism* from a synthetic `pulled.json`,
+    which is what lets them pin the rule on a checkout with no pull at all. What the pull really
+    contributed is run-level: the fetched amortisation schedules SM-5 now prices off (§ item 7)
+    and the account-manager field SM-4 reports (§ the roster).
 11. **SANKET never writes back to the bank.** API 428 (`createLead`, the only write in the 25-API
     surface `data/bank/SCHEMA.md` lists) is not called anywhere in this pipeline. Nothing here
     pushes a lead into a real CRM; `leads[]` is a read-only export for a human RM to act on.
@@ -767,5 +772,14 @@ platform contracts:
 
 Trust order `BANK_API > SIMULATED > FIXTURE` (best to least trusted); the `model` family badge is
 always the *weakest* of the other seven, so a screen never shows a stronger badge on the model
-than on the weakest input that fed it. `NOT_COLLECTED` is a fourth, separate value reserved for a
+than on the weakest input that fed it.
+
+**`BANK_API` on a customer means the bank answered about *that customer*.** A family is
+`BANK_API` at **run** level once its endpoint answers — a statement about the call, not about
+any particular row. Since the sandbox holds only a handful of sample customers the two levels
+say different true things, and `src/model/bank.py` keeps them apart: it records the identifiers
+the pull actually came back with and awards a row `BANK_API` only if it is one of them,
+degrading everyone else to `FIXTURE` or `SIMULATED` exactly as before any pull existed. The
+sandbox's sample ids and this book's generated ids are disjoint, so no customer row in this
+build carries `BANK_API`. `NOT_COLLECTED` is a fourth, separate value reserved for a
 column deliberately never fetched — API 408 (§ 5) is the one case of it in this repo.
