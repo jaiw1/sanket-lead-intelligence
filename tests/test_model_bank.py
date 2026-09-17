@@ -101,7 +101,7 @@ def test_a_live_pull_lifts_the_families_it_answered_for(tmp_path: Path) -> None:
     data_dir = _fixture_only(tmp_path)
     (data_dir / "bank" / B.PULLED_NAME).write_text(json.dumps({"apis": {
         "442": {"api_id": "442", "provenance": "BANK_API", "n_records": 1, "records": [
-            {"customerSummary": {"custCifId": "SANDBOX-CIF-2", "accountManager": "SYSCODE"}}]},
+            {"customerSummary": {"custCifId": "10000001", "accountManager": "SYSC1"}}]},
         "595": {"api_id": "595", "provenance": "NOT_COLLECTED", "n_records": 0, "records": []},
     }}), encoding="utf-8")
     ctx = B.build_context(data_dir, enabled=True)

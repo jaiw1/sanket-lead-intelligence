@@ -21,14 +21,19 @@ reporting line — and the bank **rejected** it. ``rrsquad-platform``'s
 record in ``pulled.json`` and there is no 508 branch here to be unreachable.
 
 **What 442 actually returns, and why the roster is still simulated.** A live pull
-on 2026-09-17 walked all five documented CIFs. One answered — ``SANDBOX-CIF-2``
-(SAMPLE CUSTOMER) — and its ``accountManager`` reads ``"SYSCODE"``: a bank system code,
-with **no manager name and no branch beside it**. That is genuine bank data and it
-is carried through to :func:`roster_block` as evidence, but it is not a person, and
-putting ``RM: SYSCODE`` with a blank branch in front of a relationship manager would
-be a worse claim than an honestly-labelled seeded roster, not a better one. So the
+walked every documented customer reference the sandbox publishes. One answered,
+and its ``accountManager`` field held a short alphanumeric system code, with **no
+manager name and no branch beside it**. That is genuine bank data and the finding
+is carried through to :func:`roster_block` as evidence, but a code is not a person,
+and putting it with a blank branch in front of a relationship manager would be a
+worse claim than an honestly-labelled seeded roster, not a better one. So the
 442 source is wired, ranked first, and reports what it found — and
 :func:`usable_managers` admits an entry to the roster only once one carries a name.
+
+The literal identifiers, names and codes the pull returned are **deliberately not
+written down in this repository**, which is public. They live in the private
+platform repo, and this module reports their shape rather than their value: see
+:func:`redacted_managers`.
 Today none does, the roster is ``SIMULATED``, and :attr:`Roster.bank_reason` says
 exactly that in one sentence a screen can render.
 
@@ -67,10 +72,10 @@ SOURCE_SIMULATED = "SIMULATED"
 ROSTER_APIS: tuple[str, ...] = ("442",)
 
 #: An ``accountManager`` value this short and this shaped is a bank system code, not a
-#: person — ``SYSCODE`` is the migration user on the one CIF the sandbox answers for. Such a
-#: value is still reported; it is just not promoted to an RM identity on its own.
+#: person — the sandbox's one answering customer carries a migration user in that field.
+#: Such a value is still reported; it is just not promoted to an RM identity on its own.
 def _looks_like_a_name(value: str) -> bool:
-    """A manager name has a space or is long enough to be one. ``SYSCODE`` is neither."""
+    """A manager name has a space or is long enough to be one. A 5-character code is not."""
     text = str(value or "").strip()
     return bool(text) and (" " in text or len(text) >= 8)
 
@@ -167,11 +172,49 @@ def account_managers(pulled: dict) -> list[dict]:
     return out
 
 
+def _code_shape(value: str) -> str:
+    """``"AB123"`` -> ``"a 5-character alphanumeric code"``. The shape, never the value."""
+    text = str(value or "").strip()
+    if not text:
+        return "an empty field"
+    kind = ("alphanumeric" if text.isalnum() and not text.isdigit()
+            else "numeric" if text.isdigit() else "mixed")
+    return f"a {len(text)}-character {kind} code"
+
+
+def redacted_managers(managers: list[dict]) -> list[dict]:
+    """What :func:`account_managers` found, with nothing in it that identifies anybody.
+
+    :func:`account_managers` returns the bank's answer verbatim, because the model, the
+    platform and the tests all need it. This is the view that gets PACKED — it ends up in
+    ``app/public/sanket_data.json``, which this public repository ships and the app renders
+    on screen. A customer's CIF, their customer id, their name and the bank's own internal
+    system codes do not belong in a public artefact, and they are not needed to make the
+    point: what a reader has to know is that 442 answered, that the account-manager field
+    held a code rather than a name, that no manager name or branch came with it, and that
+    the roster therefore stays simulated. Every one of those survives here.
+
+    The literal values are kept in the private platform repository.
+    """
+    return [
+        dict(
+            api=str(m.get("api") or ""),
+            account_manager_shape=_code_shape(m.get("account_manager") or ""),
+            has_manager_name=bool(str(m.get("manager_name") or "").strip()),
+            has_branch=bool(str(m.get("branch") or "").strip()),
+            names_a_customer=bool(str(m.get("customer_name") or "").strip()),
+            usable_as_rm=bool(usable_managers([m])),
+        )
+        for m in managers
+    ]
+
+
 def usable_managers(managers: list[dict]) -> list[dict]:
     """The subset fit to name an RM: one that came with a manager *name*, not just a code.
 
-    ``accountManager: "SYSCODE"`` is a real value from a real bank endpoint and it is still
-    reported — it is simply not somebody a relationship manager can be told they are. An
+    A bare system code in ``accountManager`` is a real value from a real bank endpoint and
+    it is still reported — it is simply not somebody a relationship manager can be told
+    they are. An
     entry qualifies once ``accountManagerName`` arrives, or once ``accountManager`` itself
     reads like a name rather than a code.
     """
@@ -200,12 +243,17 @@ def _from_pulled(bank_dir: Path) -> tuple[Roster | None, tuple[dict, ...], str]:
                           "never called.")
     usable = usable_managers(managers)
     if not usable:
-        shown = ", ".join(sorted({m["account_manager"] for m in managers}))
+        # The codes themselves are NOT interpolated into this sentence. It is packed into
+        # app/public/sanket_data.json, which this public repository ships and the app
+        # renders; a bank customer's identifier, name or internal code has no business
+        # there. The finding is what matters and the finding survives intact.
+        shape = ", ".join(sorted({_code_shape(m["account_manager"]) for m in managers}))
         return None, tuple(managers), (
-            f"API 442 answered for {len(managers)} customer(s) and gave "
-            f"accountManager {shown} — a bank system code with no manager name and no "
-            "branch beside it, which cannot name an RM. The roster stays SIMULATED; the "
-            "code itself is reported above rather than dressed up as a person.")
+            f"API 442 answered for {len(managers)} customer(s), and every accountManager it "
+            f"gave back was {shape} rather than a person's name, with no manager name and "
+            "no branch beside it, so none of them can name an RM. The roster stays "
+            "SIMULATED; the finding is reported above rather than dressed up as a person. "
+            "The literal values stay in the private platform repository.")
     seen: dict[str, RM] = {}
     for m in usable:
         name = m.get("manager_name") or m["account_manager"]
@@ -259,13 +307,16 @@ def roster_block(roster: Roster) -> dict:
         rms=[dict(rm_id=r.rm_id, rm_name=r.rm_name, rm_branch=r.rm_branch, active=r.active,
                   source=r.source)
              for r in roster.rms],
-        # The genuine bank field, shown whether or not it became an RM. A screen that can
+        # The genuine bank finding, shown whether or not it became an RM. A screen that can
         # only render the roster would never be able to say "we asked, and here is what
-        # came back"; this is what lets it.
-        bank_account_managers=[dict(m) for m in roster.bank_managers],
+        # came back"; this is what lets it. REDACTED on the way out — this block is packed
+        # into a public repository's shipped export, so it carries the shape of what 442
+        # returned and never the identifiers, the customer name or the system code itself.
+        bank_account_managers=redacted_managers(list(roster.bank_managers)),
         bank_source_note=roster.bank_reason,
     )
 
 
 __all__ = ["RM", "Roster", "load_roster", "assign", "roster_block", "account_managers",
-           "usable_managers", "ROSTER_APIS", "SOURCE_BANK_API", "SOURCE_SIMULATED"]
+           "redacted_managers", "usable_managers", "ROSTER_APIS", "SOURCE_BANK_API",
+           "SOURCE_SIMULATED"]

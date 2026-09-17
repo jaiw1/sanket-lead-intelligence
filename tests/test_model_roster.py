@@ -111,38 +111,58 @@ def test_508_is_not_a_roster_source_because_the_bank_rejected_it() -> None:
 
 
 def test_the_live_442_shape_is_read_and_reported(tmp_path: Path) -> None:
-    """Verbatim from the 2026-09-17 pull: the one CIF the sandbox answers for."""
+    """The shape the sandbox's one answering customer comes back in.
+
+    The ids and the name here are FABRICATED stand-ins with the right shape. This
+    repository is public, so the sandbox's actual identifiers, customer name and system
+    codes are not written into it — they live in the private platform repo. What is being
+    tested is the reading, and the reading does not care which digits arrive.
+    """
     data_dir = tmp_path / "data"
     _seed(data_dir)
     _write_pulled(data_dir / "bank", api_442_records=[dict(
-        customerSummary=dict(customerName="SAMPLE CUSTOMER", custCifId="SANDBOX-CIF-2",
-                             accountManager="SYSCODE", customerID="SANDBOX-CIF-1", custRating="NA"),
+        customerSummary=dict(customerName="SAMPLE CUSTOMER", custCifId="10000001",
+                             accountManager="SYSC1", customerID="20000002", custRating="NA"),
         exposureSummary=dict(totalLimit=dict(amount="11821212.00", currency="INR")),
     )])
     found = RO.account_managers(json.loads((data_dir / "bank" / RO.PULLED_NAME).read_text()))
     assert len(found) == 1
-    assert found[0]["cif_id"] == "SANDBOX-CIF-2"
-    assert found[0]["customer_id"] == "SANDBOX-CIF-1"
+    assert found[0]["cif_id"] == "10000001"
+    assert found[0]["customer_id"] == "20000002"
     assert found[0]["customer_name"] == "SAMPLE CUSTOMER"
-    assert found[0]["account_manager"] == "SYSCODE"
+    assert found[0]["account_manager"] == "SYSC1"
 
 
 def test_a_bare_account_manager_code_does_not_become_an_rm(tmp_path: Path) -> None:
-    """`SYSCODE` is a bank system code with no name and no branch. It is reported as what
-    442 returned and the roster stays SIMULATED — a blank-branch "RM: SYSCODE" in front of a
-    relationship manager would be a worse claim than an honestly-labelled seed."""
+    """A bare code is a bank system value with no name and no branch. It is reported as
+    what 442 returned and the roster stays SIMULATED — a blank-branch RM named after a
+    code would be a worse claim than an honestly-labelled seed."""
     data_dir = tmp_path / "data"
     _seed(data_dir)
     _write_pulled(data_dir / "bank", api_442_records=[dict(
-        customerSummary=dict(customerName="SAMPLE CUSTOMER", custCifId="SANDBOX-CIF-2",
-                             accountManager="SYSCODE", customerID="SANDBOX-CIF-1"))])
+        customerSummary=dict(customerName="SAMPLE CUSTOMER", custCifId="10000001",
+                             accountManager="SYSC1", customerID="20000002"))])
     r = RO.load_roster(data_dir)
     assert r.source == RO.SOURCE_SIMULATED
     assert r.rms[0].rm_id == "EIN-999999"
-    assert len(r.bank_managers) == 1 and r.bank_managers[0]["account_manager"] == "SYSCODE"
-    assert "SYSCODE" in r.bank_reason and "SIMULATED" in r.bank_reason
+    # in memory, the bank's answer is kept verbatim — the model and the platform need it
+    assert len(r.bank_managers) == 1 and r.bank_managers[0]["account_manager"] == "SYSC1"
+    assert "SIMULATED" in r.bank_reason
+
+    # packed, it is REDACTED: this block ships inside a public repository's export and is
+    # rendered by the app, so it carries the shape of what 442 returned and nothing that
+    # identifies a customer or names an internal system.
     block = RO.roster_block(r)
-    assert block["bank_account_managers"][0]["cif_id"] == "SANDBOX-CIF-2"
+    packed = block["bank_account_managers"][0]
+    assert packed == dict(api="442", account_manager_shape="a 5-character alphanumeric code",
+                          has_manager_name=False, has_branch=False,
+                          names_a_customer=True, usable_as_rm=False)
+    for secret in ("SYSC1", "10000001", "20000002", "SAMPLE CUSTOMER"):
+        assert secret not in json.dumps(block), f"{secret} must not reach the packed export"
+        assert secret not in r.bank_reason, f"{secret} must not reach the packed note"
+    # the finding itself survives the redaction, which is the whole point
+    assert "442 answered" in r.bank_reason and "cannot name an RM" not in r.bank_reason
+    assert "name an RM" in r.bank_reason
     assert block["bank_source_note"] == r.bank_reason
     assert all(rm["source"] == RO.SOURCE_SIMULATED for rm in block["rms"])
 
@@ -153,7 +173,7 @@ def test_442_with_a_real_manager_name_wins_over_the_seeded_roster(tmp_path: Path
     data_dir = tmp_path / "data"
     _seed(data_dir)
     _write_pulled(data_dir / "bank", api_442_records=[dict(
-        customerSummary=dict(customerName="SAMPLE CUSTOMER", custCifId="SANDBOX-CIF-2",
+        customerSummary=dict(customerName="SAMPLE CUSTOMER", custCifId="10000001",
                              accountManager="SANDBOX-BRANCH-1", accountManagerName="Sample Customer",
                              branchName="Mumbai"))])
     r = RO.load_roster(data_dir)
