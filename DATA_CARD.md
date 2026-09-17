@@ -762,8 +762,10 @@ Two, both temporary, both in `journeys/build.py`:
   disburse_ts, blank_ratio, income_refused, revisit_count`. The file here is `data/journeys.csv`
   with the names the SD-S2 brief specifies, **plus** those eight as duplicate columns so the runner
   can be written against either. Delete them when runner 07 lands.
-* **`rm_id` is empty** on every row. SM-4 fills it from the round-robin roster (API 442
-  `accountManager` / API 508 HRMS); emitting placeholder ids now would only have to be undone.
+* **`rm_id` is empty** on every row. SM-4 fills it from the round-robin roster, which is
+  simulated: **the bank rejected API 508 (HRMS)**, leaving API 442's `accountManager` as the only
+  real source and no live pull to read it from. Emitting placeholder ids now would only have to be
+  undone.
 
 ### 11.11 Known unrealisms — the journey layer
 

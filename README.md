@@ -144,12 +144,15 @@ mirrored in `rrsquad-platform/app/atlas/README.md`):
 | `FIXTURE` | Stood in from the committed `data/bank/fixture.json` because a live pull was unavailable or incomplete for that specific customer. |
 | `NOT_COLLECTED` | Deliberately never fetched — the one case is API 408 (CIBIL/bureau), see below. |
 
-**The sandbox itself is a static mock, not a live data source.** A real call to API
-433 on 2026-09-16 answered HTTP 200 with **no auth header and no subscription check**,
-and returned the exact same canned 106-key JSON blob regardless of the request body —
-the bank's Free-tier sandbox serves one fixed response to everyone. So a `BANK_API` tag
-here means "the wiring works and the sandbox answered," not "this is a real customer's
-data." `data/bank/pulled.json` has never existed for this repo — no live Atlas pull has
+**The sandbox itself is a static mock, not a live data source.** All 23 readable approved
+APIs were called for real on 2026-09-17. Every one answered HTTP 200 with **no auth header
+and no subscription check**, and every one answered with **its own structured mock record** —
+the earlier reading, that the sandbox served one shared 106-key blob everywhere, generalised
+from API 433, which is the single endpoint that does return a composite record carrying a
+slice for every API. What holds everywhere is that the request body is ignored: the same
+sample customer comes back whatever you ask for. So a `BANK_API` tag here means "the wiring
+works and the sandbox answered," not "this is a real customer's data," and it always travels
+with `sandbox_fixture: true`. `data/bank/pulled.json` has never existed for this repo — no live Atlas pull has
 ever run against SANKET's book — so every run to date is `mode: fixture` or
 `mode: simulated`; the current shipped app export
 (`app/public/sanket_data.json` → `provenance`) reads `"mode": "fixture"`, with
@@ -161,7 +164,8 @@ else and for `digital`/`consent`/`journey`. `MODEL_CARD.md` §12–13; `DATA_CAR
 across both tracks, **22** are in SANKET's own surface: nine shared with DRISHTi
 (391 KYC, 402 overdue/arrears, 442 account manager, 362, 393, 365, 394, 456 customer
 dedupe, 433 rate card — the first live call, zero customer-ID dependency), three more
-shared (473, 538, 508 HRMS for RM roster seeding), and nine SANKET-only (428
+shared (473, 538, and 508 HRMS — **which the bank rejected**, so the RM roster is
+simulated rather than seeded from HRMS), and nine SANKET-only (428
 `createLead`, 590/591/592/593, 497/498 webhooks, 595/739 cross-bank transactions for
 the EMI-outflow and salary-elsewhere gaps). 415 (CKYC) is subscribed but deliberately
 never scored on. Plan §H has the full both/DRISHTi-only/SANKET-only split.

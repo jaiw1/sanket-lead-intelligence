@@ -473,18 +473,24 @@ is the finding; it is never hidden and never tuned toward.
    adds segment-aware calling quotas — but the gap is disclosed, not tuned away, because tuning
    it away on synthetic data would be pretending to have solved it.
 7. **EMI figures price one sandbox rate, not a per-product quote.** `emi_source =
-   "BANK_API_433_sandbox_fixture"` (SM-5): a live API 433 call returned one canned blob — the
-   sandbox serves the same JSON to every endpoint regardless of the request body — so all six
-   products price off the same 12.75% p.a. reading (`rateInfo.effectiveRate`) rather than a
-   per-product rate. API 473 (the repayment schedule) has never returned a body in this sandbox
-   at all; the schedule is **derived** from the 433 rate with a standard reducing-balance annuity
-   formula (`emi_source`-adjacent tag `DERIVED_FROM_433`, `src/model/emi.py`), not fetched. The
-   flat `TYPICAL_EMI` table is retained as a fallback only — it is not what a normal run reports.
-8. **`rm_id` is a fabricated roster, not a real HRMS directory.** SM-4 fills `rm_id` / `rm_name` /
-   `rm_branch` by deterministic round-robin over `data/roster.yaml` — eight fabricated names,
-   branches and EINs, tagged `SIMULATED` — because no live Atlas pull has ever run against this
-   book. `src/model/roster.py` reads `data/bank/pulled.json`'s API 442 `accountManager` / API 508
-   HRMS records first and would use those instead, tagged `BANK_API`, the moment one exists.
+   "BANK_API_433_sandbox_fixture"` (SM-5): a live API 433 call returns a single rate-card
+   reading, and the sandbox ignores the request body, so all six products price off the same
+   12.75% p.a. figure (`rateInfo.effectiveRate`) rather than a per-product rate. The schedule is
+   **derived** from that rate with a standard reducing-balance annuity formula
+   (`emi_source`-adjacent tag `DERIVED_FROM_433`, `src/model/emi.py`), not fetched. The flat
+   `TYPICAL_EMI` table is retained as a fallback only — it is not what a normal run reports.
+   *(Correction, 2026-09-17: this card previously said API 473 "has never returned a body in
+   this sandbox at all". It does — 11.7 KB, a 24-row `oamortLL` amortisation. The shipped EMI is
+   still derived from the 433 rate, and swapping to a fetched 473 schedule is an open change,
+   not one already made.)*
+8. **`rm_id` is a fabricated roster, not a real HRMS directory, and it will stay that way.**
+   **The bank rejected API 508 (`fetchHRMSEmployeeDetails`).** Twenty-four of the twenty-five
+   APIs we requested were approved; that one was not, so there is no HRMS directory to read and
+   the roster is simulated. SM-4 fills `rm_id` / `rm_name` / `rm_branch` by deterministic
+   round-robin over `data/roster.yaml` — eight fabricated names, branches and EINs, tagged
+   `SIMULATED`. `src/model/roster.py` reads `data/bank/pulled.json`'s API 442 `accountManager`
+   first and would use that instead, tagged `BANK_API`, the moment a pull answers with one; the
+   508 branch of that code is unreachable while the refusal stands.
    Suppressed leads are never assigned an RM at all — a customer who is never going to be called
    should not be shown as tied to one.
 9. **The bank overlay (SM-6, `--bank`) covers 120 of 60,000 customers, honestly.**
@@ -593,7 +599,7 @@ sandbox rate is ever unavailable)
 **SM-5's two EMI numbers, disambiguated for L11:** `product_menu[].emi` is the number to say out
 loud — the bank-rate EMI on that product's reference ticket, computed by `src/model/emi.py`'s
 annuity formula from the captured API 433 rate (12.75% p.a., every product, since the sandbox
-returns one canned blob regardless of the request body). `product_menu[].indicative_emi` is no
+returns the same record regardless of the request body). `product_menu[].indicative_emi` is no
 longer a second number: it is a **label** naming the ticket, tenor and rate `emi` was computed
 from, so a screen never has to guess which of the two figures is the one to quote. The lead-level
 `safe_emi` is unrelated to either — it stays the customer's own behavioural affordability ceiling,
@@ -631,10 +637,11 @@ validate it with that repo's `contracts/validate.py sanket <path>` before publis
 
 ### SM-4 — the RM roster (`src/model/roster.py`, `data/roster.yaml`)
 
-Source order, high to low: **1)** `data/bank/pulled.json`'s API 442 `accountManager` / API 508
-HRMS records, if the pull answered either — tagged `BANK_API`. **2)** `data/roster.yaml`, eight
-fabricated RMs across eight branches — tagged `SIMULATED`. No live Atlas pull has ever run against
-this book, so every run today uses the seeded roster; the `BANK_API` path is covered by
+Source order, high to low: **1)** `data/bank/pulled.json`'s API 442 `accountManager` — tagged
+`BANK_API`. **2)** `data/roster.yaml`, eight fabricated RMs across eight branches — tagged
+`SIMULATED`. **API 508 (HRMS) was rejected by the bank**, so the HRMS branch of that source order
+is dead and the roster is simulated as a matter of fact, not of convenience. No live Atlas pull
+has run against this book either, so every run today uses the seeded roster; the `BANK_API` path is covered by
 `tests/test_model_roster.py` against a synthetic `pulled.json`, not a real sandbox response.
 Assignment is a **deterministic round-robin** keyed by `cust_id`, sorted lexicographically — never
 by score, month or queue position — over the *whole* drop-off population (not just one month's
@@ -643,16 +650,22 @@ is never assigned one. The `roster` top-level block carries the roster itself pl
 
 ### SM-5 — a real EMI (`src/model/emi.py`)
 
-A probe against the live IDBI Atlas sandbox on 2026-09-16 (API 433) returned exactly one canned
-JSON blob, regardless of the request body — the sandbox serves the same response to every
-endpoint (`rrsquad-platform/batch/enrich.py`'s docstring calls this BR-6a). Its `rateInfo`
+A probe against the live IDBI Atlas sandbox on 2026-09-16 (API 433) returned a 106-key composite
+JSON record, regardless of the request body. A full pass on 2026-09-17 established that 433 is the
+*only* endpoint that answers that way — every other API returns its own structured mock record —
+while the request body is ignored everywhere (`rrsquad-platform/contracts/atlas/samples/live/`).
+Its `rateInfo`
 carries `effectiveRate: 12.75` (a rate-card reading, matching `data/bank/SCHEMA.md`'s 433 →
 `card_rate_pa` mapping); its `loanInfo` carries `netIntRate: 8.75` for an *existing* loan already
 in the blob, kept only as a sanity check on the amortisation formula
 (`tests/test_model_emi.py::test_the_sandbox_rate_sanity_checks_against_the_captured_loaninfo_blob`).
 Per the brief — "if the blob has one rate, use it for all and say so" — every product prices off
-the single 12.75% p.a. reading. API 473 (`generateLoanRepaymentScheduletest`) has never returned a
-body in this sandbox at all (the platform's own adapter docstring says so); the repayment schedule
+the single 12.75% p.a. reading. API 473 (`generateLoanRepaymentScheduletest`) **does** answer —
+11.7 KB with a 24-row `oamortLL` amortisation, captured 2026-09-17. This card said it "has never
+returned a body in this sandbox at all", and the platform's adapter listed it among the APIs whose
+shape had never been seen; both were wrong, and both traced back to the same thing — 473 is absent
+from API 433's composite record, which was mistaken for absence from the sandbox. Nothing
+downstream changed on the strength of the correction: the repayment schedule
 is **derived** with a standard reducing-balance annuity formula instead, tagged
 `DERIVED_FROM_433`. `TYPICAL_EMI` is retained as a fallback the code can actually reach (a broken
 reference table falls back to it, tagged `emi_source: "TYPICAL_EMI"`), not dead code — but it is
