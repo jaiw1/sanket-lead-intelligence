@@ -472,25 +472,37 @@ is the finding; it is never hidden and never tuned toward.
    in the design — capacity uses the behavioural *median* rather than a payslip, and production
    adds segment-aware calling quotas — but the gap is disclosed, not tuned away, because tuning
    it away on synthetic data would be pretending to have solved it.
-7. **EMI figures price one sandbox rate, not a per-product quote.** `emi_source =
-   "BANK_API_433_sandbox_fixture"` (SM-5): a live API 433 call returns a single rate-card
-   reading, and the sandbox ignores the request body, so all six products price off the same
-   12.75% p.a. figure (`rateInfo.effectiveRate`) rather than a per-product rate. The schedule is
-   **derived** from that rate with a standard reducing-balance annuity formula
-   (`emi_source`-adjacent tag `DERIVED_FROM_433`, `src/model/emi.py`), not fetched. The flat
-   `TYPICAL_EMI` table is retained as a fallback only — it is not what a normal run reports.
-   *(Correction, 2026-09-17: this card previously said API 473 "has never returned a body in
-   this sandbox at all". It does — 11.7 KB, a 24-row `oamortLL` amortisation. The shipped EMI is
-   still derived from the 433 rate, and swapping to a fetched 473 schedule is an open change,
-   not one already made.)*
+7. **EMI figures price one sandbox rate, not a per-product quote.** Every product prices off
+   the same 12.75% p.a. figure (`rateInfo.effectiveRate`), because a live API 433 call returns
+   a single rate-card reading and there is no per-product rate to be had. What *is* fetched is
+   the schedule: API 473 is an amortisation engine, the batch asks it once per reference
+   ticket, and `emi_source = "BANK_API_473_schedule"` is what a normal run reports. Below it,
+   in order: `BANK_API_433_sandbox_fixture` (no fetched schedule for this ticket — the 433 rate
+   through a standard reducing-balance annuity, `DERIVED_FROM_433`) and `TYPICAL_EMI` (neither;
+   the retained flat table, reachable but not normal). The reference ticket size and tenor per
+   product are still `assumed` — the *ticket* is ours even when the *schedule* is the bank's.
+   *(Correction history: this card said API 473 "has never returned a body in this sandbox at
+   all", then that swapping to a fetched schedule was an open change. Both are now stale — 473
+   answers, and SM-5 reads it. The instalment it computes matches our own formula to the paise
+   on all six reference tickets, which is why the switch moved no published number; the
+   agreement is asserted in `tests/test_model_emi.py`, not assumed.)*
 8. **`rm_id` is a fabricated roster, not a real HRMS directory, and it will stay that way.**
    **The bank rejected API 508 (`fetchHRMSEmployeeDetails`).** Twenty-four of the twenty-five
    APIs we requested were approved; that one was not, so there is no HRMS directory to read and
    the roster is simulated. SM-4 fills `rm_id` / `rm_name` / `rm_branch` by deterministic
    round-robin over `data/roster.yaml` — eight fabricated names, branches and EINs, tagged
    `SIMULATED`. `src/model/roster.py` reads `data/bank/pulled.json`'s API 442 `accountManager`
-   first and would use that instead, tagged `BANK_API`, the moment a pull answers with one; the
-   508 branch of that code is unreachable while the refusal stands.
+   first, tagged `BANK_API`, and there is no longer a 508 branch in it at all — the platform's
+   `app/atlas/policy.py` refuses 508 to both products, so no pull can put a 508 record there.
+   **A live pull on 2026-09-17 walked all five documented CIFs and 442 answered for one**
+   (`SANDBOX-CIF-2`, SAMPLE CUSTOMER) with `accountManager: "SYSCODE"` — a bank system code, with no
+   manager name and no branch beside it. It is carried verbatim into the export's
+   `roster.bank_account_managers` as evidence of what the endpoint returned, and
+   `roster.bank_source_note` states in one sentence why it did not become an RM. The roster
+   therefore stays `SIMULATED` by finding, not by default: "RM: SYSCODE" with a blank branch in
+   front of a relationship manager would be a worse claim than an honestly labelled seed.
+   `roster.rms[].source` badges each RM individually, so the moment 442 carries a *name* the
+   two kinds can sit side by side on a screen.
    Suppressed leads are never assigned an RM at all — a customer who is never going to be called
    should not be shown as tied to one.
 9. **The bank overlay (SM-6, `--bank`) covers 120 of 60,000 customers, honestly.**
@@ -639,10 +651,19 @@ validate it with that repo's `contracts/validate.py sanket <path>` before publis
 
 Source order, high to low: **1)** `data/bank/pulled.json`'s API 442 `accountManager` — tagged
 `BANK_API`. **2)** `data/roster.yaml`, eight fabricated RMs across eight branches — tagged
-`SIMULATED`. **API 508 (HRMS) was rejected by the bank**, so the HRMS branch of that source order
-is dead and the roster is simulated as a matter of fact, not of convenience. No live Atlas pull
-has run against this book either, so every run today uses the seeded roster; the `BANK_API` path is covered by
-`tests/test_model_roster.py` against a synthetic `pulled.json`, not a real sandbox response.
+`SIMULATED`. **API 508 (HRMS) was rejected by the bank**, so there is no HRMS branch in this code
+at all and the roster is simulated as a matter of fact, not of convenience.
+
+A live pull has now run. It walked all five documented CIFs and API 442 answered for one —
+`SANDBOX-CIF-2` (SAMPLE CUSTOMER, customer `SANDBOX-CIF-1`) — whose `accountManager` reads **`SYSCODE`**: a bank
+system code, no manager name, no branch. `usable_managers()` admits an entry to the roster only
+once it carries a name, so this one does not, and the roster stays seeded. What 442 returned is
+not thrown away: it rides into the export as `roster.bank_account_managers`, with
+`roster.bank_source_note` giving the one-sentence reason, so a disclosure screen can show the
+genuine bank field beside the simulated roster instead of either hiding it or dressing it up as a
+person. `roster.rms[].source` badges each RM. The `BANK_API` path — a 442 record that *does*
+carry a name — is covered in `tests/test_model_roster.py` against a synthetic `pulled.json`;
+the live shape it parses is the captured one, verbatim.
 Assignment is a **deterministic round-robin** keyed by `cust_id`, sorted lexicographically — never
 by score, month or queue position — over the *whole* drop-off population (not just one month's
 snapshot), so a customer keeps the same RM across runs and across model seeds. A suppressed lead
@@ -650,28 +671,51 @@ is never assigned one. The `roster` top-level block carries the roster itself pl
 
 ### SM-5 — a real EMI (`src/model/emi.py`)
 
-A probe against the live IDBI Atlas sandbox on 2026-09-16 (API 433) returned a 106-key composite
-JSON record, regardless of the request body. A full pass on 2026-09-17 established that 433 is the
-*only* endpoint that answers that way — every other API returns its own structured mock record —
-while the request body is ignored everywhere (`rrsquad-platform/contracts/atlas/samples/live/`).
-Its `rateInfo`
-carries `effectiveRate: 12.75` (a rate-card reading, matching `data/bank/SCHEMA.md`'s 433 →
-`card_rate_pa` mapping); its `loanInfo` carries `netIntRate: 8.75` for an *existing* loan already
-in the blob, kept only as a sanity check on the amortisation formula
-(`tests/test_model_emi.py::test_the_sandbox_rate_sanity_checks_against_the_captured_loaninfo_blob`).
+**The rate.** A probe against the live IDBI Atlas sandbox on 2026-09-16 (API 433) returned a
+106-key composite JSON record. A full pass on 2026-09-17 established that 433 is the *only*
+endpoint that answers that way — every other API returns its own structured record
+(`rrsquad-platform/contracts/atlas/samples/live/`) — and that the sandbox is a **keyed store**
+rather than a body-ignoring blob: an unknown key comes back as `{"message": "Data not found",
+"sentKey": "..."}`. Its `rateInfo` carries `effectiveRate: 12.75` (a rate-card reading, matching
+`data/bank/SCHEMA.md`'s 433 → `card_rate_pa` mapping); its `loanInfo` carries `netIntRate: 8.75`
+for an *existing* loan in the same record, kept only as a sanity check on the amortisation
+formula (`tests/test_model_emi.py::test_the_sandbox_rate_sanity_checks_against_the_captured_loaninfo_blob`).
 Per the brief — "if the blob has one rate, use it for all and say so" — every product prices off
-the single 12.75% p.a. reading. API 473 (`generateLoanRepaymentScheduletest`) **does** answer —
-11.7 KB with a 24-row `oamortLL` amortisation, captured 2026-09-17. This card said it "has never
-returned a body in this sandbox at all", and the platform's adapter listed it among the APIs whose
-shape had never been seen; both were wrong, and both traced back to the same thing — 473 is absent
-from API 433's composite record, which was mistaken for absence from the sandbox. Nothing
-downstream changed on the strength of the correction: the repayment schedule
-is **derived** with a standard reducing-balance annuity formula instead, tagged
-`DERIVED_FROM_433`. `TYPICAL_EMI` is retained as a fallback the code can actually reach (a broken
-reference table falls back to it, tagged `emi_source: "TYPICAL_EMI"`), not dead code — but it is
-not what a normal run reports. The reference ticket size and tenor per product
-(`REFERENCE_PRINCIPAL` / `REFERENCE_TENOR_MONTHS`) are `assumed`, the same convention
-`book/products.py` uses for the table SM-5 replaces.
+the single 12.75% p.a. reading.
+
+**The schedule.** API 473 (`generateLoanRepaymentScheduletest`) is an amortisation engine: give
+it a principal, a rate and an instalment count and it returns the level instalment plus one row
+per month. It takes no customer identifier, so `rrsquad-platform`'s batch pull asks it **once per
+reference ticket** (`batch/pull.py::TICKET_LADDER`), and `data/bank/pulled.json` carries six real
+bank-computed schedules that `emi.schedule_for()` reads straight through to
+`amortisation_schedules{}`, provenance `schedule: BANK_API`.
+
+This card and the platform's own adapter both recorded 473 for months as an API that "has never
+returned a body in this sandbox at all". That was wrong, and the cause was the same in both
+places: 473 is absent from API 433's composite record, and absence from that record was mistaken
+for absence from the sandbox.
+
+**Three sources, and `emi_source` distinguishes all three**, best to worst:
+
+| `emi_source` | When | `provenance.schedule` |
+|---|---|---|
+| `BANK_API_473_schedule` | 473 amortised this exact reference ticket — a normal run | `BANK_API` |
+| `BANK_API_433_sandbox_fixture` | no fetched schedule; the 433 rate through `annuity_emi` (`DERIVED_FROM_433`) | `SIMULATED` |
+| `TYPICAL_EMI` | neither — a broken reference table falls here; reachable, not normal | `SIMULATED` |
+
+`data/bank/pulled.json` is gitignored, so which of the first two a given checkout reports depends
+on whether the batch pull has run on it. Both are bank sources; the tag says which.
+
+**Adopting 473 moved no number.** All six reference tickets were fetched live on 2026-09-17 and
+every level instalment matches `annuity_emi` to the paise — personal ₹10,072.10, gold ₹13,380.00,
+auto ₹13,575.18, education ₹9,028.16, home ₹34,614.35, lap ₹24,976.74 — so `REFERENCE_EMI` is
+unchanged (₹10,100 / ₹13,400 / ₹13,600 / ₹9,000 / ₹34,600 / ₹25,000 after the usual ₹100
+rounding) and nothing downstream of it shifted. That agreement is asserted in
+`tests/test_model_emi.py`, so a future divergence surfaces in a test rather than in a lead's EMI.
+`TYPICAL_EMI` is retained as a fallback the code can actually reach, not dead code. The reference
+ticket size and tenor per product (`REFERENCE_PRINCIPAL` / `REFERENCE_TENOR_MONTHS`) remain
+`assumed`, the same convention `book/products.py` uses for the table SM-5 replaces — the ticket
+is ours even when the schedule is the bank's.
 
 ### SM-6 — the `--bank` enrichment path (`src/model/bank.py`, `src/model/export.py`)
 
@@ -705,8 +749,10 @@ unexpected errors**, with exactly the three gaps the brief pre-authorised:
 overwrite. Two mapping decisions worth recording: the schema's `confidence_interval.method` enum
 (`wilson` / `bootstrap` / `delong` / `normal-approx`) has no slot for this repo's own
 `"hanley-mcneil"` AUC-interval label, mapped onto `"delong"` as the nearest of the four; and
-`amortisation_schedules[].provenance.schedule` is `"SIMULATED"`, never `"BANK_API"` — API 473 gave
-us nothing to claim a live pull for.
+`amortisation_schedules[].provenance.schedule` reads `"BANK_API"` exactly when API 473 actually
+amortised that ticket in the pull behind the run, and `"SIMULATED"` when the rows were derived
+from the 433 rate instead — the platform's three-value enum has no slot for "derived", and
+`SIMULATED` ("no API supplied this") is the nearest honest reading of it.
 
 ### Provenance legend
 

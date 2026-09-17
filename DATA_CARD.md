@@ -1273,7 +1273,7 @@ update first.
 | Doc-supply logit | base 1.85, refusal −2.10, shopper −1.20, reluctance −1.00, channel ±0.05–0.45 | `assumed` |
 | Fee-balk logit | base −0.85, shopper +1.60, sensitivity +2.30, burden +0.55, commitment −0.85; flat fee **₹1,000** | `assumed` (mentor-named fee) |
 | Ticket size (× monthly income) | home 58 · lap 34 · auto 11 · education 14 · gold 3.5 · personal 6.5; sd 0.35; per-product ₹ bounds | `assumed` |
-| EMI per ₹1 lakh | home 870 · lap 1,000 · auto 2,075 · education 1,200 · gold 4,500 · personal 2,540 | `assumed` (SM-5 replaces with API 433/473) |
+| EMI per ₹1 lakh | home 870 · lap 1,000 · auto 2,075 · education 1,200 · gold 4,500 · personal 2,540 | `assumed` — **superseded**: SM-5 prices off a fetched API 473 schedule, falling back to the API 433 rate (`src/model/emi.py`) |
 | Capacity → EMI share / haircut / offer floor | 0.55 / Beta(1.5, 12) / 0.25× the request | `assumed` |
 | Revisit / products-viewed draw | base 0.6, dwell gain 0.05, shopper gain 5.0, cap 25 · viewed dwell-min 0.5, shopper gain 3.2 | `assumed` |
 
