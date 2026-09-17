@@ -108,7 +108,7 @@ class Roster:
 
 
 def _ein(raw: str) -> str:
-    """Coerce whatever the API sent (``"SANDBOX-EIN-1"``, ``"EIN-SANDBOX-EIN-1"``) to ``EIN-######``."""
+    """Coerce whatever the API sent (``"123456"``, ``"EIN-123456"``) to ``EIN-######``."""
     s = str(raw).strip()
     if s.upper().startswith("EIN-"):
         digits = s.split("-", 1)[1]

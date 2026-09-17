@@ -181,17 +181,18 @@ never scored on. Plan §H has the full both/DRISHTi-only/SANKET-only split.
 
 **What the sandbox actually holds, and which records are real.** It is a keyed store
 with a handful of sample customers, not the canned blob an early probe took it for — an
-unknown key answers `{"message": "Data not found", "sentKey": "acctId#SANDBOX-ACCT-3"}`.
+unknown key answers a `{"message": "Data not found", "sentKey": "acctId#<the id sent>"}`
+shaped error.
 A live pull on 2026-09-17 walked every documented identifier, and this is what came back:
 
 | API | Real for | What it gave |
 |---|---|---|
-| 365 account enquiry | accounts `SANDBOX-ACCT-1`, `SANDBOX-ACCT-2`, `SANDBOX-ACCT-5` | balances, scheme, branch, customer name |
-| 391 loan account details | accounts `SANDBOX-ACCT-1`, `SANDBOX-ACCT-2` | net interest rate, open date, customer |
-| 394 accounts by CIF | CIF `SANDBOX-CIF-2` | one account, ₹56,780.25 |
-| 402 overdue details | customer `SANDBOX-CIF-1` | three loan positions, DPD and NPA status |
-| 442 customer limits | CIF `SANDBOX-CIF-2` (SAMPLE CUSTOMER) | exposure summary, ten limits, `accountManager` |
-| 456 dedupe | customer `SANDBOX-CIF-1` | name, DOB, PAN, CKYC |
+| 365 account enquiry | three sandbox accounts | balances, scheme, branch, customer name |
+| 391 loan account details | two of those three sandbox accounts | net interest rate, open date, customer |
+| 394 accounts by CIF | one sandbox corporate customer | one account, ₹56,780.25 |
+| 402 overdue details | that same sandbox customer | three loan positions, DPD and NPA status |
+| 442 customer limits | that same sandbox customer | exposure summary, ten limits, `accountManager` |
+| 456 dedupe | that same sandbox customer | name, DOB, PAN, CKYC |
 | 473 repayment schedule | no customer id — it is a calculator | six bank-computed amortisations, one per reference ticket |
 
 Everything else in the book — all 60,000 customers — stays `SIMULATED`. The three
@@ -211,12 +212,13 @@ which is why adopting it moved no published number. `MODEL_CARD.md` §13 (SM-5).
 **The RM roster is simulated, and API 442 is why it stays that way.** The bank rejected
 API 508 (HRMS), so there is no staff directory to read. API 442 carries the only
 account-manager field left in the catalogue and it is wired as the top-ranked roster
-source — but the one CIF the sandbox answers for returns `accountManager: "SYSCODE"`, a
-bank system code with no manager name and no branch beside it. That value is reported
-verbatim in the export's `roster.bank_account_managers`, and `roster.bank_source_note`
-says in one sentence why it did not become an RM. Putting "RM: SYSCODE" with a blank
-branch in front of a relationship manager would be a worse claim than an honestly
-labelled seeded roster, not a better one.
+source — but the one CIF the sandbox answers for returns an `accountManager` value that
+is a short alphanumeric bank system code, not a person's name, with no manager name and
+no branch beside it. That value is reported verbatim in the export's
+`roster.bank_account_managers`, and `roster.bank_source_note` says in one sentence why it
+did not become an RM. Putting that bank code in as "RM:" with a blank branch in front of
+a relationship manager would be a worse claim than an honestly labelled seeded roster,
+not a better one.
 
 **API 408 (CIBIL/bureau) is never called at prospecting, on purpose.** It sits in
 `EXCLUDED_FEATURES` and `app/atlas/policy.py` refuses it before a rate-limit slot or a

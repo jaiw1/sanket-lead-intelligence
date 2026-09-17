@@ -174,14 +174,14 @@ def test_442_with_a_real_manager_name_wins_over_the_seeded_roster(tmp_path: Path
     _seed(data_dir)
     _write_pulled(data_dir / "bank", api_442_records=[dict(
         customerSummary=dict(customerName="SAMPLE CUSTOMER", custCifId="10000001",
-                             accountManager="SANDBOX-BRANCH-1", accountManagerName="Sample Customer",
-                             branchName="Mumbai"))])
+                             accountManager="888888", accountManagerName="Test Manager",
+                             branchName="Test Branch"))])
     r = RO.load_roster(data_dir)
     assert r.source == RO.SOURCE_BANK_API
     assert len(r.rms) == 1
-    assert r.rms[0].rm_id == "EIN-SANDBOX-BRANCH-1"
-    assert r.rms[0].rm_name == "Sample Customer"
-    assert r.rms[0].rm_branch == "Mumbai"
+    assert r.rms[0].rm_id == "EIN-888888"
+    assert r.rms[0].rm_name == "Test Manager"
+    assert r.rms[0].rm_branch == "Test Branch"
     assert r.rms[0].source == RO.SOURCE_BANK_API
 
 

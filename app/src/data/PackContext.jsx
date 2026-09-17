@@ -9,9 +9,10 @@ import useResource from './useResource'
  *   * In STATIC mode it is the only data there is — no backend answered, so the queue, the
  *     dashboard and Model & Trust all read it, behind the static-demo banner.
  *   * In LIVE mode, Model & Trust additionally reads it for the pre-registered validation
- *     table, because the platform API has no SANKET validation route (the contract has
- *     `drishti/validation` and no counterpart). That panel is labelled with its own source
- *     so the two are never confused on screen.
+ *     table's per-band verdict detail. `GET /sanket/validation` exists, but it only serves
+ *     an acceptance overlay (which failing criteria were named in advance and accepted, and
+ *     why) — no route serves the pack's per-band detail itself. That panel is labelled with
+ *     its own source so the two are never confused on screen.
  *
  * It is fetched at most once per page load, and a failure is not fatal: every consumer
  * renders an empty or error state of its own.

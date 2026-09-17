@@ -19,8 +19,8 @@ The sandbox is a keyed store, not a blob
 An earlier reading of this sandbox — from API 433, the one endpoint that *does*
 return a 106-key kitchen-sink record — concluded that it "serves the same
 response to every endpoint regardless of the request body". It does not. Every
-other API returns its own structured record, and an unknown key comes back as
-``{"message": "Data not found", "sentKey": "acctId#SANDBOX-ACCT-3"}``. What is true
+other API returns its own structured record, and an unknown key comes back as a
+``{"message": "Data not found", "sentKey": "acctId#<the id sent>"}`` shaped error. What is true
 is that the store holds a **handful** of sample customers and accounts, so a 200
 proves the shape and the wiring and says nothing about this book's 60,000
 synthetic customers. :data:`SANDBOX_FIXTURE` records that, and every field derived

@@ -495,12 +495,13 @@ is the finding; it is never hidden and never tuned toward.
    first, tagged `BANK_API`, and there is no longer a 508 branch in it at all — the platform's
    `app/atlas/policy.py` refuses 508 to both products, so no pull can put a 508 record there.
    **A live pull on 2026-09-17 walked all five documented CIFs and 442 answered for one**
-   (`SANDBOX-CIF-2`, SAMPLE CUSTOMER) with `accountManager: "SYSCODE"` — a bank system code, with no
-   manager name and no branch beside it. It is carried verbatim into the export's
-   `roster.bank_account_managers` as evidence of what the endpoint returned, and
+   (one sandbox corporate customer) with an `accountManager` value that is a bank system
+   code, with no manager name and no branch beside it. It is carried verbatim into the
+   export's `roster.bank_account_managers` as evidence of what the endpoint returned, and
    `roster.bank_source_note` states in one sentence why it did not become an RM. The roster
-   therefore stays `SIMULATED` by finding, not by default: "RM: SYSCODE" with a blank branch in
-   front of a relationship manager would be a worse claim than an honestly labelled seed.
+   therefore stays `SIMULATED` by finding, not by default: that bank code standing in for
+   "RM:" with a blank branch in front of a relationship manager would be a worse claim than
+   an honestly labelled seed.
    `roster.rms[].source` badges each RM individually, so the moment 442 carries a *name* the
    two kinds can sit side by side on a screen.
    Suppressed leads are never assigned an RM at all — a customer who is never going to be called
@@ -660,8 +661,8 @@ Source order, high to low: **1)** `data/bank/pulled.json`'s API 442 `accountMana
 at all and the roster is simulated as a matter of fact, not of convenience.
 
 A live pull has now run. It walked all five documented CIFs and API 442 answered for one —
-`SANDBOX-CIF-2` (SAMPLE CUSTOMER, customer `SANDBOX-CIF-1`) — whose `accountManager` reads **`SYSCODE`**: a bank
-system code, no manager name, no branch. `usable_managers()` admits an entry to the roster only
+one sandbox corporate customer — whose `accountManager` reads as a bank system code: no
+manager name, no branch. `usable_managers()` admits an entry to the roster only
 once it carries a name, so this one does not, and the roster stays seeded. What 442 returned is
 not thrown away: it rides into the export as `roster.bank_account_managers`, with
 `roster.bank_source_note` giving the one-sentence reason, so a disclosure screen can show the
