@@ -1,6 +1,9 @@
-"""SM-5 — the annuity EMI formula, the 433 sandbox rate, and the fallback."""
+"""SM-5 — the fetched 473 schedule, the 433 rate through the annuity formula, and the
+fallback below both."""
 
 from __future__ import annotations
+
+import json
 
 import pytest
 
@@ -64,10 +67,14 @@ def test_the_sandbox_rate_sanity_checks_against_the_captured_loaninfo_blob() -> 
 # emi_source tags
 # --------------------------------------------------------------------------- #
 
-def test_every_product_has_a_reference_emi_tagged_bank_api() -> None:
+def test_every_product_has_a_reference_emi_from_one_of_the_two_bank_sources() -> None:
+    """Which of the two depends on whether a pull has run on this checkout —
+    `data/bank/pulled.json` is gitignored, so a fresh clone takes the 433 path and a
+    machine that has run the batch takes the 473 one. Both are bank sources and the tag
+    says which; what is never acceptable is falling to TYPICAL_EMI on a normal run."""
     for p in PRODUCTS:
         assert E.REFERENCE_EMI[p] > 0
-        assert E.EMI_SOURCE[p] == E.EMI_SOURCE_BANK
+        assert E.EMI_SOURCE[p] in (E.EMI_SOURCE_SCHEDULE, E.EMI_SOURCE_BANK)
         assert E.reference_emi(p) == E.REFERENCE_EMI[p]
 
 
@@ -79,6 +86,14 @@ def test_every_product_prices_off_the_one_uniform_rate() -> None:
         expected = round(E.annuity_emi(E.REFERENCE_PRINCIPAL[p], E.UNIFORM_RATE_PA,
                                        E.REFERENCE_TENOR_MONTHS[p]), -2)
         assert E.REFERENCE_EMI[p] == int(expected)
+
+
+def test_the_three_sources_are_three_distinct_honest_strings() -> None:
+    tags = {E.EMI_SOURCE_SCHEDULE, E.EMI_SOURCE_BANK, E.EMI_SOURCE_TYPICAL}
+    assert len(tags) == 3
+    assert E.EMI_SOURCE_SCHEDULE == "BANK_API_473_schedule"
+    assert E.EMI_SOURCE_BANK == "BANK_API_433_sandbox_fixture"
+    assert E.EMI_SOURCE_TYPICAL == "TYPICAL_EMI"
 
 
 def test_the_typical_emi_fallback_is_retained_and_reachable(monkeypatch) -> None:
@@ -107,9 +122,150 @@ def test_sandbox_fixture_flag_is_set() -> None:
     assert E.SANDBOX_FIXTURE is True
 
 
-def test_schedule_source_is_derived_not_bank_api() -> None:
-    """API 473 never answered in this sandbox — the schedule is DERIVED, and the
-    tag says so rather than claiming BANK_API for something we never received.
-    """
+def test_the_derived_schedule_tag_never_claims_bank_api() -> None:
+    """When no 473 schedule was fetched the rows are ours, and the tag has to say so."""
     assert E.SCHEDULE_SOURCE_DERIVED == "DERIVED_FROM_433"
     assert "BANK_API" not in E.SCHEDULE_SOURCE_DERIVED
+
+
+# --------------------------------------------------------------------------- #
+# API 473 — the fetched schedule
+# --------------------------------------------------------------------------- #
+
+#: The bank's own answer for SANKET's personal-loan reference ticket (₹300,000 over 36
+#: months at 12.75% p.a.), captured from the live sandbox on 2026-09-17. Three rows of the
+#: thirty-six, enough to carry the shape, the split and the closing balance.
+_LIVE_473_HEAD = {
+    "lamodRepaymentLL": [{"flowAmt": {"amountValue": "10072.10", "currencyCode": "INR"},
+                          "noOfInstalments": "36", "Freq": "M"}],
+    "oamortLL": [
+        {"amortStruct": {"instlAmt": {"amountValue": "10072.10", "currencyCode": "INR"},
+                         "intAmt": {"amountValue": "3187.50", "currencyCode": "INR"},
+                         "princAmt": {"amountValue": "6884.60", "currencyCode": "INR"},
+                         "princOutStanding": {"amountValue": "293115.40", "currencyCode": "INR"}}},
+        {"amortStruct": {"instlAmt": {"amountValue": "10072.10", "currencyCode": "INR"},
+                         "intAmt": {"amountValue": "3114.35", "currencyCode": "INR"},
+                         "princAmt": {"amountValue": "6957.75", "currencyCode": "INR"},
+                         "princOutStanding": {"amountValue": "286157.65", "currencyCode": "INR"}}},
+    ],
+}
+
+
+def _as_473(product: str) -> dict:
+    """A full-length schedule in the bank's own `oamortLL` shape.
+
+    `_LIVE_473_HEAD` is the bank's real answer but only its first two rows, and
+    `bank_schedule` matches on the row *count* — so a two-row fixture is a two-month loan
+    and rightly matches nothing. This re-renders the whole ticket in the same shape. The
+    numbers are `amortisation_schedule`'s, which the last test in this file proves are the
+    bank's numbers to the paise; the shape is copied from the captured response verbatim.
+    """
+    def amt(v: float) -> dict:
+        return {"amountValue": f"{v:.2f}", "currencyCode": "INR"}
+
+    rows = E.amortisation_schedule(E.REFERENCE_PRINCIPAL[product], E.UNIFORM_RATE_PA,
+                                   E.REFERENCE_TENOR_MONTHS[product])
+    return {"oamortLL": [{"amortStruct": {"instlAmt": amt(r["emi"]), "intAmt": amt(r["interest"]),
+                                          "princAmt": amt(r["principal"]),
+                                          "princOutStanding": amt(r["closing"])},
+                          "Key": {"serial_num": str(r["n"])}} for r in rows]}
+
+
+def test_parse_schedule_reads_the_live_473_shape() -> None:
+    parsed = E.parse_schedule(_LIVE_473_HEAD)
+    assert parsed is not None
+    assert parsed["principal"] == pytest.approx(300_000.0)
+    assert parsed["emi"] == pytest.approx(10_072.10)
+    assert parsed["rate_pa"] == pytest.approx(12.75, abs=1e-6)
+    assert parsed["rows"][0] == dict(n=1, opening=300_000.0, emi=10_072.10, interest=3_187.50,
+                                     principal=6_884.60, closing=293_115.40)
+
+
+def test_parse_schedule_accepts_both_envelopes_the_sandbox_and_the_sheet_use() -> None:
+    """Live it arrives top-level; the spreadsheet contract nests it under `result`, and the
+    raw response wraps it in `loanModellingSchOutputVO`. All three, one parser."""
+    direct = E.parse_schedule(_LIVE_473_HEAD)
+    wrapped = E.parse_schedule({"loanModellingSchOutputVO": _LIVE_473_HEAD})
+    nested = E.parse_schedule({"result": _LIVE_473_HEAD})
+    assert direct == wrapped == nested
+
+
+def test_a_record_with_no_amortisation_rows_parses_to_nothing() -> None:
+    assert E.parse_schedule({"message": "Data not found"}) is None
+    assert E.parse_schedule({"loanModellingSchOutputVO": {"oamortLL": []}}) is None
+    assert E.parse_schedule("not a dict") is None
+
+
+def test_a_missing_pull_leaves_no_schedules_and_falls_to_the_433_path(tmp_path) -> None:
+    """The gitignored file is absent on a fresh clone. That must be a fallback, not a
+    crash, and it must land on the 433 tag rather than on TYPICAL_EMI."""
+    try:
+        sources = E.refresh(tmp_path / "nothing-here.json")
+        assert E.BANK_SCHEDULES == {}
+        assert set(sources.values()) == {E.EMI_SOURCE_BANK}
+        for p in PRODUCTS:
+            rows, tag = E.schedule_for(p)
+            assert tag == E.SCHEDULE_SOURCE_DERIVED
+            assert len(rows) == E.REFERENCE_TENOR_MONTHS[p]
+        assert "API 433" in E.indicative_label("personal")
+    finally:
+        E.refresh()
+
+
+def test_a_fetched_schedule_wins_and_is_tagged_473(tmp_path) -> None:
+    path = tmp_path / "pulled.json"
+    path.write_text(json.dumps({"apis": {"473": {"provenance": "BANK_API",
+                                                 "records": [_as_473("personal")]}}}),
+                    encoding="utf-8")
+    try:
+        E.refresh(path)
+        assert E.EMI_SOURCE["personal"] == E.EMI_SOURCE_SCHEDULE
+        assert E.REFERENCE_EMI["personal"] == 10_100  # the same ₹100 rounding as ever
+        rows, tag = E.schedule_for("personal")
+        assert tag == E.SCHEDULE_SOURCE_BANK and len(rows) == 36
+        assert "API 473" in E.indicative_label("personal")
+        # Every other product had no fetched ticket, so each falls back on its own.
+        assert E.EMI_SOURCE["home"] == E.EMI_SOURCE_BANK
+    finally:
+        E.refresh()
+
+
+def test_a_schedule_priced_at_another_rate_is_not_used(tmp_path) -> None:
+    """A ladder entry that drifts must not quietly reprice a product off someone else's
+    ticket: the principal and tenor match, the rate does not, so it is ignored."""
+    wrong = _as_473("personal")
+    wrong["oamortLL"][0]["amortStruct"]["intAmt"]["amountValue"] = "2000.00"
+    path = tmp_path / "pulled.json"
+    path.write_text(json.dumps({"apis": {"473": {"provenance": "BANK_API",
+                                                 "records": [wrong]}}}), encoding="utf-8")
+    try:
+        E.refresh(path)
+        assert E.bank_schedule("personal") is None
+        assert E.EMI_SOURCE["personal"] == E.EMI_SOURCE_BANK
+    finally:
+        E.refresh()
+
+
+def test_a_not_collected_473_is_not_read_as_bank_data(tmp_path) -> None:
+    path = tmp_path / "pulled.json"
+    path.write_text(json.dumps({"apis": {"473": {"provenance": "NOT_COLLECTED",
+                                                 "records": [_as_473("personal")]}}}),
+                    encoding="utf-8")
+    try:
+        E.refresh(path)
+        assert E.BANK_SCHEDULES == {}
+    finally:
+        E.refresh()
+
+
+def test_the_banks_own_engine_agrees_with_our_annuity_formula() -> None:
+    """The reason adopting 473 moved no number downstream. All six reference tickets were
+    fetched live on 2026-09-17; each level instalment matches `annuity_emi` to the paise.
+    If the bank's engine ever disagrees, this is where it shows up — not in a lead's EMI.
+    """
+    captured = {"personal": 10_072.10, "gold": 13_380.00, "auto": 13_575.18,
+                "education": 9_028.16, "home": 34_614.35, "lap": 24_976.74}
+    for product, bank_emi in captured.items():
+        ours = E.annuity_emi(E.REFERENCE_PRINCIPAL[product], E.UNIFORM_RATE_PA,
+                             E.REFERENCE_TENOR_MONTHS[product])
+        assert ours == pytest.approx(bank_emi, abs=0.01), product

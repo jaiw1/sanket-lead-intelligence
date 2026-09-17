@@ -120,17 +120,54 @@ def _ci(d: dict | None) -> dict:
 # meta / counts / metrics
 # --------------------------------------------------------------------------- #
 
+#: APIs the bank refused us. `subscription_status: "rejected"` is one of the four values the
+#: contract's enum offers and this is the only API in either product that earns it — leaving
+#: it to read "pending" would describe a decision that is not pending at all.
+REJECTED_APIS: frozenset = frozenset({"508"})
+
+
+def _endpoint_rows(bank_ctx: B.BankContext) -> list[dict]:
+    """`meta.sandbox_sync.endpoints[]` — one row per API we asked about, refusals included.
+
+    Prefers `data/bank/provenance.json`'s own endpoint block over `pulled.json`'s, for two
+    reasons. It carries `latency_ms` (`pulled.json` does not, and the contract types the
+    field integer-with-no-null, so reading it from the wrong file writes a schema
+    violation). And it has a row for every *declared* API rather than only the ones a call
+    was made for — which is what makes API 508 visible here as `rejected` instead of simply
+    missing. An API with no measured latency omits the key rather than sending a null.
+    """
+    rows = (bank_ctx.provenance_raw or {}).get("endpoints")
+    if not isinstance(rows, list) or not rows:
+        rows = [dict(api_id=str(api_no), http_status=entry.get("http_status"),
+                     n_records=entry.get("n_records"),
+                     error=None if entry.get("provenance") == "BANK_API" else "NOT_COLLECTED")
+                for api_no, entry in sorted((bank_ctx.pulled or {}).get("apis", {}).items(),
+                                            key=lambda kv: int(kv[0]))]
+    out = []
+    for row in rows:
+        if not isinstance(row, dict) or not str(row.get("api_id") or "").isdigit():
+            continue
+        api_id = str(row["api_id"])
+        answered = not row.get("error")
+        entry = dict(
+            api_id=api_id,
+            http_status=int(row.get("http_status") or 0),
+            n_records=int(row.get("n_records") or 0),
+            subscription_status=("rejected" if api_id in REJECTED_APIS
+                                 else "approved" if answered else "pending"),
+        )
+        latency = row.get("latency_ms")
+        if isinstance(latency, (int, float)):
+            entry["latency_ms"] = int(latency)
+        out.append(entry)
+    return sorted(out, key=lambda r: int(r["api_id"]))
+
+
 def build_meta(meta: dict, bank_ctx: B.BankContext, seed: int) -> dict:
     ref_month = pd.Timestamp(meta["ref_month"]).strftime("%Y-%m")
     if bank_ctx.pulled is not None:
         pulled_at = bank_ctx.pulled.get("generated_at", meta["generated_at"])
-        endpoints = []
-        for api_no, entry in sorted(bank_ctx.pulled.get("apis", {}).items(), key=lambda kv: int(kv[0])):
-            endpoints.append(dict(
-                api_id=str(api_no), http_status=int(entry.get("http_status") or 0),
-                n_records=int(entry.get("n_records") or 0),
-                subscription_status="approved" if entry.get("provenance") == "BANK_API" else "pending",
-                latency_ms=entry.get("latency_ms")))
+        endpoints = _endpoint_rows(bank_ctx)
     elif bank_ctx.enabled and bank_ctx.fixture_by_cust:
         pulled_at = (bank_ctx.fixture_meta or {}).get("generated_at", meta["generated_at"])
         endpoints = []  # mode "fixture": schema requires this empty
@@ -350,7 +387,7 @@ def build_amortisation_schedules() -> dict:
     for p in PRODUCTS:
         principal = E.REFERENCE_PRINCIPAL[p]
         tenor = E.REFERENCE_TENOR_MONTHS[p]
-        rows = E.amortisation_schedule(principal, E.UNIFORM_RATE_PA, tenor)
+        rows, schedule_source = E.schedule_for(p)
         total_interest = round(sum(r["interest"] for r in rows), 2)
         ref = f"AMT-{p.upper()}-{principal // 1000}K-{tenor}M"
         sample = [rows[0]] + (([rows[len(rows) // 2]] if len(rows) > 2 else []) + [rows[-1]])
@@ -358,13 +395,20 @@ def build_amortisation_schedules() -> dict:
             product=p, principal=float(principal), rate_pa=round(E.UNIFORM_RATE_PA / 100.0, 4),
             tenor_months=tenor, emi=float(E.reference_emi(p)), total_interest=total_interest,
             rows=sample,
-            # `rate` -- API 433 DID answer in this sandbox (a canned blob, but a
-            # 200 all the same); `schedule` -- API 473 has never returned a body
-            # here at all, so the schedule is DERIVED, which the platform's
-            # three-value enum has no slot for -- SIMULATED is the nearest
-            # honest reading ("no API supplied this", `E.SCHEDULE_SOURCE_DERIVED`
-            # is the fuller tag carried on this repo's own MODEL_CARD/pack.py).
-            provenance=dict(rate="BANK_API", schedule="SIMULATED"),
+            # `rate` -- API 433 answered with the rate card.  `schedule` -- API 473
+            # is an amortisation engine and answers too, once per reference
+            # ticket (`rrsquad-platform` batch/pull.py::TICKET_LADDER), so these
+            # rows are the bank's own and read BANK_API.  Without a pull on this
+            # checkout the schedule is derived from the 433 rate instead, which
+            # the platform's three-value enum has no slot for -- SIMULATED is the
+            # nearest honest reading ("no API supplied this"), and
+            # `E.SCHEDULE_SOURCE_DERIVED` is the fuller tag this repo's own
+            # MODEL_CARD and pack.py carry.
+            provenance=dict(
+                rate="BANK_API",
+                schedule=("BANK_API" if schedule_source == E.SCHEDULE_SOURCE_BANK
+                          else "SIMULATED"),
+            ),
         )
     return out, {p: ref for p, ref in zip(PRODUCTS, out.keys())}
 

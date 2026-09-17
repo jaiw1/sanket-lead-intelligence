@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 from model import bank as B
@@ -39,8 +40,22 @@ def test_enabled_with_nothing_on_disk_degrades_to_simulated(tmp_path: Path) -> N
 # fixture fallback, honestly partial per customer
 # --------------------------------------------------------------------------- #
 
+def _fixture_only(tmp_path: Path) -> Path:
+    """A data dir holding the committed fixture and **no** ``pulled.json``.
+
+    These two tests describe the no-pull whole-fixture fallback, so they must not read
+    ``ROOT/data`` — ``data/bank/pulled.json`` is gitignored output that is present on any
+    machine that has run the platform batch and absent on a fresh clone, and a test whose
+    verdict depends on that is testing the machine rather than the code.
+    """
+    bank = tmp_path / "data" / "bank"
+    bank.mkdir(parents=True)
+    shutil.copyfile(ROOT / "data" / "bank" / B.FIXTURE_NAME, bank / B.FIXTURE_NAME)
+    return tmp_path / "data"
+
+
 def test_the_real_fixture_covers_120_customers_by_cust_id(tmp_path: Path) -> None:
-    ctx = B.build_context(ROOT / "data", enabled=True)
+    ctx = B.build_context(_fixture_only(tmp_path), enabled=True)
     assert ctx.pulled is None
     assert ctx.mode == "fixture"
     assert len(ctx.fixture_by_cust) == 120
@@ -51,12 +66,13 @@ def test_the_real_fixture_covers_120_customers_by_cust_id(tmp_path: Path) -> Non
     assert ctx.families["model"] == "FIXTURE"  # weakest of {FIXTURE, SIMULATED}
 
 
-def test_a_fixture_covered_customer_reads_fixture_a_stranger_reads_simulated() -> None:
+def test_a_fixture_covered_customer_reads_fixture_a_stranger_reads_simulated(
+        tmp_path: Path) -> None:
     """The aggregate says FIXTURE; a specific customer only reads FIXTURE if the
     fixture actually has a row for them — this is the honesty check the
     ``--bank`` overlay has to pass.
     """
-    ctx = B.build_context(ROOT / "data", enabled=True)
+    ctx = B.build_context(_fixture_only(tmp_path), enabled=True)
     covered = "LB-2000001"  # first fixture row, per data/bank/fixture.json
     stranger = "LB-2059999"  # last id in the 60,000-row book, never in the fixture
     assert covered in ctx.fixture_by_cust
@@ -71,6 +87,29 @@ def test_a_fixture_covered_customer_reads_fixture_a_stranger_reads_simulated() -
     assert p_stranger["model"] == "SIMULATED"
     assert ctx.overlay_for(covered)["cust_id"] == covered
     assert ctx.overlay_for(stranger) == {}
+
+
+def test_a_live_pull_lifts_the_families_it_answered_for(tmp_path: Path) -> None:
+    """A real pull is a *mixture*, and the two levels say different true things.
+
+    The families 442/456/394 fill read BANK_API because the sandbox genuinely answered.
+    Per customer it stays honest anyway: the CIFs the sandbox knows are its own five
+    sample customers, none of which is in this synthetic book, so a stranger still reads
+    the aggregate rather than a claim that the bank returned *their* data.
+    """
+    data_dir = _fixture_only(tmp_path)
+    (data_dir / "bank" / B.PULLED_NAME).write_text(json.dumps({"apis": {
+        "442": {"api_id": "442", "provenance": "BANK_API", "n_records": 1, "records": [
+            {"customerSummary": {"custCifId": "SANDBOX-CIF-2", "accountManager": "SYSCODE"}}]},
+        "595": {"api_id": "595", "provenance": "NOT_COLLECTED", "n_records": 0, "records": []},
+    }}), encoding="utf-8")
+    ctx = B.build_context(data_dir, enabled=True)
+    assert ctx.pulled is not None
+    assert ctx.families["identity"] == "BANK_API"
+    assert ctx.families["cross_bank"] == "FIXTURE"   # 595/739 did not answer
+    assert ctx.mode == "mixed"
+    assert ctx.provenance_for("LB-2059999")["identity"] == "BANK_API"
+
 
 
 # --------------------------------------------------------------------------- #

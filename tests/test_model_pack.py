@@ -24,6 +24,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from model import PRODUCTS
+from model import emi as EMI
 from model import roster as RO
 from model.metrics import headline
 
@@ -197,24 +198,35 @@ def test_the_precision_curve_still_has_the_budgets_the_ui_pins(
         assert {"budget", "precision", "lift", "contacts", "expected_conversions"} <= set(p)
 
 
+#: The two tags a normal run may carry. `TYPICAL_EMI` is the reachable fallback below both
+#: and is deliberately not in this set: a run that lands there has lost the bank rate.
+_BANK_EMI_SOURCES = {EMI.EMI_SOURCE_SCHEDULE, EMI.EMI_SOURCE_BANK}
+
+
 def test_the_new_lead_keys_are_all_present(packed: SimpleNamespace) -> None:
     """SM-4 fills ``rm_id`` (queued leads only); SM-5 replaces the EMI source tag."""
     seen_rm = False
     for lead in packed.out["leads"]:
         for k in ("product_menu", "negative_chips", "suppressed", "suppression_reason",
                   "contact_by", "window_days", "provenance", "rm_id", "rm_name", "rm_branch",
-                  "emi_source", "queued", "consent_marketing", "shopper_score", "probability"):
+                  "rm_source", "emi_source", "queued", "consent_marketing", "shopper_score",
+                  "probability"):
             assert k in lead, (lead["id"], k)
         if lead["suppressed"]:
             assert lead["rm_id"] is None, "a suppressed lead is never assigned an RM"
             assert lead["rm_name"] is None and lead["rm_branch"] is None
+            assert lead["rm_source"] is None
         else:
             assert re.fullmatch(r"EIN-\d{6}", lead["rm_id"]), lead["rm_id"]
             assert lead["rm_name"] and lead["rm_branch"]
+            assert lead["rm_source"] in (RO.SOURCE_BANK_API, RO.SOURCE_SIMULATED)
             seen_rm = True
-        assert lead["emi_source"] == "BANK_API_433_sandbox_fixture", "SM-5 owns the 433/473 EMI"
+        # SM-5's ladder: a fetched 473 schedule, else the 433 rate. Which one depends on
+        # whether a pull has run on this checkout (`data/bank/pulled.json` is gitignored),
+        # so the test pins the set, not the member — and never allows TYPICAL_EMI.
+        assert lead["emi_source"] in _BANK_EMI_SOURCES, "SM-5 owns the 433/473 EMI"
         for item in lead["product_menu"]:
-            assert item["emi_source"] == "BANK_API_433_sandbox_fixture"
+            assert item["emi_source"] in _BANK_EMI_SOURCES
             assert isinstance(item["emi"], int) and item["emi"] > 0
             assert isinstance(item["indicative_emi"], str) and item["indicative_emi"]
     assert seen_rm, "no queued lead in the export at all"
@@ -260,7 +272,10 @@ def test_the_provenance_block_matches_the_eight_families(packed: SimpleNamespace
                                   "digital", "consent", "journey", "model"}
     assert set(p["families"].values()) == {"SIMULATED"}
     assert "SM-4" in p["hooks"]["rm_id"] and "roster" in p["hooks"]["rm_id"]
-    assert p["hooks"]["emi_source"] == "BANK_API_433_sandbox_fixture"
+    # One tag per product, not one tag: the ladder can land differently per product and a
+    # single string would hide which took which step.
+    assert set(p["hooks"]["emi_source"]) == set(EMI.EMI_SOURCE)
+    assert set(p["hooks"]["emi_source"].values()) <= _BANK_EMI_SOURCES
     assert any("sanket_export.json" in x for x in p["hooks"]["pending"])
 
     r = packed.out["roster"]

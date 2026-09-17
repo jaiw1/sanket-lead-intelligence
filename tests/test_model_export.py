@@ -14,6 +14,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from model import emi as E
+
 ROOT = Path(__file__).resolve().parents[1]
 PLATFORM = ROOT.parent / "rrsquad-platform"
 SCHEMA_PATH = PLATFORM / "contracts" / "sanket_export.schema.json"
@@ -78,15 +80,21 @@ def test_the_three_meta_gaps_are_valid_shaped_placeholders(packed_bank: SimpleNa
     assert re.fullmatch(r"[0-9a-f]{64}", meta["criteria_sha"])
 
 
-def test_amortisation_schedules_are_derived_from_433_not_bank_api(
+def test_amortisation_schedule_provenance_matches_where_the_rows_came_from(
         packed_bank: SimpleNamespace) -> None:
-    """API 473 never answered in this sandbox; the schedule's own provenance
-    must never claim BANK_API for something we never received a body for.
+    """`schedule: BANK_API` if and only if API 473 actually amortised that ticket.
+
+    473 does answer — it is an amortisation engine, and the batch asks it once per
+    reference ticket — but `data/bank/pulled.json` is gitignored, so a checkout that has
+    never run a pull derives the rows instead. Either is fine; claiming BANK_API for rows
+    we computed ourselves is not, and that is the direction this test guards.
     """
     payload = json.loads(packed_bank.export_path.read_text())
     for ref, sched in payload["amortisation_schedules"].items():
         assert sched["provenance"]["rate"] == "BANK_API", ref
-        assert sched["provenance"]["schedule"] != "BANK_API", ref
+        product = sched["product"]
+        fetched = E.bank_schedule(product) is not None
+        assert sched["provenance"]["schedule"] == ("BANK_API" if fetched else "SIMULATED"), ref
 
 
 def test_suppressed_leads_have_no_assigned_rm_and_empty_menu(packed_bank: SimpleNamespace) -> None:
