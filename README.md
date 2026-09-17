@@ -398,8 +398,14 @@ them checked in.
 ## Team, licence
 
 **Team RR Squad** — Yuvraj Kundargi, Jai Wadhwa. IDBI Innovate 2026, Track 2 (Prospect
-Assist AI). No LICENSE file is committed in this repo as of this writing. No
-AI-generated content is attributed anywhere in this repository or its commit history.
+Assist AI).
+
+**All rights reserved.** No licence is granted. This repository is published so that the
+evaluators of IDBI Innovate 2026 can read and assess the work; it is not offered for reuse.
+Materials produced for the hackathon are subject to the non-disclosure agreement executed with
+IDBI Bank on 31 August 2026, which governs ownership of the deliverables.
+
+No AI-generated content is attributed anywhere in this repository or its commit history.
 
 ---
 
