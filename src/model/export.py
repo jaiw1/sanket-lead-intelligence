@@ -241,9 +241,10 @@ def build_customers(snap_rows: pd.DataFrame, rm_map: dict, bank_ctx: B.BankConte
         overlay = bank_ctx.overlay_for(cust_id)
         est_income = float(overlay.get("credits_med_6m") or r.credits_med_6m or 0.0)
         rm = rm_map.get(cust_id)
+        cif_id = str(overlay.get("cif_id") or _cif_id(cust_id))
         row = dict(
             cust_id=cust_id,
-            cif_id=str(overlay.get("cif_id") or _cif_id(cust_id)),
+            cif_id=cif_id,
             segment=str(r.segment),
             occupation=str(overlay.get("occupation") or _OCCUPATION.get(str(r.segment), "Other")),
             income_band=str(overlay.get("income_band") or _income_band(est_income)),
@@ -253,7 +254,9 @@ def build_customers(snap_rows: pd.DataFrame, rm_map: dict, bank_ctx: B.BankConte
             true_income_monthly=(round(float(r.t_income_at_month), 2)
                                  if np.isfinite(getattr(r, "t_income_at_month", float("nan"))) else None),
             holdings=list(overlay.get("holdings") or []),
-            provenance=bank_ctx.provenance_for(cust_id),
+            # The cif_id too, not just the cust_id: the sandbox is keyed by the bank's own
+            # customer ids, so that is the id a fetched record would be found under.
+            provenance=bank_ctx.provenance_for(cust_id, cif_id),
         )
         if overlay.get("branch_code"):
             row["branch_code"] = str(overlay["branch_code"])
@@ -372,7 +375,8 @@ def build_journeys(journeys_df: pd.DataFrame, events_df: pd.DataFrame,
                 doc_refusal=bool(row.doc_refusal) if pd.notna(row.doc_refusal) else False,
                 multi_product_revisits=int(row.revisits_30d or 0),
             ),
-            provenance=bank_ctx.provenance_for(cust_id),
+            provenance=bank_ctx.provenance_for(
+                cust_id, str((bank_ctx.overlay_for(cust_id).get("cif_id") or _cif_id(cust_id)))),
         ))
     return out
 

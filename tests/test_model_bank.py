@@ -92,10 +92,11 @@ def test_a_fixture_covered_customer_reads_fixture_a_stranger_reads_simulated(
 def test_a_live_pull_lifts_the_families_it_answered_for(tmp_path: Path) -> None:
     """A real pull is a *mixture*, and the two levels say different true things.
 
-    The families 442/456/394 fill read BANK_API because the sandbox genuinely answered.
-    Per customer it stays honest anyway: the CIFs the sandbox knows are its own five
-    sample customers, none of which is in this synthetic book, so a stranger still reads
-    the aggregate rather than a claim that the bank returned *their* data.
+    The families 442/456/394 fill read BANK_API at RUN level because the sandbox genuinely
+    answered. Per customer it must not: the CIFs the sandbox knows are its own handful of
+    sample customers, none of which is in this synthetic book, so a stranger reads
+    SIMULATED rather than a claim that the bank returned *their* data. The two levels are
+    what keeps both statements true at once.
     """
     data_dir = _fixture_only(tmp_path)
     (data_dir / "bank" / B.PULLED_NAME).write_text(json.dumps({"apis": {
@@ -108,7 +109,13 @@ def test_a_live_pull_lifts_the_families_it_answered_for(tmp_path: Path) -> None:
     assert ctx.families["identity"] == "BANK_API"
     assert ctx.families["cross_bank"] == "FIXTURE"   # 595/739 did not answer
     assert ctx.mode == "mixed"
-    assert ctx.provenance_for("LB-2059999")["identity"] == "BANK_API"
+    # the run answered; this customer was not who it answered about
+    assert ctx.provenance_for("LB-2059999")["identity"] == "SIMULATED"
+    assert ctx.fetched_for("LB-2059999") is False
+    # ...and the customer it *did* answer about, matched on the bank's own id, is real
+    fetched_cif = next(iter(ctx.bank_keys))
+    assert ctx.fetched_for("LB-2059999", fetched_cif) is True
+    assert ctx.provenance_for("LB-2059999", fetched_cif)["identity"] == "BANK_API"
 
 
 
@@ -170,3 +177,39 @@ def test_the_model_family_is_always_the_weakest_of_the_other_seven() -> None:
         ctx = B.build_context(data_dir, enabled=enabled)
         others = [v for k, v in ctx.families.items() if k != "model"]
         assert ctx.families["model"] == B.weakest(others)
+
+
+# --------------------------------------------------------------------------- #
+# an endpoint answering is not the same as it answering about YOU
+# --------------------------------------------------------------------------- #
+
+def test_a_pull_badges_bank_api_only_for_the_customers_it_came_back_about(tmp_path: Path) -> None:
+    """The honesty rule the live enrichment pass forced.
+
+    Before this, one answered endpoint stamped ``identity: BANK_API`` on every customer in
+    the book — thousands of generated rows wearing a bank badge because a call about
+    somebody else came back 200. The sandbox holds a handful of sample customers; a row is
+    real or it is not, and only the pull's own ids decide which.
+    """
+    data_dir = _fixture_only(tmp_path)
+    (data_dir / "bank" / B.PULLED_NAME).write_text(json.dumps({"apis": {
+        "442": {"api_id": "442", "provenance": "BANK_API", "n_records": 1, "records": [
+            {"customerSummary": {"custCifId": "SAMPLE-CIF-1", "customerName": "SAMPLE"}}]},
+    }}), encoding="utf-8")
+    ctx = B.build_context(data_dir, enabled=True)
+    assert ctx.bank_keys == frozenset({"SAMPLE-CIF-1"})
+    assert ctx.families["identity"] == "BANK_API"          # the run: the call was answered
+    # fixture-covered but never fetched -> FIXTURE, not BANK_API
+    covered = next(iter(ctx.fixture_by_cust))
+    assert ctx.provenance_for(covered)["identity"] == "FIXTURE"
+    # neither fetched nor covered -> SIMULATED, exactly as before any pull existed
+    assert ctx.provenance_for("LB-2059999")["identity"] == "SIMULATED"
+    # fetched -> BANK_API, and only then
+    assert ctx.provenance_for("LB-2059999", "SAMPLE-CIF-1")["identity"] == "BANK_API"
+
+
+def test_the_real_pull_on_this_checkout_badges_no_book_customer_bank_api() -> None:
+    """Whatever is on this checkout, a book id must never inherit someone else's 200."""
+    ctx = B.build_context(ROOT / "data", enabled=True)
+    for cust_id in ("LB-2000001", "LB-2059999"):
+        assert ctx.provenance_for(cust_id)["identity"] != "BANK_API"
