@@ -101,10 +101,15 @@ points of probability-only ranking at the 10% budget:
 
 The blend costs **7.1 percentage points**, three and a half times the tolerance, so the
 queue now ranks on probability and `capacity` survives as a displayed signal an RM can
-read rather than a ranking input. `Hot` is cut on that same ranking, which it was not
-before: of the 320 leads the old cockpit queue delivered, only 147 were in its own `hot`
-tier. Both rankings are re-measured every run into `data/model_metrics.json` →
-`metrics.ranking_comparison`.
+read rather than a ranking input. Both rankings are re-measured every run into
+`data/model_metrics.json` → `metrics.ranking_comparison`.
+
+`hot` / `warm` / `cold` are fixed bands on that same probability — `p ≥ 0.30`, `p ≥ 0.20`,
+below — set once in `src/model/policy.py` and never a restatement of who made the queue.
+The 320 delivered rows split **117 hot / 143 warm / 60 cold**, and a suppressed customer
+keeps the band their probability earned rather than being relabelled `cold` on the way
+out; whether the bank may call them is carried separately. MODEL_CARD §8 has the
+derivation.
 
 The cockpit exports the first **320** rows of that ranked list rather than the whole
 553 the 10% budget buys — a tighter budget (5.8%), whose held-out precision is

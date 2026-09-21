@@ -354,11 +354,16 @@ def build_queue(base: pd.DataFrame, P: np.ndarray, rk, shopper_score: np.ndarray
     #: What the queue is actually ordered on — `model.policy.DEFAULT_RANKING`.
     snap_rows["rank_score"] = scores.rank_score
 
-    # tiers are cut at the pre-registered contact budget ON THE QUEUE'S OWN
-    # RANKING, so `hot` IS the month's calling list rather than a second opinion
-    # computed from a different score (which is what it used to be).
+    # Tiers are fixed probability BANDS on the score the queue ranks by
+    # (`policy.TIER_HOT` / `policy.TIER_WARM`), not a restatement of where the
+    # truncation fell.  Cutting them at the contact budget made `hot` mean
+    # "inside the delivered queue" — the cockpit exports 320 rows out of the 553
+    # the 10% budget buys, so all 320 came out hot and nothing was ever warm.
+    # Every row in the pool gets a band, suppressed rows included: a suppressed
+    # customer still has a probability, and whether the bank may call them is
+    # carried separately (`suppressed` + `suppression_reason`).
     n_e = scores.n_eligible
-    tier = PO.tiers(scores, cfg.budget)
+    tier = PO.tiers(scores)
     snap_rows["tier"] = tier
 
     order = PO.rank_order(scores)
@@ -407,9 +412,17 @@ def build_queue(base: pd.DataFrame, P: np.ndarray, rk, shopper_score: np.ndarray
         pool_at_snapshot=int(len(snap_rows)), contactable_at_snapshot=n_e,
         reasons={str(k): int(v) for k, v in sorted(reasons.items(), key=lambda kv: -kv[1])},
     )
+    # Band counts over the WHOLE snapshot pool, suppressed rows included —
+    # tiers no longer depend on suppression, so excluding the suppressed here
+    # would leave a tally that does not add up to the pool it claims to cover.
+    # `suppressed` and `no_consent` stay beside them as the separate facts they
+    # are, and `delivered.tiers` breaks the 320 exported rows down on its own.
+    pool_tiers = PO.tier_counts(tier)
+    queue_tiers = PO.tier_counts(tier, np.isin(np.arange(len(tier)),
+                                               order[: cfg.queue_size]))
     counts = dict(
-        hot=int((tier == "hot").sum()), warm=int((tier == "warm").sum()), green=0,
-        cold=int((tier == "cold").sum()),
+        hot=pool_tiers["hot"], warm=pool_tiers["warm"], green=0,
+        cold=pool_tiers["cold"],
         no_consent=int((snap_rows["t_suppression_reason"] == "no_marketing_consent").sum()),
         suppressed=suppression["suppressed_count"],
     )
@@ -428,9 +441,20 @@ def build_queue(base: pd.DataFrame, P: np.ndarray, rk, shopper_score: np.ndarray
         equivalent_budget=round(min(cfg.queue_size, n_e) / n_e, 4) if n_e else None,
         top_ids=[str(snap_rows.iloc[int(p)]["cust_id"]) for p in order[: cfg.queue_size]],
         tie_break="cust_id ascending",
+        # The bands the delivered rows fall in, and the thresholds that cut
+        # them. A queue ordered by probability and truncated spans several
+        # bands; if it ever reports one, the tier has collapsed back into
+        # queue membership.
+        tiers=queue_tiers,
+        tier_thresholds=dict(hot=PO.TIER_HOT, warm=PO.TIER_WARM,
+                             score="calibrated probability of the pitched product — "
+                                   "the same score the queue is ranked on"),
+        pool_tiers=pool_tiers,
         note="The cockpit exports the first `queue_size` rows of the ranked list the "
-             "contact budget buys; `hot` is that budget's whole slice. Both come from "
-             "`model.policy`, which is also what `evaluate_seed` measures precision on.",
+             "contact budget buys. `hot`/`warm`/`cold` are fixed probability bands on "
+             "that same ranking score, not queue membership, so the delivered list "
+             "carries all three. Selection comes from `model.policy`, which is also "
+             "what `evaluate_seed` measures precision on.",
     )
     return leads, counts, dict(suppression=suppression, gig_case_id=gig_id,
                                n_pool=int(len(snap_rows)), n_contactable=n_e,
@@ -507,7 +531,10 @@ def _lead(r, pos: int, probs: np.ndarray, menu_idx: np.ndarray, C: np.ndarray,
         consent=bool(queued), consent_marketing=bool(int(r.consent_marketing) == 1),
         queued=bool(queued), suppressed=bool(not queued),
         suppression_reason=str(r.t_suppression_reason),
-        product=top, product_menu=menu, tier=str(r.tier) if queued else "cold",
+        # The band the probability falls in — a suppressed row keeps its own
+        # band rather than being relabelled `cold`, because "we may not call
+        # this customer" is not a statement about how likely they were to buy.
+        product=top, product_menu=menu, tier=str(r.tier),
         lang=lang, uplift_tag=utag, uplift_pct=round(float(r.uplift_pct), 2),
         intent=round(float(r.intent), 3), capacity=round(float(r.capacity), 3),
         # `score` is the queue's ORDERING key (`model.policy.DEFAULT_RANKING`),
@@ -1070,8 +1097,9 @@ def _write(out: dict, out_json, metrics_json, meta, metrics, verbose: bool) -> N
                       f"5-seed mean {v['seed_mean']:.4f} -> {v['verdict_on_seed_mean']}")
         if out_json is not None:
             size = len(json.dumps(payload)) / 1e6
+            dq = metrics["delivered_queue"]["tiers"]
             print(f"queue: {len(out['leads'])} leads "
-                  f"({out['counts']['hot']} hot / {out['counts']['warm']} warm) | "
+                  f"(delivered {dq['hot']} hot / {dq['warm']} warm / {dq['cold']} cold) | "
                   f"suppressed {metrics['suppression']['suppressed_count']} | "
                   f"wrote {out_json} ({size:.1f} MB)")
 

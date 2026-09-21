@@ -383,6 +383,54 @@ carried as `metrics.delivered_queue.precision_at_queue_size` with its own per-10
 "9 → 33". The 29 prices a 10% calling budget; the 33 prices the 320 rows the demo
 ships. Both come from the same ranked list and the same selection function.
 
+### The tiers, and why they are absolute numbers
+
+`hot` / `warm` / `cold` are **fixed probability bands** on the score the queue ranks by.
+One pair of thresholds, defined once in `src/model/policy.py` and read from there by the
+packer, the evaluator and anything that reports a tier:
+
+| tier | band on the calibrated probability of the pitched product |
+|---|---|
+| **hot** | `p ≥ 0.30` |
+| **warm** | `0.20 ≤ p < 0.30` |
+| **cold** | `p < 0.20` |
+
+They are not percentiles and they are not queue membership. On 2026-09-21 the tiers were
+briefly cut at the contact budget *on the queue's own ranking*, which collapsed `hot` into
+"inside the delivered queue": the 10% budget buys 553 calls, the cockpit exports the first
+320 of them, so all 320 arrived `hot`, the 24 suppressed rows arrived `cold`, and nothing
+was ever `warm`. An RM opened the queue screen to a flat wall of hot. A label that is
+implied by the list it labels carries no information.
+
+Percentiles cannot come back, either. Before the policy was unified, the bands were
+percentile cuts over the eligible pool (top 10% `hot`, top 25% `warm`) while the queue was
+ordered on a *different* score, and that mismatch is the only reason the delivered 320 ever
+split 147 / 151 / 22. Now that the bands and the queue cut the same score, the queue is the
+top **5.8%** of the eligible pool — inside any pool percentile loose enough to be useful —
+so every percentile band swallows the whole queue.
+
+Where 0.30 and 0.20 come from: `hot` starts just above the measured precision at the 10%
+contact budget (0.2906 on the packed seed), so a hot lead is one whose own calibrated
+probability beats the average of the list it sits in; `warm` starts at a one-in-five chance,
+near the precision the 20% budget delivers (0.2301). They were chosen to put a comparable
+spread back across the delivered list, and they do: **117 hot / 143 warm / 60 cold** across
+the 320 rows the cockpit ships, against 147 / 151 / 22 under the old percentile bands. The
+thresholds ride in the export at `metrics.delivered_queue.tier_thresholds`, and the delivered
+breakdown at `metrics.delivered_queue.tiers`, so a screen never has to guess them.
+
+**A suppressed customer keeps the band their probability earned.** "We may not call this
+person" is not a statement about how likely they were to buy, and the export carries the two
+facts separately — `tier` beside `suppressed` and `suppression_reason`. Until this change
+every suppressed row was relabelled `cold` on the way out, which made the tier column a
+second rendering of the suppression flag. Pool-wide, 37 of the 154 `hot` leads at the
+snapshot are suppressed: leads the model rates highly that the bank is not allowed to ring,
+which is the number the suppression exhibit exists to make visible.
+
+`nba` (the next best action) is keyed by the band, and its `cold` line used to read "Do not
+call — protect goodwill". That was true while the queue held only `hot` rows and became a
+contradiction the moment a cold lead could be handed to an RM; it now reads as what it is,
+the bottom of today's list.
+
 ### Ranking
 
 | | value | 95% CI |
@@ -628,10 +676,12 @@ and now arrives as `contact_fatigue`. Two chips still collapse onto `vague_answe
 `journey_open_now` (another application already open) — because neither has a contract
 value yet; that is open contract debt, listed here so it is not invisible.
 
-Queue at the snapshot: **553 hot** — the top 10% of the eligible pool on the queue's own
-ranking, i.e. the month's calling list — 829 warm, 4,147 cold. The cockpit exports the
-first 320 of the hot slice. Before 2026-09-21 the tiers were cut on a different ordering
-from the queue, and only 147 of the 320 delivered leads were in the `hot` tier at all.
+Tiers at the snapshot, over the whole 7,456-row pool and on the fixed bands of §8: **154
+hot**, 201 warm, 7,101 cold. Suppressed rows are banded with everyone else — 37 of those
+154 hot leads are ones the bank may not call — so the three counts add up to the pool
+rather than to the part of it that happens to be contactable. The 320 rows the cockpit
+exports are the top of the same ranking and carry **117 hot / 143 warm / 60 cold**; the
+10% contact budget, which is a different cut and a different question, buys 553 calls.
 
 ### Runtime
 

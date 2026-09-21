@@ -243,10 +243,17 @@ PITCH_HI = {
             "घर आपका ही रहता है और आप उसी में रहते हैं — बैंक के पास केवल भार (lien) होता है, चाबी नहीं; और दर उतनी ही राशि के असुरक्षित ऋण की एक-तिहाई होती है।"),
 }
 
+#: The next best action, keyed by the lead's probability BAND (`model.policy`
+#: TIER_HOT / TIER_WARM), not by whether the queue reached them.  Every row that
+#: carries one is inside the delivered queue — `pack._lead` leaves it empty for
+#: a suppressed customer — so `cold` describes the bottom of today's list, not a
+#: customer nobody should ring.  It used to read "Do not call", which was true
+#: while the queue held only `hot` rows and became a contradiction the moment a
+#: cold lead could be handed to an RM.
 NBA = {
     "hot": "Call within 48h (Tue–Thu 11:00–13:00 windows convert best). Open with the observed change, not the product.",
     "warm": "WhatsApp opt-in nudge this week with a personalised calculator link; call on click-through.",
-    "cold": "Keep in monthly digest; re-score after next salary cycle. Do not call — protect goodwill.",
+    "cold": "Bottom of today's list — work the hot and warm leads first. Open with a question, not a pitch, and re-score after the next salary cycle.",
 }
 
 #: Fallbacks when no fact fires — keyed by the strongest product-level contributor.

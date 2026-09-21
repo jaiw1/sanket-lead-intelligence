@@ -18,6 +18,13 @@ Everything about *which rows get called, in what order* now lives here, once:
 truncates.  The evaluator and the packer both call them, so the number that is
 measured and the list that is delivered cannot drift apart again.
 
+What does **not** live in that chain is the ``hot``/``warm``/``cold`` tier.  A
+tier is a band on the probability (:data:`TIER_HOT`, :data:`TIER_WARM`), so a
+customer carries one whether or not the bank may call them and whether or not
+the truncation reached them — see :func:`tier_of`.  It was briefly defined as
+"inside the delivered queue", which is why every lead on the queue screen came
+out hot; the note on the constants says what that cost.
+
 The default ranking
 -------------------
 :data:`DEFAULT_RANKING` is set by measurement, not by preference — see
@@ -64,6 +71,38 @@ CAPACITY_CAP = 2.0
 #: ``blend`` are still computed and exported: an RM sees whether the customer
 #: can afford the product, it just no longer decides who gets called.
 DEFAULT_RANKING = RANKING_PROBABILITY
+
+#: The tier bands, as ABSOLUTE probabilities on the score the queue ranks by.
+#:
+#: A tier is a claim about one customer — "better than a 3-in-10 chance of
+#: disbursing inside the window" — not a restatement of where the truncation
+#: fell.  For one day (2026-09-21) they were cut at the contact budget on the
+#: queue's own ranking, which made ``hot`` a synonym for *inside the delivered
+#: queue*: the cockpit exports the first 320 rows and the 10% budget buys 553,
+#: so all 320 came out ``hot``, the 24 suppressed rows came out ``cold``, and
+#: nothing was ever ``warm``.  A label implied by the list it labels carries no
+#: information, so the bands are fixed numbers again — set once, here, and read
+#: from here by the packer, the evaluator and anything that reports a tier.
+#:
+#: Why these two numbers.  Before 2026-09-21 the bands were percentile cuts on
+#: the eligible pool (top 10% ``hot``, top 25% ``warm``) while the queue was
+#: ordered on a different score, so the delivered 320 split 147 / 151 / 22.
+#: Percentiles cannot survive the unification: the queue is now the top 5.8% of
+#: the same score the bands would cut, so any pool percentile at or above 5.8%
+#: swallows the whole queue.  The replacement is absolute and is chosen to put
+#: a comparable spread back across the delivered list:
+#:
+#:   * ``hot`` starts just above the measured precision at the 10% contact
+#:     budget (0.2906 on the packed seed) — a hot lead is one whose own
+#:     calibrated probability beats the average of the list it sits in;
+#:   * ``warm`` starts at a one-in-five chance, near the precision the 20%
+#:     budget delivers (0.2301).
+#:
+#: MODEL_CARD.md §8 carries the same derivation and the counts they produce.
+TIER_HOT = 0.30
+TIER_WARM = 0.20
+#: Best band first; ``cold`` is everything below ``TIER_WARM``.
+TIERS = ("hot", "warm", "cold")
 
 
 @dataclass(frozen=True)
@@ -186,23 +225,41 @@ def select(scores: PolicyScores, k: int | None = None,
     return order[: max(0, int(k))]
 
 
-def tiers(scores: PolicyScores, budget: float, warm_budget: float = 0.25) -> np.ndarray:
-    """``hot`` / ``warm`` / ``cold`` / ``held``, cut on the **queue's own ranking**.
+def tier_of(p) -> np.ndarray:
+    """``hot`` / ``warm`` / ``cold`` for an array of probabilities, nothing else.
 
-    ``hot`` is therefore exactly the list the contact budget buys, not a second
-    opinion computed from a different score.
+    Suppression is deliberately not an argument.  A suppressed customer still
+    has a probability and still falls in a band; whether the bank is allowed to
+    call them is a *different* fact, and the export carries it separately
+    (``suppressed`` plus the reason).  Collapsing the two is what produced a
+    queue screen on which every deliverable lead was ``hot`` and every
+    suppressed one ``cold``.
     """
-    out = np.full(len(scores.eligible), "held", dtype=object)
-    order = rank_order(scores)
-    if not len(order):
-        return out
-    n_e = scores.n_eligible
-    hot = budget_k(n_e, budget)
-    warm = budget_k(n_e, warm_budget)
-    out[order] = "cold"
-    out[order[:warm]] = "warm"
-    out[order[:hot]] = "hot"
-    return out
+    p = np.asarray(p, dtype=float)
+    return np.where(p >= TIER_HOT, "hot",
+                    np.where(p >= TIER_WARM, "warm", "cold")).astype(object)
+
+
+def tiers(scores: PolicyScores) -> np.ndarray:
+    """Bands over the **whole** pool, cut on the score the queue ranks by.
+
+    Row-aligned with the pool that was scored, suppressed rows included.  The
+    delivered queue is the top of this same score, so it carries whichever
+    bands its rows fall in — usually all three.
+    """
+    if scores.ranking != RANKING_PROBABILITY:
+        raise ValueError(
+            f"the tier thresholds are registered against {RANKING_PROBABILITY!r}; "
+            f"they are probabilities and mean nothing on a {scores.ranking!r} score")
+    return tier_of(scores.rank_score)
+
+
+def tier_counts(tier: np.ndarray, mask: np.ndarray | None = None) -> dict:
+    """``{hot, warm, cold}`` over a tier array, optionally over a subset of it."""
+    t = np.asarray(tier, dtype=object)
+    if mask is not None:
+        t = t[np.asarray(mask).astype(bool)]
+    return {name: int((t == name).sum()) for name in TIERS}
 
 
 def precision_at(y: np.ndarray, scores: PolicyScores, budget: float) -> dict:
@@ -227,6 +284,7 @@ def precision_at(y: np.ndarray, scores: PolicyScores, budget: float) -> dict:
 __all__ = [
     "RANKING_BLEND", "RANKING_PROBABILITY", "RANKINGS", "DEFAULT_RANKING",
     "INTENT_WEIGHT", "CAPACITY_WEIGHT", "CAPACITY_CAP", "PolicyScores",
+    "TIER_HOT", "TIER_WARM", "TIERS", "tier_of", "tier_counts",
     "any_product_probability", "product_choice", "capacity_score",
     "intent_percentile", "score_pool",
     "rank_order", "budget_k", "select", "tiers", "precision_at",

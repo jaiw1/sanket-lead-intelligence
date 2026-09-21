@@ -55,6 +55,18 @@ describe('Queue — what comes back', () => {
     expect(within(row).getByText(/No marketing consent \(DPDP\)/)).toBeInTheDocument()
   })
 
+  it('keeps the tier and the suppression flag as two separate facts', async () => {
+    // `tier` is a band on the score; `suppressed` is whether the bank may ring them.
+    // This fixture row is BOTH suppressed and hot, and the screen has to show both —
+    // when every suppressed row was relabelled `cold`, the tier column was just the
+    // suppression flag wearing a colour.
+    queueRoute([SUPPRESSED_ROW])
+    renderScreen(<Queue />, { path: '/queue?suppressed=1' })
+    const row = (await screen.findAllByTestId('queue-row'))[0]
+    expect(within(row).getByText(/Hot tier/)).toBeInTheDocument()
+    expect(within(row).getByText(/Suppressed/)).toBeInTheDocument()
+  })
+
   it('renders an empty state, with RM-specific wording, when nothing comes back', async () => {
     queueRoute([], { ...QUEUE_META, total: 0 })
     renderScreen(<Queue />, { path: '/queue', user: session('relationship_manager') })

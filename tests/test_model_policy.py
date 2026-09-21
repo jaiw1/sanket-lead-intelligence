@@ -12,6 +12,7 @@ than the plausibility of either.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -81,15 +82,45 @@ def test_ties_break_on_customer_id_not_on_frame_order() -> None:
     assert order_a == order_b == sorted(cust.tolist())
 
 
-def test_hot_is_exactly_what_the_budget_buys_on_the_queue_ranking() -> None:
+def test_a_tier_is_a_band_on_the_probability_not_a_place_in_the_queue() -> None:
+    """The regression this replaces: tiers were cut at the contact budget on the
+    queue's own ranking, so ``hot`` meant "inside the delivered queue" and the
+    cockpit showed 320 hot, 24 cold and no warm at all."""
     cust, emi, P, elig = _pool(n=200)
     sc = PO.score_pool(cust, emi, P, elig)
-    tier = PO.tiers(sc, 0.10)
-    hot = np.flatnonzero(tier == "hot")
-    assert len(hot) == PO.budget_k(sc.n_eligible, 0.10)
-    assert set(hot) == set(PO.select(sc, budget=0.10)), \
-        "the hot tier and the budgeted queue must be the same rows"
-    assert (tier[~elig] == "held").all()
+    tier = PO.tiers(sc)
+
+    assert len(tier) == len(cust), "every row in the pool is banded, suppressed included"
+    assert set(tier) <= set(PO.TIERS)
+    assert "held" not in set(tier), "suppression is a separate field, not a tier"
+    for t, p in zip(tier, sc.rank_score):
+        want = "hot" if p >= PO.TIER_HOT else "warm" if p >= PO.TIER_WARM else "cold"
+        assert t == want, (t, p)
+
+
+def test_the_bands_do_not_consult_suppression_or_truncation() -> None:
+    cust, emi, P, elig = _pool(n=200)
+    banded = PO.tiers(PO.score_pool(cust, emi, P, elig))
+    # Same probabilities, nobody suppressed: identical bands.
+    all_eligible = PO.tiers(PO.score_pool(cust, emi, P, np.ones(len(cust), dtype=bool)))
+    assert list(banded) == list(all_eligible)
+
+
+def test_the_bands_are_ordered_and_absolute() -> None:
+    assert 0.0 < PO.TIER_WARM < PO.TIER_HOT < 1.0
+    assert list(PO.tier_of([0.99, PO.TIER_HOT, 0.25, PO.TIER_WARM, 0.0])) == \
+        ["hot", "hot", "warm", "warm", "cold"]
+    assert PO.tier_counts(np.array(["hot", "hot", "cold"], dtype=object)) == \
+        dict(hot=2, warm=0, cold=1)
+
+
+def test_the_bands_are_refused_on_a_score_they_were_not_registered_for() -> None:
+    """``TIER_HOT``/``TIER_WARM`` are probabilities; on a 0.65/0.35 blend they
+    would silently grade a different quantity."""
+    cust, emi, P, elig = _pool()
+    blended = PO.score_pool(cust, emi, P, elig, ranking=PO.RANKING_BLEND)
+    with pytest.raises(ValueError):
+        PO.tiers(blended)
 
 
 def test_precision_at_counts_the_rows_the_policy_would_call() -> None:
@@ -139,16 +170,22 @@ def test_the_packed_queue_is_the_policys_top_k_in_the_policys_order(
     assert all(lead["queue_rank"] is None for lead in out["leads"] if not lead["queued"])
 
 
-def test_every_lead_inside_the_budget_is_hot(packed: SimpleNamespace) -> None:
-    """Tiers are cut on the ranking the queue uses, so the queue cannot contain
-    a 'cold' lead while a 'hot' one waits outside it — which is what the split
-    between a probability-ranked tier and a blend-ranked queue used to produce."""
-    out = packed.out
-    delivered = out["metrics"]["delivered_queue"]
-    inside = set(delivered["top_ids"][: min(delivered["queue_size"], delivered["budget_k"])])
-    for lead in out["leads"]:
-        if lead["id"] in inside:
-            assert lead["tier"] == "hot", (lead["id"], lead["tier"])
+def test_the_tier_on_every_packed_lead_is_the_band_its_own_score_falls_in(
+        packed: SimpleNamespace) -> None:
+    """One definition of a tier, applied to queued and suppressed rows alike."""
+    for lead in packed.out["leads"]:
+        assert lead["tier"] == PO.tier_of([lead["score"]])[0], \
+            (lead["id"], lead["tier"], lead["score"])
+
+
+def test_the_packed_tier_counts_cover_the_whole_pool(packed: SimpleNamespace) -> None:
+    counts, d = packed.out["counts"], packed.out["metrics"]["delivered_queue"]
+    pool = packed.out["metrics"]["suppression"]["pool_at_snapshot"]
+    assert counts["hot"] + counts["warm"] + counts["cold"] == pool, \
+        "band counts must add up to the pool they are bands over"
+    assert sum(d["tiers"].values()) == min(d["queue_size"], d["eligible_pool"])
+    assert d["tier_thresholds"]["hot"] == PO.TIER_HOT
+    assert d["tier_thresholds"]["warm"] == PO.TIER_WARM
 
 
 def test_the_evaluated_precision_uses_the_delivered_ranking(packed: SimpleNamespace) -> None:
@@ -166,6 +203,7 @@ def test_the_delivered_queue_block_is_internally_consistent(packed: SimpleNamesp
     assert d["exported"] <= d["queue_size"] + 1, \
         "at most one disclosed extra row may ride past the queue size"
     assert len(d["top_ids"]) == min(d["queue_size"], d["eligible_pool"])
+    assert set(d["tiers"]) == set(PO.TIERS)
 
 
 # --------------------------------------------------------------------------- #
@@ -307,3 +345,61 @@ def test_the_popularity_baseline_is_built_from_training_labels_only() -> None:
     assert order[0] in ("gold", "home")
     assert set(order) == set(PRODUCTS), "every product must appear, even unseen ones"
     assert len(order) == len(PRODUCTS)
+
+
+# --------------------------------------------------------------------------- #
+# the shipped pack (app/public/sanket_data.json), on its own terms
+#
+# The fixtures above run a small book; these read the artefact the cockpit and
+# the demo actually load, because the regression they guard against was only
+# visible at full size: the queue is the top 5.8% of the eligible pool on the
+# score the tiers cut, so a band drawn anywhere loose enough swallows all of it.
+# --------------------------------------------------------------------------- #
+
+SHIPPED_PACK = Path(__file__).resolve().parents[1] / "app" / "public" / "sanket_data.json"
+
+
+@pytest.fixture(scope="module")
+def shipped() -> dict:
+    if not SHIPPED_PACK.is_file():                       # pragma: no cover - dev checkouts
+        pytest.skip(f"the shipped pack is not in this checkout: {SHIPPED_PACK}")
+    return json.loads(SHIPPED_PACK.read_text())
+
+
+def test_the_delivered_queue_carries_more_than_one_tier(shipped: dict) -> None:
+    """A queue ordered by probability and truncated spans bands.
+
+    If this ever reports one tier, `tier` has collapsed back into "is this lead
+    in the queue" — which is what shipped on 2026-09-21: 320 hot, 24 cold, no
+    warm, and an RM staring at a flat wall of hot.
+    """
+    queued = [lead for lead in shipped["leads"] if lead["queued"]]
+    assert queued, "the shipped pack queues nothing at all"
+    present = {lead["tier"] for lead in queued}
+    assert len(present) >= 2, f"the delivered queue is all one tier: {present}"
+
+
+def test_every_shipped_tier_is_the_band_its_own_score_falls_in(shipped: dict) -> None:
+    for lead in shipped["leads"]:
+        assert lead["tier"] == PO.tier_of([lead["score"]])[0], \
+            (lead["id"], lead["tier"], lead["score"])
+
+
+def test_a_shipped_suppressed_lead_keeps_its_band_and_its_reason(shipped: dict) -> None:
+    """Suppression is carried next to the tier, never inside it."""
+    held = [lead for lead in shipped["leads"] if lead["suppressed"]]
+    assert held, "the shipped pack carries no suppressed rows to show"
+    for lead in held:
+        assert lead["queued"] is False
+        assert lead["suppression_reason"] != "none"
+        assert lead["tier"] in PO.TIERS
+
+
+def test_the_shipped_band_counts_add_up(shipped: dict) -> None:
+    counts = shipped["counts"]
+    pool = shipped["metrics"]["suppression"]["pool_at_snapshot"]
+    assert counts["hot"] + counts["warm"] + counts["cold"] == pool
+    d = shipped["metrics"]["delivered_queue"]
+    assert sum(d["tiers"].values()) == len(d["top_ids"])
+    assert d["tier_thresholds"]["hot"] == PO.TIER_HOT
+    assert d["tier_thresholds"]["warm"] == PO.TIER_WARM

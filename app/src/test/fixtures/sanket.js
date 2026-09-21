@@ -42,11 +42,16 @@ export const QUEUE_ROW = {
   window: { days: 1, due_by: '2026-09-11T18:59:28+00:00', open: false, expired: true },
 }
 
+// A suppressed lead keeps the tier its probability earned — `tier` is a band on the
+// score, `suppressed` is whether the bank may ring them, and the backend sends both.
+// Until 2026-09-21 every suppressed row arrived as `cold`, which made the tier column
+// a restatement of the suppression flag; this fixture is deliberately a suppressed HOT
+// lead so a screen that conflates the two fails here.
 export const SUPPRESSED_ROW = {
   ...QUEUE_ROW,
   lead_id: 'LB-2000099',
   id: 'LB-2000099',
-  tier: 'cold',
+  tier: 'hot',
   suppressed: true,
   suppression_reasons: ['no_marketing_consent'],
   assigned_rm_id: null,
