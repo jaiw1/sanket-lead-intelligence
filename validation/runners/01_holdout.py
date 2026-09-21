@@ -45,6 +45,15 @@ from validation.runners import _shared as sh
 INPUTS: tuple[str, ...] = ("data/model_metrics.json",)
 
 
+#: `metrics.uncertainty.sample` keys, by the `metrics.*` block a criterion reads.
+#: Only the two headline numbers have a bootstrap; everything else falls through
+#: to the seed spread and then to the packed seed's own Wilson interval.
+_BOOTSTRAP_KEY = {
+    "baseline_dropoff_disbursement": "baseline",
+    "precision_at_10pct": "10",
+}
+
+
 def _band_result(crit_id: str, m: dict, block_key: str, spread_key: str | None,
                   crit_by_id: dict[str, Criterion], detail_prefix: str = "") -> Result:
     block = m.get(block_key)
@@ -53,8 +62,12 @@ def _band_result(crit_id: str, m: dict, block_key: str, spread_key: str | None,
                        detail=f"metrics.{block_key} not present in data/model_metrics.json")
     value = round(float(block["value"]), 4)
     n = block.get("n")
+    # Preference order is the honesty order: the registered bootstrap, then the
+    # seed spread (labelled as a spread), then the packed seed's own Wilson CI.
     ci, frag = (None, None)
-    if spread_key:
+    if block_key in _BOOTSTRAP_KEY:
+        ci, frag = sh.bootstrap_ci(m, _BOOTSTRAP_KEY[block_key])
+    if ci is None and spread_key:
         ci, frag = sh.spread_ci(m, spread_key, value)
     if ci is None:
         ci = sh.wilson_ci(block)
@@ -97,7 +110,9 @@ def run(criteria: list[Criterion], ctx: RunnerContext) -> list[Result]:
         cells = []
         for budget_pct, block, spread_key in (("5pct", b5, "precision_at_5pct"),
                                               ("20pct", b20, "precision_at_20pct")):
-            ci, _ = sh.spread_ci(m, spread_key, round(float(block["value"]), 4))
+            ci, _ = sh.bootstrap_ci(m, budget_pct.replace("pct", ""))
+            if ci is None:
+                ci, _ = sh.spread_ci(m, spread_key, round(float(block["value"]), 4))
             if ci is None:
                 ci = sh.wilson_ci(block)
             cells.append(dict(level=f"precision_at_{budget_pct}",

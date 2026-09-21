@@ -36,6 +36,8 @@ data/campaigns.csv
 data/labels.csv
 data/label_truth.csv
 data/model_metrics.json
+# held-out predictions the bootstrap and the experiments read (2 MB, regenerable)
+data/predictions/
 data/realism_report.json
 data/bank/pulled.json
 data/export/

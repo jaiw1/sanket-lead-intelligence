@@ -395,3 +395,101 @@ def headline(baseline: float, precision: float) -> str:
     """
     return (f"{round(baseline * 100):.0f} → {round(precision * 100):.0f} "
             f"disbursements per 100 RM calls")
+
+
+def headline_range(baseline_ci: tuple[float, float], precision_ci: tuple[float, float],
+                   method: str = "95% customer-clustered bootstrap") -> str:
+    """The same sentence with an interval on each end, assembled in the same place.
+
+    ``headline`` and this live together on purpose: the deck's sentence has exactly
+    one producer (``tests/test_model_pack.py`` asserts it), so a second module
+    cannot start emitting a slightly different phrasing of the same claim.
+    """
+    b_lo, b_hi = (round(x * 100) for x in baseline_ci)
+    p_lo, p_hi = (round(x * 100) for x in precision_ci)
+    return (f"{b_lo:.0f}–{b_hi:.0f} → {p_lo:.0f}–{p_hi:.0f} "
+            f"per 100 RM calls ({method})")
+
+
+# --------------------------------------------------------------------------- #
+# menu baselines (third-party review §10)
+# --------------------------------------------------------------------------- #
+
+def product_popularity(train: pd.DataFrame) -> list[str]:
+    """The six products, most-taken first, counted on TRAINING positives only.
+
+    Training-only on purpose: a "most popular products" baseline built from the
+    held-out labels would be reading the answer sheet, and it is the baseline's
+    job to be beatable honestly.
+    """
+    taken = train.loc[train["t_label"].to_numpy().astype(bool), "t_label_product"]
+    counts = taken.astype(str).value_counts()
+    ordered = [p for p in counts.index if p in set(PRODUCTS)]
+    return ordered + [p for p in PRODUCTS if p not in ordered]
+
+
+def _menu_scores(m: np.ndarray, li: np.ndarray, y: np.ndarray,
+                 switched: np.ndarray) -> dict:
+    hit = (m == li[:, None]).any(axis=1)
+    top1 = m[:, 0] == li
+    n, ns = int(y.sum()), int(switched.sum())
+    return dict(
+        menu_hit_rate=round(float(hit[y].mean()), 4) if n else float("nan"),
+        menu_hit_rate_ci=[round(x, 4) for x in wilson(int(hit[y].sum()), n)] if n else None,
+        top_1_accuracy=round(float(top1[y].mean()), 4) if n else float("nan"),
+        menu_hit_rate_switchers=round(float(hit[switched].mean()), 4) if ns else float("nan"),
+        top_1_accuracy_switchers=round(float(top1[switched].mean()), 4) if ns else float("nan"),
+        n_converters=n, n_switchers=ns,
+    )
+
+
+def menu_baselines(P: np.ndarray, base: pd.DataFrame, k: int,
+                   popularity: list[str]) -> dict:
+    """SK-13/SK-14 against the two rules that need no model at all.
+
+    ``most_popular``  — offer everyone the k products the book takes most often.
+    ``abandoned``     — offer the product they walked away from, then fill the
+                        remaining slots by popularity.  This is the rule to beat:
+                        the drop-off anchor already gets top-1 right most of the
+                        time, so a menu-of-4 number quoted without it is a claim
+                        about the population, not about the model.
+
+    Both are reported on **all converters** and again on **switchers** — the
+    positives who took a different product from the one they abandoned, which is
+    the only group where the menu can add anything.
+    """
+    y = base["t_label"].to_numpy().astype(bool)
+    li = product_index(base["t_label_product"].fillna("").to_numpy())
+    di = product_index(base["dropoff_product"].astype(str).to_numpy())
+    switched = y & (li != di)
+    n = len(base)
+
+    pop = [PRODUCTS.index(p) for p in popularity]
+    popular_menu = np.tile(np.array(pop[:k], dtype=np.int16), (n, 1))
+
+    # abandoned-first, then popularity, skipping whatever is already on the menu
+    anchored = np.empty((n, k), dtype=np.int16)
+    anchored[:, 0] = np.where(di >= 0, di, pop[0])
+    for row in range(n):
+        seen = {int(anchored[row, 0])}
+        slot = 1
+        for p in pop:
+            if slot >= k:
+                break
+            if p not in seen:
+                anchored[row, slot] = p
+                seen.add(p)
+                slot += 1
+
+    return dict(
+        k=k, popularity_order=list(popularity),
+        model=_menu_scores(menu(P, k), li, y, switched),
+        most_popular=_menu_scores(popular_menu, li, y, switched),
+        abandoned_product=_menu_scores(anchored, li, y, switched),
+        definition="Menu-of-k hit rate and top-1 accuracy for the model and for two "
+                   "rules that use no model: the k most-taken products in the training "
+                   "book, and the product the customer abandoned followed by the most "
+                   "popular others. Reported on every converter and again on the "
+                   "converters who switched product, where the menu is the only thing "
+                   "that can help.",
+    )

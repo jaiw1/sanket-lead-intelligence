@@ -1,0 +1,157 @@
+{
+ "status": "measured",
+ "estimand": "variability across generator seeds (a different synthetic world, the same model recipe and the same model seed)",
+ "method": "regenerate book + journeys + labels at each generator seed, refit at one fixed model seed, re-select the queue with model.policy",
+ "model_seed": 7,
+ "generator_seeds": [
+  20260709,
+  20260710,
+  20260711,
+  20260712,
+  20260713,
+  20260714,
+  20260715,
+  20260716
+ ],
+ "n_customers_per_world": 60000,
+ "months": 30,
+ "budget": 0.1,
+ "worlds": [
+  {
+   "n_holdout_rows": 29154,
+   "n_holdout_customers": 3305,
+   "baseline": 0.0948,
+   "macro_auc": 0.8648,
+   "menu_of_4_hit_rate": 0.9649,
+   "precision_at_5pct": 0.358,
+   "precision_at_10pct": 0.2906,
+   "precision_at_20pct": 0.2301,
+   "headline": "9 \u2192 29 disbursements per 100 RM calls",
+   "generator_seed": 20260709,
+   "shipped": true
+  },
+  {
+   "n_holdout_rows": 29053,
+   "n_holdout_customers": 3248,
+   "baseline": 0.0903,
+   "macro_auc": 0.8706,
+   "menu_of_4_hit_rate": 0.968,
+   "precision_at_5pct": 0.331,
+   "precision_at_10pct": 0.2719,
+   "precision_at_20pct": 0.227,
+   "headline": "9 \u2192 27 disbursements per 100 RM calls",
+   "generator_seed": 20260710,
+   "shipped": false
+  },
+  {
+   "n_holdout_rows": 28135,
+   "n_holdout_customers": 3210,
+   "baseline": 0.0854,
+   "macro_auc": 0.8666,
+   "menu_of_4_hit_rate": 0.9609,
+   "precision_at_5pct": 0.3241,
+   "precision_at_10pct": 0.2573,
+   "precision_at_20pct": 0.2051,
+   "headline": "9 \u2192 26 disbursements per 100 RM calls",
+   "generator_seed": 20260711,
+   "shipped": false
+  },
+  {
+   "n_holdout_rows": 29041,
+   "n_holdout_customers": 3271,
+   "baseline": 0.0945,
+   "macro_auc": 0.867,
+   "menu_of_4_hit_rate": 0.9635,
+   "precision_at_5pct": 0.3492,
+   "precision_at_10pct": 0.2927,
+   "precision_at_20pct": 0.2355,
+   "headline": "9 \u2192 29 disbursements per 100 RM calls",
+   "generator_seed": 20260712,
+   "shipped": false
+  },
+  {
+   "n_holdout_rows": 29300,
+   "n_holdout_customers": 3293,
+   "baseline": 0.0912,
+   "macro_auc": 0.8683,
+   "menu_of_4_hit_rate": 0.9667,
+   "precision_at_5pct": 0.3195,
+   "precision_at_10pct": 0.272,
+   "precision_at_20pct": 0.2119,
+   "headline": "9 \u2192 27 disbursements per 100 RM calls",
+   "generator_seed": 20260713,
+   "shipped": false
+  },
+  {
+   "n_holdout_rows": 28368,
+   "n_holdout_customers": 3261,
+   "baseline": 0.0909,
+   "macro_auc": 0.8637,
+   "menu_of_4_hit_rate": 0.9566,
+   "precision_at_5pct": 0.3251,
+   "precision_at_10pct": 0.2883,
+   "precision_at_20pct": 0.2259,
+   "headline": "9 \u2192 29 disbursements per 100 RM calls",
+   "generator_seed": 20260714,
+   "shipped": false
+  },
+  {
+   "n_holdout_rows": 29191,
+   "n_holdout_customers": 3259,
+   "baseline": 0.0892,
+   "macro_auc": 0.8708,
+   "menu_of_4_hit_rate": 0.9651,
+   "precision_at_5pct": 0.3082,
+   "precision_at_10pct": 0.259,
+   "precision_at_20pct": 0.216,
+   "headline": "9 \u2192 26 disbursements per 100 RM calls",
+   "generator_seed": 20260715,
+   "shipped": false
+  },
+  {
+   "n_holdout_rows": 28569,
+   "n_holdout_customers": 3204,
+   "baseline": 0.0907,
+   "macro_auc": 0.8736,
+   "menu_of_4_hit_rate": 0.9676,
+   "precision_at_5pct": 0.313,
+   "precision_at_10pct": 0.2793,
+   "precision_at_20pct": 0.2268,
+   "headline": "9 \u2192 28 disbursements per 100 RM calls",
+   "generator_seed": 20260716,
+   "shipped": false
+  }
+ ],
+ "spread": {
+  "baseline": {
+   "mean": 0.0909,
+   "min": 0.0854,
+   "max": 0.0948,
+   "n": 8,
+   "range_pp": 0.94
+  },
+  "precision_at_budget": {
+   "mean": 0.2764,
+   "min": 0.2573,
+   "max": 0.2927,
+   "n": 8,
+   "range_pp": 3.54
+  },
+  "macro_auc": {
+   "mean": 0.8682,
+   "min": 0.8637,
+   "max": 0.8736,
+   "n": 8,
+   "range_pp": 0.99
+  },
+  "menu_of_4_hit_rate": {
+   "mean": 0.9642,
+   "min": 0.9566,
+   "max": 0.968,
+   "n": 8,
+   "range_pp": 1.14
+  }
+ },
+ "runtime_s": 430.4,
+ "note": "This is NOT a confidence interval and is not comparable with the customer-clustered bootstrap: it measures how much the answer depends on the synthetic world, which a real deployment would not have at all. A wide spread here means the headline is a statement about the generator; a narrow one means the generator is not doing the work."
+}

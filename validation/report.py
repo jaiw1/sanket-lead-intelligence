@@ -167,16 +167,21 @@ def render_markdown(doc: CriteriaDoc, results: list[Result], out_dir: Path, stri
     L.append("## All criteria")
     L.append("")
     L.append("**About the `Interval` column.** It is not always a confidence interval, "
-             "and the `Detail` column on every row says which of the two it is. Where a "
-             "metric has a cross-seed spread it is the **5-seed spread** — the 2.5-97.5 "
-             "percentile of the metric across the registered seeds [7, 8, 9, 10, 11], a "
-             "measure of *training-seed variability*, not of sampling error around the "
-             "`Observed` value. `Observed` is always the packed seed (seed 7) and can fall "
-             "outside that spread; that is a property of a five-point percentile interval, "
-             "not a defect. Every other row carries the packed seed's own 95% Wilson or "
-             "Hanley-McNeil confidence interval. A customer-clustered bootstrap, which is "
-             "what `criteria.yaml confidence.method` actually asks for, is not computed by "
-             "this pack and is not approximated out of the five seeds.")
+             "and the `Detail` column on every row says which of the three kinds it is. "
+             "In preference order: (1) the **customer-clustered percentile bootstrap** "
+             "`criteria.yaml confidence.method` registers — `cust_id` resampled with "
+             "replacement and the queue re-selected by `model.policy` inside every "
+             "resample — available for the headline precision and baseline numbers, and "
+             "a genuine 95% confidence interval around `Observed`; (2) the **5-seed "
+             "spread**, the 2.5-97.5 percentile of the metric across the registered "
+             "seeds [7, 8, 9, 10, 11], which measures *training-seed variability* and is "
+             "**not** a confidence interval — `Observed` is always the packed seed "
+             "(seed 7) and can fall outside it, which is a property of a five-point "
+             "percentile interval rather than a defect; (3) the packed seed's own 95% "
+             "Wilson or Hanley-McNeil interval, for the metrics neither of the first two "
+             "covers. Generator variability is a fourth question again and is reported "
+             "separately in `metrics.uncertainty.generator`, never merged into any of "
+             "these.")
     for runner in RUNNERS:
         crits = doc.by_runner(runner)
         if not crits:

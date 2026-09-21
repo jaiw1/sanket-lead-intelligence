@@ -35,6 +35,7 @@ from . import (
     ModelConfig,
 )
 from . import bank as BK
+from . import bootstrap as BS
 from . import copy as txt
 from . import emi as EMI
 from . import export as EXP
@@ -629,6 +630,28 @@ def run(cfg: ModelConfig, out_json: Path | None = None,
               f"{sig['n_negative_unconstrained']}/4) | permuted AUC {perm:.3f}  "
               f"[{time.time() - t0:.0f}s]")
 
+    # ---- uncertainty, three ways (review §10) --------------------------------- #
+    # Sampling, training-seed and generator variability are three different
+    # questions and get three separate fields. Only the first two are computed
+    # here; the third is a separate, much longer run and is read from disk if it
+    # has been done (`src/experiments/generator_variation.py`).
+    pred_path = BS.persist(
+        cfg.data, cfg.seed, hb["cust_id"].to_numpy(), hb["month"].to_numpy(), y,
+        hb["safe_emi"].to_numpy(), hb["eligible_for_contact"].to_numpy() == 1, Ph,
+        hb["t_label_product"].fillna("").to_numpy(),
+        hb["dropoff_product"].astype(str).to_numpy())
+    boot = BS.precision_ci(
+        hb["cust_id"].to_numpy(), hb["safe_emi"].to_numpy(), Ph,
+        hb["eligible_for_contact"].to_numpy() == 1, y,
+        budgets=(0.05, cfg.budget, 0.20), seed=cfg.seed)
+    boot["headline"] = BS.headline_ci(boot, cfg.budget)
+    if verbose:
+        print(f"  bootstrap: {boot['headline']['interval_sentence']}  "
+              f"[{time.time() - t0:.0f}s]")
+
+    popularity = M.product_popularity(base[sp.mask(base["cust_id"], "fit")])
+    menu_base = M.menu_baselines(Ph, hb, cfg.menu_k, popularity)
+
     # ---- roster (SM-4) -------------------------------------------------------- #
     # Round-robin, keyed by cust_id, over the whole drop-off population — not
     # just this month's snapshot — so a customer keeps the same RM whether or
@@ -806,6 +829,28 @@ def run(cfg: ModelConfig, out_json: Path | None = None,
         "SK-08": min(spread[f"auc_{p}"]["mean"] for p in PRODUCTS),
     })
 
+    # Three estimands, three fields, never merged into one "95% CI".
+    gen_var = _generator_variation(cfg)
+    uncertainty = dict(
+        sample=boot,
+        training_seed=dict(
+            method="percentile spread across the registered training seeds",
+            estimand="training-seed variability, NOT a confidence interval",
+            seeds=list(seeds), n=len(per_seed),
+            baseline=spread["baseline"], precision_at_budget=spread["precision_at_budget"],
+            precision_at_5pct=spread["precision_at_5pct"],
+            precision_at_20pct=spread["precision_at_20pct"],
+            note="The packed seed's own value can fall outside this interval; five "
+                 "points interpolate well inside their own min and max."),
+        generator=gen_var,
+        predictions_file=str(Path(pred_path).relative_to(cfg.root)),
+        note="sample = which customers landed in the book (customer-clustered "
+             "bootstrap, queue re-selected inside each resample). training_seed = "
+             "which train/calibrate/holdout split the model got. generator = which "
+             "synthetic world the book was drawn from. They do not compose into one "
+             "interval and are not shown as one.",
+    )
+
     metrics = dict(
         headline=M.headline(baseline, prec),
         headline_parts=dict(baseline=baseline, precision=prec, budget=cfg.budget,
@@ -829,8 +874,10 @@ def run(cfg: ModelConfig, out_json: Path | None = None,
         uplift=q, fairness=fairness, income_acc=income,
         excluded_features=txt.EXCLUDED_FEATURES,
         menu=main["menu"], windows=dict(main["windows"], per_product_days=dict(WINDOW_DAYS)),
+        menu_baselines=menu_base,
         suppression=sup,
         delivered_queue=delivered, ranking_comparison=ranking_comparison,
+        uncertainty=uncertainty,
         shopper=dict(auc=round(s_auc, 4), ci=[round(s_lo, 4), round(s_hi, 4)],
                      n=int(len(hb)), target="generator latent window_shopper flag",
                      production_note="in production the target is the observable proxy "
@@ -1027,3 +1074,37 @@ def _write(out: dict, out_json, metrics_json, meta, metrics, verbose: bool) -> N
                   f"({out['counts']['hot']} hot / {out['counts']['warm']} warm) | "
                   f"suppressed {metrics['suppression']['suppressed_count']} | "
                   f"wrote {out_json} ({size:.1f} MB)")
+
+
+#: Where `src/experiments/generator_variation.py` leaves its result.  The pack
+#: reads it if it is there and says so plainly if it is not — a missing
+#: measurement is reported as missing, never as zero.
+GENERATOR_VARIATION_REL = Path("data") / "experiments" / "generator_variation.json"
+
+
+def _generator_variation(cfg: ModelConfig) -> dict:
+    """The third uncertainty field: how much the answer moves with the world.
+
+    The book, the journey layer and the labels are all drawn from one generator
+    seed.  Re-drawing them and re-measuring is the only way to say how much of
+    the headline is a property of the model rather than of this particular
+    synthetic world, and it costs a full regeneration per seed — far more than
+    this script's budget.  It therefore runs separately and is read from disk.
+    """
+    path = cfg.root / GENERATOR_VARIATION_REL
+    if not path.is_file():
+        return dict(status="not_measured",
+                    estimand="variability across generator seeds (a different "
+                             "synthetic world, same model recipe)",
+                    how=f"python3 src/experiments/generator_variation.py — writes "
+                        f"{GENERATOR_VARIATION_REL.as_posix()}",
+                    note="Not measured in this run. Reported as missing rather than "
+                         "folded into the seed spread, which answers a different "
+                         "question.")
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return dict(status="unreadable", error=str(exc),
+                    how=f"regenerate with python3 src/experiments/generator_variation.py")
+    doc.setdefault("status", "measured")
+    return doc

@@ -135,15 +135,19 @@ export default function ModelTrust() {
               <Calibration metrics={metrics} source={badge} detail={detail} />
             </div>
 
+            <Uncertainty metrics={metrics} source={badge} detail={detail} />
+
             <div className="grid gap-5 lg:grid-cols-2">
+              <MenuBaselines metrics={metrics} source={badge} detail={detail} />
               <ShopperPanel metrics={metrics} source={badge} detail={detail} />
-              <SuppressionExhibit metrics={metrics} source={badge} detail={detail} />
             </div>
 
             <div className="grid gap-5 lg:grid-cols-2">
+              <SuppressionExhibit metrics={metrics} source={badge} detail={detail} />
               <Fairness metrics={metrics} source={badge} detail={detail} />
-              <IncomeAccuracy metrics={metrics} source={badge} detail={detail} />
             </div>
+
+            <IncomeAccuracy metrics={metrics} source={badge} detail={detail} />
 
             <Excluded metrics={metrics} source={badge} detail={detail} />
             <ValidationTable
@@ -289,6 +293,167 @@ function ShopperPanel({ metrics, source, detail }) {
             noisier, so the real number will be lower.
           </p>
         </>
+      )}
+    </Card>
+  )
+}
+
+/**
+ * Three kinds of uncertainty, side by side and never added together.
+ *
+ * The review that prompted this panel found five-seed percentile spreads rendered as
+ * "95% CI" beside seed-7 point estimates — which put several estimates outside their own
+ * displayed interval, because a spread across five training splits is not a confidence
+ * interval around any of them. The fix is not a better label on one number: it is showing
+ * that there are three different questions and answering each separately.
+ */
+function Uncertainty({ metrics, source, detail }) {
+  const u = metrics.uncertainty
+  const budget = u?.sample?.['10'] ? '10' : null
+  const sample = budget ? u.sample[budget] : null
+  const seed = u?.training_seed?.precision_at_budget || null
+  const gen = u?.generator || null
+  const genSpread = gen?.spread?.precision_at_budget || null
+
+  const rows = [
+    {
+      key: 'sample',
+      name: 'Sampling — which customers landed in the book',
+      method: u?.sample?.method,
+      detail: sample ? `${num(u.sample.n_customers)} customers resampled with replacement, ${num(u.sample.n_resamples)} times; the queue is re-selected inside every resample` : null,
+      lo: sample?.ci_low, hi: sample?.ci_high,
+      isCi: true,
+    },
+    {
+      key: 'seed',
+      name: 'Training seed — which split the model drew',
+      method: u?.training_seed?.method,
+      detail: seed ? `${num(u.training_seed.n)} registered seeds; 2.5–97.5 percentile of their values` : null,
+      lo: seed?.pct_low, hi: seed?.pct_high,
+      isCi: false,
+    },
+    {
+      key: 'generator',
+      name: 'Generator — which synthetic world the book came from',
+      method: gen?.method || gen?.estimand,
+      detail: gen?.status === 'measured'
+        ? `${num(gen.generator_seeds?.length)} worlds regenerated end to end, all scored at model seed ${gen.model_seed}`
+        : (gen?.note || 'not measured in this run'),
+      lo: genSpread?.min, hi: genSpread?.max,
+      isCi: false,
+    },
+  ]
+
+  return (
+    <Card
+      title="Uncertainty, three ways"
+      subtitle="Precision at the 10% contact budget. Three different questions — they are not interchangeable and they do not combine into one interval."
+      source={source}
+      sourceDetail={detail}
+      labelledBy="uncertainty-title"
+    >
+      {!u ? (
+        <NotInBuild what="The uncertainty breakdown" keys={['metrics.uncertainty']} />
+      ) : (
+        <div className="overflow-x-auto scroll-thin">
+          <table className="w-full text-xs">
+            <caption className="sr-only">Sampling, training-seed and generator uncertainty for precision at the 10% contact budget</caption>
+            <thead>
+              <tr className="text-left text-txt-lo">
+                <th scope="col" className="py-1.5 pr-3 font-semibold">What varies</th>
+                <th scope="col" className="py-1.5 pr-3 font-semibold">Interval</th>
+                <th scope="col" className="py-1.5 pr-3 font-semibold">Kind</th>
+                <th scope="col" className="py-1.5 font-semibold">How</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.key} className="border-t border-line align-top">
+                  <th scope="row" className="py-2 pr-3 text-left font-medium text-txt-hi">{r.name}</th>
+                  <td className="py-2 pr-3 font-mono tabular-nums text-txt-hi">
+                    {r.lo == null || r.hi == null ? <span className="text-txt-lo">not measured</span> : `${pct(r.lo, 1)} – ${pct(r.hi, 1)}`}
+                  </td>
+                  <td className="py-2 pr-3 text-txt-mid">
+                    {r.isCi
+                      ? <span className="text-signal-teal">95% confidence interval</span>
+                      : <span className="text-signal-amber">spread, not a CI</span>}
+                  </td>
+                  <td className="py-2 leading-relaxed text-txt-lo">{r.detail || r.method || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {u.sample?.headline?.interval_sentence && (
+            <p className="mt-3 rounded-lg border border-line-strong bg-ink-800 px-3 py-2 text-[11px] leading-relaxed text-txt-mid">
+              <b className="text-txt-hi">The headline with its own interval:</b>{' '}
+              {u.sample.headline.interval_sentence}. Only the sampling row is a confidence
+              interval; the other two say how much the answer would move if the experiment
+              were re-run differently, which is a different thing and is why they are not
+              added to it.
+            </p>
+          )}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+/**
+ * The menu of four against the two rules that need no model.
+ *
+ * Quoting a 96.5% menu-of-4 hit rate without these is a claim about the population: most
+ * converters take the product they abandoned, so "offer them what they walked away from"
+ * is already close to the ceiling. The column that matters is the switchers.
+ */
+function MenuBaselines({ metrics, source, detail }) {
+  const b = metrics.menuBaselines
+  const rows = b ? [
+    { key: 'model', name: `SANKET — menu of ${b.k}`, v: b.model, strong: true },
+    { key: 'abandoned', name: 'Abandoned product, then popularity', v: b.abandoned_product },
+    { key: 'popular', name: `The ${b.k} most-taken products`, v: b.most_popular },
+  ] : null
+
+  return (
+    <Card
+      title="The menu against rules that need no model"
+      subtitle="Hit rate on every converter, and on the converters who switched product — the only group where a menu can add anything."
+      source={source}
+      sourceDetail={detail}
+      labelledBy="menu-baselines-title"
+    >
+      {!rows ? (
+        <NotInBuild what="The menu baselines" keys={['metrics.menu_baselines']} />
+      ) : (
+        <div className="overflow-x-auto scroll-thin">
+          <table className="w-full text-xs">
+            <caption className="sr-only">Menu hit rate for the model and for two baselines, on all converters and on switchers</caption>
+            <thead>
+              <tr className="text-left text-txt-lo">
+                <th scope="col" className="py-1.5 pr-3 font-semibold">Rule</th>
+                <th scope="col" className="py-1.5 pr-3 text-right font-semibold">Hit rate</th>
+                <th scope="col" className="py-1.5 pr-3 text-right font-semibold">Top-1</th>
+                <th scope="col" className="py-1.5 pr-3 text-right font-semibold">Hit, switchers</th>
+                <th scope="col" className="py-1.5 text-right font-semibold">Top-1, switchers</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.key} className="border-t border-line">
+                  <th scope="row" className={`py-2 pr-3 text-left ${r.strong ? 'font-bold text-txt-hi' : 'font-medium text-txt-mid'}`}>{r.name}</th>
+                  <td className="py-2 pr-3 text-right tabular-nums">{pct(r.v?.menu_hit_rate, 1)}</td>
+                  <td className="py-2 pr-3 text-right tabular-nums">{pct(r.v?.top_1_accuracy, 1)}</td>
+                  <td className={`py-2 pr-3 text-right tabular-nums ${r.strong ? 'font-bold text-signal-teal' : ''}`}>{pct(r.v?.menu_hit_rate_switchers, 1)}</td>
+                  <td className="py-2 text-right tabular-nums">{pct(r.v?.top_1_accuracy_switchers, 1)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-3 text-[11px] leading-relaxed text-txt-lo">
+            {num(b.model?.n_converters)} converters, of whom {num(b.model?.n_switchers)} took a
+            different product from the one they abandoned. The most-popular baseline is built
+            from training positives only, not from the held-out labels.
+          </p>
+        </div>
       )}
     </Card>
   )

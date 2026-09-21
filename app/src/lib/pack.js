@@ -300,6 +300,12 @@ export function readMetrics(source) {
     oot: m.oot || null,
     leakage: m.leakage || null,
     stability: m.stability || null,
+    // Three estimands the pack keeps apart on purpose — sampling, training-seed and
+    // generator variability. Passed through whole so a screen cannot merge them.
+    uncertainty: m.uncertainty || null,
+    menuBaselines: m.menu_baselines || null,
+    deliveredQueue: m.delivered_queue || null,
+    rankingComparison: m.ranking_comparison || null,
   }
 }
 

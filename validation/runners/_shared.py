@@ -39,6 +39,14 @@ metric, and the one script run does not persist those (only the aggregates in
 interval are used instead, and they are not interchangeable. Every
 `Result.detail` says which one the row carries:
 
+0. **Customer-clustered percentile bootstrap** (`metrics.uncertainty.sample`) —
+   since 2026-09-21 the pack persists the packed seed's held-out predictions and
+   resamples `cust_id` with replacement, **re-selecting the queue with
+   `model.policy` inside every resample**, which is exactly what
+   `criteria.yaml confidence.method` registers. This is a genuine 95% confidence
+   interval around the displayed value and is preferred wherever it exists
+   (the headline precision/baseline numbers). It is sampling uncertainty only:
+   the model is not refitted inside the resample.
 1. **5-seed spread** (`metrics.seeds.spread[...]`) — the 2.5th to 97.5th
    percentile of the metric's value across the five *registered* seeds
    [7, 8, 9, 10, 11], i.e. `criteria.yaml confidence.cross_seed`'s own method,
@@ -62,8 +70,8 @@ interval are used instead, and they are not interchangeable. Every
    AUC, top-1 accuracy, the by-cut cells). Row-level, so narrower than a
    customer-clustered bootstrap would be; documented as such.
 
-A customer-clustered bootstrap remains the right answer for sampling
-uncertainty and is deliberately **not** faked here out of the five seeds.
+Where the bootstrap exists it is used; where it does not, the spread is labelled
+as a spread and **not** dressed up as a confidence interval.
 
 Every criterion is graded on the **packed seed's point value** (seed 7 — "the
 value already used in today's pipelines", `criteria.yaml seeds.policy`), which
@@ -174,6 +182,28 @@ def spread_ci(m: dict, spread_key: str, value: float | None = None
         frag += (f"; the packed seed's own value ({value:.4f}) lies outside this spread, "
                  f"which is expected of a 5-point percentile interval and is not a defect")
     return (lo, hi), frag
+
+
+def bootstrap_ci(m: dict, key: str) -> tuple[tuple[float, float] | None, str | None]:
+    """`(ci, detail_fragment)` from `metrics.uncertainty.sample[key]`.
+
+    `key` is `"baseline"` or a budget as a whole-percent string (`"10"`). This is
+    the interval `criteria.yaml confidence.method` registers — a percentile
+    bootstrap resampled at `cust_id`, with the queue re-selected inside each
+    resample — so it is preferred over both fallbacks when present.
+    """
+    block = ((m.get("uncertainty") or {}).get("sample") or {}).get(key)
+    if not isinstance(block, dict):
+        return None, None
+    lo, hi = block.get("ci_low"), block.get("ci_high")
+    if lo is None or hi is None:
+        return None, None
+    sample = (m.get("uncertainty") or {}).get("sample") or {}
+    frag = (f"95% CI is the registered customer-clustered percentile bootstrap "
+            f"({sample.get('n_resamples', '?')} resamples over "
+            f"{sample.get('n_customers', '?')} held-out customers, queue re-selected "
+            f"inside each resample — criteria.yaml confidence.method)")
+    return (round(float(lo), 4), round(float(hi), 4)), frag
 
 
 def wilson_ci(block: dict | None) -> tuple[float, float] | None:

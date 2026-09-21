@@ -198,3 +198,112 @@ def test_the_packed_any_product_probability_is_within_range(
 def test_the_pack_is_json_serialisable_with_the_new_fields(packed: SimpleNamespace) -> None:
     json.dumps(packed.out["metrics"]["delivered_queue"])
     json.dumps(packed.out["metrics"]["ranking_comparison"])
+
+
+# --------------------------------------------------------------------------- #
+# uncertainty, three ways (review §10)
+# --------------------------------------------------------------------------- #
+
+def test_the_bootstrap_resamples_customers_and_reselects_the_queue() -> None:
+    """A row-level resample would answer a question nobody asked.
+
+    `precision@budget` is the precision of a list a policy chose; the policy's
+    percentiles, its eligible-pool size and therefore its `k` all move when the
+    pool moves, so the selection has to happen inside the resample.
+    """
+    from model import bootstrap as BS
+
+    rng = np.random.default_rng(1)
+    n_cust, per_cust = 400, 6
+    cust = np.repeat([f"LB-{2000000 + i}" for i in range(n_cust)], per_cust)
+    P = rng.random((n_cust * per_cust, len(PRODUCTS))) * 0.5
+    emi = rng.integers(0, 60_000, len(cust)).astype(float)
+    elig = np.ones(len(cust), dtype=bool)
+    y = (rng.random(len(cust)) < 0.2).astype(int)
+
+    out = BS.precision_ci(cust, emi, P, elig, y, budgets=(0.10,), n_resamples=60, seed=3)
+    assert out["resampled_unit"] == "cust_id"
+    assert out["queue_reselected_per_resample"] is True
+    assert out["n_customers"] == n_cust
+    assert out["10"]["ci_low"] <= out["10"]["point"] <= out["10"]["ci_high"]
+    assert out["baseline"]["ci_low"] <= out["baseline"]["point"] <= out["baseline"]["ci_high"]
+    # A customer-clustered interval must be wider than a row-level Wilson one,
+    # because six correlated rows are not six independent observations.
+    from model.metrics import wilson
+    k = out["10"]["budget"] * len(y)
+    w_lo, w_hi = wilson(int(round(out["10"]["point"] * k)), int(k))
+    assert (out["10"]["ci_high"] - out["10"]["ci_low"]) > 0
+    assert w_hi - w_lo > 0
+
+
+def test_the_bootstrap_is_deterministic_under_its_seed() -> None:
+    from model import bootstrap as BS
+
+    rng = np.random.default_rng(9)
+    cust = np.repeat([f"LB-{i:07d}" for i in range(120)], 4)
+    P = rng.random((480, len(PRODUCTS))) * 0.4
+    emi = np.full(480, 20_000.0)
+    elig = np.ones(480, dtype=bool)
+    y = (rng.random(480) < 0.25).astype(int)
+    a = BS.precision_ci(cust, emi, P, elig, y, budgets=(0.10,), n_resamples=25, seed=5)
+    b = BS.precision_ci(cust, emi, P, elig, y, budgets=(0.10,), n_resamples=25, seed=5)
+    assert a["10"] == b["10"]
+
+
+def test_the_pack_keeps_the_three_estimands_apart(packed: SimpleNamespace) -> None:
+    u = packed.out["metrics"]["uncertainty"]
+    assert set(("sample", "training_seed", "generator")) <= set(u)
+    assert u["sample"]["method"].startswith("customer-clustered")
+    assert "NOT a confidence interval" in u["training_seed"]["estimand"]
+    # generator variation is a separate, much longer run; absent is reported as
+    # absent and never silently folded into either of the others.
+    assert u["generator"]["status"] in ("measured", "not_measured", "unreadable")
+    assert u["sample"]["headline"]["sentence"] == packed.out["metrics"]["headline"]
+
+
+def test_predictions_are_persisted_and_round_trip(packed: SimpleNamespace) -> None:
+    from model import bootstrap as BS
+
+    rel = packed.out["metrics"]["uncertainty"]["predictions_file"]
+    path = packed.cfg.root / rel
+    assert path.is_file(), rel
+    doc = BS.load(packed.cfg.data, packed.cfg.seed)
+    assert doc is not None
+    assert doc["P"].shape[1] == len(PRODUCTS)
+    assert len(doc["cust_id"]) == len(doc["y"]) == doc["P"].shape[0]
+    assert list(doc["products"]) == list(PRODUCTS)
+
+
+# --------------------------------------------------------------------------- #
+# menu baselines (review §10)
+# --------------------------------------------------------------------------- #
+
+def test_the_menu_is_reported_against_rules_that_need_no_model(
+        packed: SimpleNamespace) -> None:
+    b = packed.out["metrics"]["menu_baselines"]
+    assert set(("model", "most_popular", "abandoned_product")) <= set(b)
+    for key in ("model", "most_popular", "abandoned_product"):
+        row = b[key]
+        for field in ("menu_hit_rate", "top_1_accuracy", "menu_hit_rate_switchers",
+                      "top_1_accuracy_switchers"):
+            assert field in row, (key, field)
+    # The abandoned-product rule is the one to beat: it must be reported, and on
+    # switchers it must be strictly worse than a model that adds anything at all.
+    assert b["abandoned_product"]["top_1_accuracy_switchers"] == 0.0, \
+        "offering the abandoned product can never be right for a customer who switched"
+    assert b["model"]["n_switchers"] > 0
+
+
+def test_the_popularity_baseline_is_built_from_training_labels_only() -> None:
+    """Building it from the held-out labels would be reading the answer sheet."""
+    import pandas as pd
+    from model.metrics import product_popularity
+
+    train = pd.DataFrame({
+        "t_label": [1, 1, 1, 0, 1],
+        "t_label_product": ["gold", "gold", "home", "personal", "home"],
+    })
+    order = product_popularity(train)
+    assert order[0] in ("gold", "home")
+    assert set(order) == set(PRODUCTS), "every product must appear, even unseen ones"
+    assert len(order) == len(PRODUCTS)
