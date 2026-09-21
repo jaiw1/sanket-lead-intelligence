@@ -4,10 +4,16 @@
 // runs, and GET /meta/version ties both to a build. Nothing here is guessed: an API that
 // has never been called says so, and a family that is FIXTURE or SIMULATED is never
 // quietly rounded up to "real".
+//
+// A row can also be `served_from_cache`: the call tonight failed, so the platform served
+// the last good response the same request got on an earlier night
+// (`app/atlas/lastgood.py`). That row reads **Bank API · last good pull** — the bytes are
+// still the bank's, `last_success_at` says when they really arrived, and it is never
+// counted as a live pull. `last_success_at` and `records` are untouched by any of this.
 
 import { useMemo } from 'react'
 import {
-  Antenna, CircleSlash, Database, Landmark, RefreshCw, ShieldAlert, Tag, TriangleAlert,
+  Antenna, CircleSlash, Database, History, Landmark, RefreshCw, ShieldAlert, Tag, TriangleAlert,
 } from 'lucide-react'
 import AppShell from '../components/AppShell'
 import Card, { Stat } from '../components/Card'
@@ -228,6 +234,17 @@ export default function DataSources() {
               {version.data.git_sha ? ` · ${version.data.git_sha}` : ''}
             </p>
           )}
+          {provenance.data?.cached?.apis?.length > 0 && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-xs leading-relaxed text-txt-mid">
+              <History size={12} className="shrink-0 text-signal-teal" aria-hidden="true" />
+              <span>
+                <b className="text-txt-hi">{provenance.data.cached.apis.length}</b> API
+                {provenance.data.cached.apis.length === 1 ? '' : 's'} answered tonight from a cached last-good pull
+                {provenance.data.cached.last_reused_at && <>, most recently {fmtDateTime(provenance.data.cached.last_reused_at)}</>}.
+                The bytes are the bank’s; they are not counted as live.
+              </span>
+            </p>
+          )}
         </div>
 
         {sync.loading && <Loading label="Loading sync status…" />}
@@ -356,7 +373,11 @@ export default function DataSources() {
                           <td className="py-2 pr-3 text-right tabular-nums text-txt-mid">{num(row.records)}</td>
                           <td className="py-2 pr-3">
                             <div className="flex flex-wrap items-center gap-1.5">
-                              {row.live ? (
+                              {row.served_from_cache || row.last_mode === 'cached' ? (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-signal-teal/40 bg-signal-teal/15 px-2 py-0.5 text-[10px] font-bold uppercase text-signal-teal">
+                                  <History size={10} aria-hidden="true" /> Bank API · last good pull
+                                </span>
+                              ) : row.live ? (
                                 <span className="inline-flex items-center gap-1 rounded-full border border-signal-teal/40 bg-signal-teal/15 px-2 py-0.5 text-[10px] font-bold uppercase text-signal-teal">
                                   <Antenna size={10} aria-hidden="true" /> Live
                                 </span>
@@ -364,6 +385,9 @@ export default function DataSources() {
                                 <span className="inline-flex items-center gap-1 rounded-full border border-line-strong bg-ink-600 px-2 py-0.5 text-[10px] font-bold uppercase text-txt-mid">
                                   <CircleSlash size={10} aria-hidden="true" /> Not called
                                 </span>
+                              )}
+                              {(row.served_from_cache || row.last_mode === 'cached') && row.last_success_at && (
+                                <span className="text-[11px] text-txt-lo">({fmtDateTime(row.last_success_at)})</span>
                               )}
                               {row.last_status && <span className="text-xs text-txt-mid">{row.last_status}</span>}
                             </div>
