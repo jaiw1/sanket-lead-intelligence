@@ -728,6 +728,63 @@ Reproduce: `python3 src/score_and_pack.py` writes the first two;
 into `data/experiments/generator_variation.json`, which the pack reads and reports as
 `not_measured` if it is absent.
 
+### The frozen model against worlds it was not built for
+
+The risk this section exists to manage is circular: the generator was *solved* to hit a
+mentor-stated baseline, the model was built against that generator, and the model looks
+good. Nothing inside that loop says whether it would survive a world it was not built
+for. `src/experiments/challenge_regimes.py` breaks the loop under three rules:
+
+1. **The development generator config is frozen to a file**
+   (`data/experiments/frozen_generator.json`) *before* any challenge runs, so every
+   regime is a named departure from a recorded baseline rather than a retuning that
+   could be relabelled afterwards.
+2. **The model is fitted once, on the development world, and never refitted.** No
+   hyper-parameter moves, no calibrator is refitted, no threshold is touched. A regime
+   that hurts, hurts.
+3. **Model seed and generator seed are separate arguments.** Every challenge world uses
+   generator seed 20270131, which the development world never used, and all of them are
+   scored at model seed 7 — so a degradation cannot be a training-split accident. A
+   `fresh_world` control (same frozen config, new seed) sizes what a new world costs on
+   its own, and every regenerated regime is read against *that*, not against the
+   development number, which would charge it twice.
+
+| regime | what departs | precision@10% | lift | vs its control |
+|---|---|---|---|---|
+| development world | — | 29.06% | 3.06 | — |
+| `source_latency` | every behavioural feature one month stale | 26.93% | 2.84 | −2.13 pp |
+| `extra_missingness` | 15% of behavioural values blanked | 26.83% | 2.83 | −2.23 pp |
+| `macro_shock` | incomes/balances −15%, EMI burden +20% | 29.26% | 3.09 | +0.20 pp |
+| `customer_turnover` | newest-tenure quartile only | 26.49% | 2.84 | −2.57 pp |
+| **`fresh_world`** (control) | new generator seed | **27.51%** | 3.00 | — |
+| `base_rate_half` | recovery rate 0.09 → 0.045 | 23.87% | 2.74 | **−3.64 pp** |
+| `base_rate_double` | recovery rate 0.09 → 0.18 | 26.89% | 3.01 | −0.62 pp |
+| `signal_correlation` | shopper share of drop-offs 0.30 → 0.50 | 29.38% | 3.36 | +1.87 pp |
+
+What it says:
+
+- **Nothing breaks the model.** The worst regime, a halved base rate, still ranks at
+  2.74× its own world's random-contact rate. Nothing here collapses to chance.
+- **The lift is the stable quantity, not the precision.** Precision/baseline stays inside
+  **[2.74, 3.36]** across every regime, while absolute precision ranges from 23.9% to
+  29.4%. Absolute precision tracks whatever base rate a world happens to have; the ratio
+  is the part that belongs to the model. Any pilot should be sized on the ratio.
+- **A stale feed and a missing feed cost about the same, and both cost about as much as
+  a fresh world.** Two percentage points each. That is a useful operational fact: the
+  data-engineering failure modes and the "this is a different book" risk are the same
+  order of magnitude, and neither is catastrophic.
+- **Being handed a much harder book is the real risk.** Halving the recovery rate costs
+  3.6 points beyond the cost of the new world itself — more than any feed failure.
+- **A macro shock and a changed signal correlation did not hurt**, and the second
+  actively helped (more window-shoppers means more signal for the shopper features to
+  carry). Reported as measured rather than trimmed for looking too good.
+
+**Rupees.** `economics` in the JSON multiplies each regime's measured precision against a
+contact cost and a per-disbursement margin, both of which this repo cannot verify, and
+reports the **range** they imply rather than the flattering end. Every such figure is a
+simulation result over the generator's potential outcomes, not observed money. Quote the
+range or nothing.
+
 ### The menu against rules that need no model
 
 Quoting a 96.5% menu-of-4 hit rate on its own is a claim about the population: most

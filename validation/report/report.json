@@ -4,9 +4,9 @@
   "registered_at": "2026-09-16T10:47:14+05:30",
   "registered_by": "RR Squad",
   "provenance": {
-    "generated_at": "2026-09-21T17:01:58+05:30",
+    "generated_at": "2026-09-21T17:17:58+05:30",
     "python": "3.12.4",
-    "git_commit": "109e5e2b97f517cbbb7fb6cac18473dc4db41681",
+    "git_commit": "b7d63843a14271e810ccb53489e08679a6fdfa9d",
     "git_dirty": true,
     "criteria_registered_at": "2026-09-16T10:47:14+05:30",
     "criteria_first_committed_at": "2026-09-16T11:06:09+05:30"
@@ -1439,7 +1439,7 @@
         "ci": null,
         "n": null,
         "status": "report",
-        "detail": "small-book refit (n=1,778 customers, single seed 7 — see validation/runners/_refit.py). Baseline: precision@10%=0.2107 [0.1733, 0.2536], AUC=0.6522. delta_pp = scenario - baseline (positive = the scenario IMPROVED precision, negative = it degraded). 2x base rate: 681 duplicate positive training rows added to the fit split only, scored against the unduplicated held population — precision@10%=0.2259. channel-missing (contact): ['contacts_30d', 'contacts_90d', 'campaign_contacts_6m', 'last_contact_days', 'last_campaign_matches_product'] blanked to NaN in a copy of the SAME fitted baseline ranker's scoring frame (no retrain) — precision@10%=0.2107. Registered scenarios NOT computed this pass (reason: each needs a second generator run under altered parameters, which the refit budget does not cover twice over — not approximated, not silently dropped): ['consent withdrawal at scale', 'suppression-rule sweep (plan §B L6 SD-S6)'].",
+        "detail": "small-book refit (n=1,778 customers, single seed 7 — see validation/runners/_refit.py). Baseline: precision@10%=0.2107 [0.1733, 0.2536], AUC=0.6522. delta_pp = scenario - baseline (positive = the scenario IMPROVED precision, negative = it degraded). 2x base rate: 681 duplicate positive training rows added to the fit split only, scored against the unduplicated held population — precision@10%=0.2259. channel-missing (contact): ['contacts_30d', 'contacts_90d', 'campaign_contacts_6m', 'last_contact_days', 'last_campaign_matches_product'] blanked to NaN in a copy of the SAME fitted baseline ranker's scoring frame (no retrain) — precision@10%=0.2107. Registered scenarios NOT computed this pass (reason: each needs a second generator run under altered parameters, which the refit budget does not cover twice over — not approximated, not silently dropped): ['consent withdrawal at scale', 'suppression-rule sweep (plan §B L6 SD-S6)']. FULL-SIZE CHALLENGE REGIMES (reported, no band; `data/experiments/challenge_regimes.json`). The development generator config is frozen to `data/experiments/frozen_generator.json` BEFORE any regime runs, one model is fitted on the development world at model seed 7 and NEVER refitted, and every challenge world uses generator seed 20270131, which the development world never used — so a degradation cannot be a training-split accident. Development world precision@10% = 0.2906. Regimes: source_latency 0.2693 (lift 2.84, +2.13 pp vs development); extra_missingness 0.2683 (lift 2.83, +2.23 pp vs development); macro_shock 0.2926 (lift 3.09, -0.20 pp vs development); customer_turnover 0.2649 (lift 2.84, +2.57 pp vs development); fresh_world 0.2751 (lift 3.0, +0.00 pp vs fresh_world); base_rate_half 0.2387 (lift 2.74, +3.64 pp vs fresh_world); base_rate_double 0.2689 (lift 3.01, +0.62 pp vs fresh_world); signal_correlation 0.2938 (lift 3.36, -1.87 pp vs fresh_world). Read each against its own control: a regenerated world is compared with `fresh_world` (same frozen config, new seed) because it has already paid the cost of being a new world. LIFT STABILITY: precision/baseline stays in [2.74, 3.36] across every regime — absolute precision tracks whatever base rate a world has, and the ratio is the part that belongs to the model. Any rupee figure derived from these numbers is a SIMULATION RESULT and the JSON carries an assumption range rather than a point.",
         "breakdown": [
           {
             "level": "2x_base_rate_reweight_positives",

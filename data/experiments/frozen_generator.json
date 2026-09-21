@@ -1,0 +1,30 @@
+{
+ "frozen_at_commit": "see git log for this file",
+ "generator_seed": 20260709,
+ "book": {
+  "n": 60000,
+  "months": 30,
+  "seed": 20260709,
+  "preset": "modern",
+  "anchor": [
+   2024,
+   4
+  ],
+  "base_rates": {
+   "target_contact_conversion_3m": 0.0135,
+   "first_event_month": 9,
+   "label_horizon_months": 3,
+   "theta_contact_effect": null
+  },
+  "consent_share": 0.85
+ },
+ "journeys": {
+  "seed": 20260709,
+  "target_attempt_share": 0.3,
+  "target_recovery_rate": 0.09,
+  "target_shopper_share_of_dropoffs": 0.3,
+  "first_attempt_month": 6,
+  "ineligible_noise_share": 0.02
+ },
+ "note": "This is the DEVELOPMENT configuration the shipped model was built against. It is written before any challenge regime runs so that every regime is a named departure from a recorded baseline rather than a retuning that could be relabelled afterwards. Nothing in src/experiments/challenge_regimes.py may edit this file."
+}

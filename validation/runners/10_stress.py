@@ -68,6 +68,56 @@ _NOT_COMPUTED = (
 )
 
 
+#: `src/experiments/challenge_regimes.py`'s output. SK-22 registers no band, so
+#: this can only ever be reported — but the registered scenarios this runner said
+#: it could not afford ("each needs a second generator run under altered
+#: parameters") are exactly what that script does, at full book size, against a
+#: model that is frozen rather than refitted.
+_CHALLENGE_REL = "data/experiments/challenge_regimes.json"
+
+
+def _challenge_note(ctx: RunnerContext) -> str:
+    import json
+
+    path = ctx.repo_root / _CHALLENGE_REL
+    if not path.is_file():
+        return (f"FULL-SIZE CHALLENGE REGIMES: not run. "
+                f"`python3 src/experiments/challenge_regimes.py` writes "
+                f"{_CHALLENGE_REL} — a frozen development generator config, one model "
+                f"fitted on it and never refitted, and seven named departures scored "
+                f"with that frozen model at a generator seed it never saw.")
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return f"FULL-SIZE CHALLENGE REGIMES: {_CHALLENGE_REL} is unreadable ({exc})."
+
+    rows = "; ".join(
+        f"{r['regime']} {r.get('precision_at_budget')} "
+        f"(lift {r.get('lift')}, {r.get('degradation_vs_comparator_pp'):+.2f} pp vs "
+        f"{r.get('comparator')})"
+        for r in doc.get("regimes", [])
+        if r.get("precision_at_budget") is not None and r.get("kind") != "baseline")
+    lift = doc.get("lift_stability") or {}
+    return (
+        f"FULL-SIZE CHALLENGE REGIMES (reported, no band; `{_CHALLENGE_REL}`). The "
+        f"development generator config is frozen to "
+        f"`{doc.get('frozen_config_file')}` BEFORE any regime runs, one model is "
+        f"fitted on the development world at model seed {doc.get('model_seed')} and "
+        f"NEVER refitted, and every challenge world uses generator seed "
+        f"{doc.get('challenge_generator_seed')}, which the development world never "
+        f"used — so a degradation cannot be a training-split accident. Development "
+        f"world precision@10% = "
+        f"{next((r.get('precision_at_budget') for r in doc.get('regimes', []) if r.get('kind') == 'baseline'), None)}. "
+        f"Regimes: {rows}. Read each against its own control: a regenerated world is "
+        f"compared with `fresh_world` (same frozen config, new seed) because it has "
+        f"already paid the cost of being a new world. LIFT STABILITY: "
+        f"precision/baseline stays in [{lift.get('min')}, {lift.get('max')}] across "
+        f"every regime — absolute precision tracks whatever base rate a world has, and "
+        f"the ratio is the part that belongs to the model. Any rupee figure derived "
+        f"from these numbers is a SIMULATION RESULT and the JSON carries an assumption "
+        f"range rather than a point.")
+
+
 def run(criteria: list[Criterion], ctx: RunnerContext) -> list[Result]:
     """Measure; do not grade. See validation/runners/__init__.py for the contract."""
     h = rf.harness(ctx)
@@ -108,7 +158,8 @@ def run(criteria: list[Criterion], ctx: RunnerContext) -> list[Result]:
              f"{list(_NOT_COMPUTED)}.")
 
     value = {c["level"]: c["value"] for c in cells}
-    result = Result("SK-22", value=value, breakdown=cells, detail=detail)
+    result = Result("SK-22", value=value, breakdown=cells,
+                    detail=f"{detail} {_challenge_note(ctx)}")
 
     try:
         fig = _figure(ctx, base, cells)

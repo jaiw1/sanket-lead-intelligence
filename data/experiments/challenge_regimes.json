@@ -1,0 +1,389 @@
+{
+ "model_seed": 7,
+ "development_generator_seed": 20260709,
+ "challenge_generator_seed": 20270131,
+ "frozen_config_file": "data/experiments/frozen_generator.json",
+ "frozen_config_digest": {
+  "target_recovery_rate": 0.09,
+  "target_attempt_share": 0.3,
+  "target_shopper_share_of_dropoffs": 0.3,
+  "n": 60000,
+  "months": 30
+ },
+ "budget": 0.1,
+ "refitted": false,
+ "method": "one model fitted on the development world and never refitted; every regime scored with it. Generator seed and model seed are separate arguments and the challenge worlds use a seed the development world never used.",
+ "regimes": [
+  {
+   "status": "ok",
+   "n": 29154,
+   "n_customers": 3305,
+   "baseline": 0.0948,
+   "precision_at_budget": 0.2906,
+   "lift": 3.06,
+   "macro_auc": 0.8648,
+   "menu_of_4_hit_rate": 0.9649,
+   "headline": "9 \u2192 29 disbursements per 100 RM calls",
+   "regime": "development (the world the model was built on)",
+   "kind": "baseline",
+   "comparator": "development",
+   "degradation_pp": 0.0,
+   "degradation_vs_comparator_pp": 0.0,
+   "economics": {
+    "extra_disbursements_per_100_calls": 19.58,
+    "gross_margin_range_inr": [
+     117480,
+     352440
+    ],
+    "assumptions": {
+     "margin_per_disbursement_inr": [
+      6000.0,
+      18000.0
+     ],
+     "cost_per_call_inr": [
+      40.0,
+      120.0
+     ],
+     "note": "SIMULATION RESULT. Both assumptions are unverified by this repo, the conversions are the generator's potential outcomes rather than observed disbursements, and the calls are the same 100 in both arms. Quote the range or nothing."
+    },
+    "net_of_call_cost_range_inr": [
+     105480,
+     348440
+    ]
+   }
+  },
+  {
+   "status": "ok",
+   "n": 29154,
+   "n_customers": 3305,
+   "baseline": 0.0948,
+   "precision_at_budget": 0.2693,
+   "lift": 2.84,
+   "macro_auc": 0.8583,
+   "menu_of_4_hit_rate": 0.9642,
+   "headline": "9 \u2192 27 disbursements per 100 RM calls",
+   "regime": "source_latency",
+   "kind": "scoring-time",
+   "comparator": "development",
+   "degradation_pp": 2.13,
+   "degradation_vs_comparator_pp": 2.13,
+   "economics": {
+    "extra_disbursements_per_100_calls": 17.45,
+    "gross_margin_range_inr": [
+     104700,
+     314100
+    ],
+    "assumptions": {
+     "margin_per_disbursement_inr": [
+      6000.0,
+      18000.0
+     ],
+     "cost_per_call_inr": [
+      40.0,
+      120.0
+     ],
+     "note": "SIMULATION RESULT. Both assumptions are unverified by this repo, the conversions are the generator's potential outcomes rather than observed disbursements, and the calls are the same 100 in both arms. Quote the range or nothing."
+    },
+    "net_of_call_cost_range_inr": [
+     92700,
+     310100
+    ]
+   }
+  },
+  {
+   "status": "ok",
+   "n": 29154,
+   "n_customers": 3305,
+   "baseline": 0.0948,
+   "precision_at_budget": 0.2683,
+   "lift": 2.83,
+   "macro_auc": 0.857,
+   "menu_of_4_hit_rate": 0.9627,
+   "headline": "9 \u2192 27 disbursements per 100 RM calls",
+   "regime": "extra_missingness",
+   "kind": "scoring-time",
+   "comparator": "development",
+   "degradation_pp": 2.23,
+   "degradation_vs_comparator_pp": 2.23,
+   "economics": {
+    "extra_disbursements_per_100_calls": 17.35,
+    "gross_margin_range_inr": [
+     104100,
+     312300
+    ],
+    "assumptions": {
+     "margin_per_disbursement_inr": [
+      6000.0,
+      18000.0
+     ],
+     "cost_per_call_inr": [
+      40.0,
+      120.0
+     ],
+     "note": "SIMULATION RESULT. Both assumptions are unverified by this repo, the conversions are the generator's potential outcomes rather than observed disbursements, and the calls are the same 100 in both arms. Quote the range or nothing."
+    },
+    "net_of_call_cost_range_inr": [
+     92100,
+     308300
+    ]
+   }
+  },
+  {
+   "status": "ok",
+   "n": 29154,
+   "n_customers": 3305,
+   "baseline": 0.0948,
+   "precision_at_budget": 0.2926,
+   "lift": 3.09,
+   "macro_auc": 0.8674,
+   "menu_of_4_hit_rate": 0.966,
+   "headline": "9 \u2192 29 disbursements per 100 RM calls",
+   "regime": "macro_shock",
+   "kind": "scoring-time",
+   "comparator": "development",
+   "degradation_pp": -0.2,
+   "degradation_vs_comparator_pp": -0.2,
+   "economics": {
+    "extra_disbursements_per_100_calls": 19.78,
+    "gross_margin_range_inr": [
+     118680,
+     356040
+    ],
+    "assumptions": {
+     "margin_per_disbursement_inr": [
+      6000.0,
+      18000.0
+     ],
+     "cost_per_call_inr": [
+      40.0,
+      120.0
+     ],
+     "note": "SIMULATION RESULT. Both assumptions are unverified by this repo, the conversions are the generator's potential outcomes rather than observed disbursements, and the calls are the same 100 in both arms. Quote the range or nothing."
+    },
+    "net_of_call_cost_range_inr": [
+     106680,
+     352040
+    ]
+   }
+  },
+  {
+   "status": "ok",
+   "n": 7404,
+   "n_customers": 846,
+   "baseline": 0.0933,
+   "precision_at_budget": 0.2649,
+   "lift": 2.84,
+   "macro_auc": 0.8581,
+   "menu_of_4_hit_rate": 0.958,
+   "headline": "9 \u2192 26 disbursements per 100 RM calls",
+   "regime": "customer_turnover",
+   "kind": "scoring-time",
+   "comparator": "development",
+   "degradation_pp": 2.57,
+   "degradation_vs_comparator_pp": 2.57,
+   "economics": {
+    "extra_disbursements_per_100_calls": 17.16,
+    "gross_margin_range_inr": [
+     102960,
+     308880
+    ],
+    "assumptions": {
+     "margin_per_disbursement_inr": [
+      6000.0,
+      18000.0
+     ],
+     "cost_per_call_inr": [
+      40.0,
+      120.0
+     ],
+     "note": "SIMULATION RESULT. Both assumptions are unverified by this repo, the conversions are the generator's potential outcomes rather than observed disbursements, and the calls are the same 100 in both arms. Quote the range or nothing."
+    },
+    "net_of_call_cost_range_inr": [
+     90960,
+     304880
+    ]
+   }
+  },
+  {
+   "status": "ok",
+   "n": 27838,
+   "n_customers": 3191,
+   "baseline": 0.0916,
+   "precision_at_budget": 0.2751,
+   "lift": 3.0,
+   "macro_auc": 0.8719,
+   "menu_of_4_hit_rate": 0.9643,
+   "headline": "9 \u2192 28 disbursements per 100 RM calls",
+   "regime": "fresh_world",
+   "kind": "regenerated world",
+   "departure": "none (control)",
+   "comparator": "fresh_world",
+   "degradation_pp": 1.55,
+   "degradation_vs_comparator_pp": 0.0,
+   "economics": {
+    "extra_disbursements_per_100_calls": 18.35,
+    "gross_margin_range_inr": [
+     110100,
+     330300
+    ],
+    "assumptions": {
+     "margin_per_disbursement_inr": [
+      6000.0,
+      18000.0
+     ],
+     "cost_per_call_inr": [
+      40.0,
+      120.0
+     ],
+     "note": "SIMULATION RESULT. Both assumptions are unverified by this repo, the conversions are the generator's potential outcomes rather than observed disbursements, and the calls are the same 100 in both arms. Quote the range or nothing."
+    },
+    "net_of_call_cost_range_inr": [
+     98100,
+     326300
+    ]
+   }
+  },
+  {
+   "status": "ok",
+   "n": 26641,
+   "n_customers": 3018,
+   "baseline": 0.0872,
+   "precision_at_budget": 0.2387,
+   "lift": 2.74,
+   "macro_auc": 0.8555,
+   "menu_of_4_hit_rate": 0.966,
+   "headline": "9 \u2192 24 disbursements per 100 RM calls",
+   "regime": "base_rate_half",
+   "kind": "regenerated world",
+   "departure": {
+    "target_recovery_rate": 0.045
+   },
+   "comparator": "fresh_world",
+   "degradation_pp": 5.19,
+   "degradation_vs_comparator_pp": 3.64,
+   "economics": {
+    "extra_disbursements_per_100_calls": 15.15,
+    "gross_margin_range_inr": [
+     90900,
+     272700
+    ],
+    "assumptions": {
+     "margin_per_disbursement_inr": [
+      6000.0,
+      18000.0
+     ],
+     "cost_per_call_inr": [
+      40.0,
+      120.0
+     ],
+     "note": "SIMULATION RESULT. Both assumptions are unverified by this repo, the conversions are the generator's potential outcomes rather than observed disbursements, and the calls are the same 100 in both arms. Quote the range or nothing."
+    },
+    "net_of_call_cost_range_inr": [
+     78900,
+     268700
+    ]
+   }
+  },
+  {
+   "status": "ok",
+   "n": 31722,
+   "n_customers": 3534,
+   "baseline": 0.0892,
+   "precision_at_budget": 0.2689,
+   "lift": 3.01,
+   "macro_auc": 0.885,
+   "menu_of_4_hit_rate": 0.9742,
+   "headline": "9 \u2192 27 disbursements per 100 RM calls",
+   "regime": "base_rate_double",
+   "kind": "regenerated world",
+   "departure": {
+    "target_recovery_rate": 0.18
+   },
+   "comparator": "fresh_world",
+   "degradation_pp": 2.17,
+   "degradation_vs_comparator_pp": 0.62,
+   "economics": {
+    "extra_disbursements_per_100_calls": 17.97,
+    "gross_margin_range_inr": [
+     107820,
+     323460
+    ],
+    "assumptions": {
+     "margin_per_disbursement_inr": [
+      6000.0,
+      18000.0
+     ],
+     "cost_per_call_inr": [
+      40.0,
+      120.0
+     ],
+     "note": "SIMULATION RESULT. Both assumptions are unverified by this repo, the conversions are the generator's potential outcomes rather than observed disbursements, and the calls are the same 100 in both arms. Quote the range or nothing."
+    },
+    "net_of_call_cost_range_inr": [
+     95820,
+     319460
+    ]
+   }
+  },
+  {
+   "status": "ok",
+   "n": 28487,
+   "n_customers": 3185,
+   "baseline": 0.0874,
+   "precision_at_budget": 0.2938,
+   "lift": 3.36,
+   "macro_auc": 0.8744,
+   "menu_of_4_hit_rate": 0.9659,
+   "headline": "9 \u2192 29 disbursements per 100 RM calls",
+   "regime": "signal_correlation",
+   "kind": "regenerated world",
+   "departure": {
+    "target_shopper_share_of_dropoffs": 0.5
+   },
+   "comparator": "fresh_world",
+   "degradation_pp": -0.32,
+   "degradation_vs_comparator_pp": -1.87,
+   "economics": {
+    "extra_disbursements_per_100_calls": 20.64,
+    "gross_margin_range_inr": [
+     123840,
+     371520
+    ],
+    "assumptions": {
+     "margin_per_disbursement_inr": [
+      6000.0,
+      18000.0
+     ],
+     "cost_per_call_inr": [
+      40.0,
+      120.0
+     ],
+     "note": "SIMULATION RESULT. Both assumptions are unverified by this repo, the conversions are the generator's potential outcomes rather than observed disbursements, and the calls are the same 100 in both arms. Quote the range or nothing."
+    },
+    "net_of_call_cost_range_inr": [
+     111840,
+     367520
+    ]
+   }
+  }
+ ],
+ "lift_stability": {
+  "definition": "precision@budget / that world's own baseline",
+  "values": {
+   "development (the world the model was built on)": 3.06,
+   "source_latency": 2.84,
+   "extra_missingness": 2.83,
+   "macro_shock": 3.09,
+   "customer_turnover": 2.84,
+   "fresh_world": 3.0,
+   "base_rate_half": 2.74,
+   "base_rate_double": 3.01,
+   "signal_correlation": 3.36
+  },
+  "min": 2.74,
+  "max": 3.36,
+  "reading": "Absolute precision tracks whatever base rate a world has. The ratio is the part that belongs to the model, and it is the number to watch across regimes."
+ },
+ "reading": "Compare every regime against `fresh_world`, not against the development world: a fresh world at a new generator seed already moves the number, and that movement is the cost of a new world rather than of the challenge. Anything beyond it is the regime.",
+ "runtime_s": 224.7
+}

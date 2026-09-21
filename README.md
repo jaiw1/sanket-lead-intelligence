@@ -381,6 +381,19 @@ a disclosed failing value.**
   choice toward long-window products — metric-gaming rather than serving the RM — so
   it ships as measured, with both verdicts carried in
   `metrics.bands["SK-04"]` (`verdict`, `verdict_on_seed_mean`, `agrees_across_seeds`).
+- **The model was tested on worlds it was not built for**, with the development
+  generator config frozen to a file first, the model fitted once and never refitted, and
+  every challenge world drawn at a generator seed the development world never used
+  (`src/experiments/challenge_regimes.py`, reported under SK-22). Seven regimes: a stale
+  feed, 15% extra missingness, a macro shock, customer turnover, half and double the base
+  rate, and a changed signal correlation. **Nothing collapses.** The worst case — a
+  halved recovery rate — still ranks at 2.74× its own world's random-contact rate, and
+  the lift stays inside **[2.74, 3.36]** across every regime while absolute precision
+  ranges from 23.9% to 29.4%. Absolute precision tracks whatever base rate a world has;
+  the ratio is the part that belongs to the model, and a pilot should be sized on it.
+  Rupee figures derived from any of this are simulation results and are published as
+  assumption *ranges*, never as points.
+
 - **SK-23, gig-worker fairness — 0.69 four-fifths ratio, below the 0.80 line.** Of 14
   group cells checked (occupation segment × 3, city tier × 3, age band × 3, income
   band × 5), 12 pass; gig workers (0.69) and the lowest income band (0.79) do not.
@@ -448,6 +461,7 @@ python3 src/score_and_pack.py --seeds 7 --quick     # 1 seed, skips OOT/permutat
 python3 src/experiments/generator_variation.py      # 8 regenerated worlds (~8 min)
 python3 src/experiments/fairness_probe.py           # SK-23's cause and its remedies (~2 min)
 python3 src/experiments/event_triggered.py          # contact-SLA compliance, by regime (~1 min)
+python3 src/experiments/challenge_regimes.py        # the frozen model vs unseen worlds (~4 min)
 # (optional) python3 src/make_radar.py              # appendix Business Radar exhibit; needs the
                                                       # source financial dataset, not in this repo
 
