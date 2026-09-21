@@ -772,7 +772,7 @@ function ValidationTable({ metrics, live, packError, packLoading, acceptance }) 
         />
       )}
       {rows && (
-        <div className="scroll-thin max-h-96 overflow-auto rounded-lg border border-line">
+        <div className="scroll-thin max-h-96 overflow-auto rounded-lg border border-line" tabIndex={0} role="region" aria-label="Pre-registered validation criteria, scrollable">
           <table className="w-full text-xs">
             <caption className="sr-only">Pre-registered validation criteria and their verdicts</caption>
             <thead className="sticky top-0 bg-ink-800">

@@ -26,6 +26,9 @@ export const NAV = [
   { to: '/admin', label: 'Administration', short: 'Admin', roles: ['A'] },
 ]
 
+/** Routes the frozen bundle cannot honestly render: they need a session and a backend. */
+export const STATIC_HIDDEN = new Set(['/admin'])
+
 /** The landing route for a role: an RM has no dashboard, so they start on their queue. */
 export function homeFor(role, isStatic = false) {
   if (isStatic) return '/dashboard'
@@ -68,7 +71,13 @@ function useRovingTabindex(count) {
 export default function AppShell({ title, help, children, wide = false }) {
   const { role, isStatic, fullName, roleLabel } = useAuth()
   const location = useLocation()
-  const items = NAV.filter((item) => isStatic || roleMatches(role, item.roles))
+  // The frozen bundle has no session and no backend, so it shows what it can actually
+  // render: Administration would open a user table and an audit log with nothing behind
+  // them. DRISHTi's shell already drops it (and Thresholds) in static mode; this is the
+  // same rule on this side.
+  const items = NAV.filter((item) => (
+    isStatic ? !STATIC_HIDDEN.has(item.to) : roleMatches(role, item.roles)
+  ))
   const roving = useRovingTabindex(items.length)
 
   // Keep the roving index on whatever screen is actually open, so tabbing into the bar and

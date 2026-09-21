@@ -29,6 +29,11 @@ export default [
       // a screen reader; escaping them would make the prose unreviewable.
       'react/no-unescaped-entities': 'off',
       'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      // axe's `scrollable-region-focusable` (serious) requires a scrolling container that
+      // holds no focusable content to be focusable itself, so a keyboard user can scroll
+      // it. `role="region"` with an accessible name is the ARIA pattern for that, and it
+      // is exactly what this rule's `roles` option exists to allow.
+      'jsx-a11y/no-noninteractive-tabindex': ['error', { tags: [], roles: ['tabpanel', 'region'], allowExpressionValues: true }],
     },
   },
   {

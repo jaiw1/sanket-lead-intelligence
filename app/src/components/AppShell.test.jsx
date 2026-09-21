@@ -78,4 +78,13 @@ describe('AppShell — the primary navigation is one tab stop', () => {
     renderScreen(<AppShell title="Test"><p>body</p></AppShell>, { path: '/queue', user: session('manager') })
     expect(document.getElementById('main-content')).toBeInTheDocument()
   })
+
+  // The frozen bundle has no session and no backend, so Administration would open a user
+  // table and an audit log with nothing behind them. DRISHTi's shell already drops it.
+  it('hides Administration in the frozen bundle', () => {
+    renderScreen(<AppShell title="Test"><p>body</p></AppShell>, { path: '/queue', mode: 'static', user: null })
+    const toolbar = screen.getByRole('toolbar', { name: 'Screens' })
+    expect(within(toolbar).queryByRole('link', { name: /Administration|Admin/i })).not.toBeInTheDocument()
+    expect(within(toolbar).getByRole('link', { name: /Lead queue|Queue/i })).toBeInTheDocument()
+  })
 })

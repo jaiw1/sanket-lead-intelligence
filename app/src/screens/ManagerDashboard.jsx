@@ -368,12 +368,10 @@ function RmLoad({ rows, dispositions, source, detail }) {
       ) : (
         // A scrollable region that cannot be focused is unreachable by keyboard, which axe
         // reports as a serious failure (scrollable-region-focusable). The fix is exactly
-        // tabindex="0" plus a labelled role; jsx-a11y's rule allows tabIndex only on
-        // `tabpanel` by default and does not know about this pattern, so it is silenced
-        // here rather than the keyboard user being left without a way in.
+        // tabindex="0" plus a labelled role; `region` is on the rule's allow-list in
+        // eslint.config.js for that reason.
         <div
           className="scroll-thin max-h-64 overflow-auto rounded-lg border border-line"
-          // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
           tabIndex={0}
           role="region"
           aria-label="Leads assigned to each relationship manager, scrollable"
