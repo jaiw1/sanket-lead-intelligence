@@ -144,6 +144,17 @@ describe('ManagerDashboard — static mode', () => {
     expect(suppressedCard).not.toHaveTextContent('8300%')
   })
 
+  it('uses the same pool denominator in the "Suppressed, and why" panel as in the KPI', async () => {
+    // The KPI was fixed to divide by the pool; this panel kept `data.leads` (the bundled
+    // sample), so it could print "83 suppressed of 1" — a count larger than the book it
+    // claims to be a part of.
+    renderScreen(<ManagerDashboard />, { path: '/dashboard', mode: 'static', user: null, pack: PACK })
+    const panel = (await screen.findByText(/A suppressed lead is never quietly dropped/)).closest('section')
+      || document.body
+    expect(panel).toHaveTextContent('of 830')
+    expect(panel).not.toHaveTextContent('of 1')
+  })
+
   it('survives a pre-SM-1 export with none of the new keys', async () => {
     renderScreen(<ManagerDashboard />, { path: '/dashboard', mode: 'static', user: null, pack: LEGACY_PACK })
     await waitFor(() => expect(screen.getAllByTestId('not-in-build').length).toBeGreaterThan(0))

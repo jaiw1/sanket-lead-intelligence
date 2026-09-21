@@ -40,13 +40,17 @@ export function windowStatus(lead, now = Date.now()) {
   if (!lead) return { state: WINDOW_STATE.UNKNOWN, days: null, dueBy: null, abandonedAt: null, daysLeft: null, daysOver: null, fromServer: false }
 
   const w = lead.window || null
-  const days = Number.isFinite(Number(w?.days)) ? Number(w.days)
-    : Number.isFinite(Number(lead.window_days)) ? Number(lead.window_days)
-      : WINDOW_DAYS[lead.product] ?? null
+  // Every caller passes a lead through `pack.js` `normaliseLead` first, which renames these
+  // three to camelCase and does not keep the wire spelling — so the snake_case fallbacks
+  // below were unreachable in the app and only ever fired in tests that build a raw row.
+  // Both spellings are read now: a queue row's `window` carries no `abandoned_at`, and the
+  // lead's own `abandonTs` is exactly what the fallback exists to use.
+  const rawDays = w?.days ?? lead.windowDays ?? lead.window_days
+  const days = Number.isFinite(Number(rawDays)) ? Number(rawDays) : WINDOW_DAYS[lead.product] ?? null
 
-  const abandonedAt = w?.abandoned_at || lead.abandon_ts || null
+  const abandonedAt = w?.abandoned_at || lead.abandonTs || lead.abandon_ts || null
   // The static pack carries `contact_by` (a date) where the API carries `window.due_by`.
-  const dueBy = w?.due_by || lead.contact_by || null
+  const dueBy = w?.due_by || lead.contactBy || lead.contact_by || null
 
   // The server already ruled. Trust it — a UI that recomputes `expired` from a clock that
   // may be minutes off would contradict the filter the same screen just used.

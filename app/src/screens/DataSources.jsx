@@ -118,6 +118,81 @@ function ProductRunCard({ product, run }) {
   )
 }
 
+const DRIFT_TONE = {
+  no_material_shift: 'text-signal-teal',
+  moderate_shift: 'text-signal-amber',
+  significant_shift: 'text-signal-rose',
+}
+
+const ageText = (h) => (h == null ? '—' : h < 1 ? `${Math.round(h * 60)} min` : `${h.toFixed(1)} h`)
+
+/**
+ * Two things `GET /meta/provenance` publishes and this screen used to drop: how old the
+ * published run is against the platform's own staleness limit, and how far its score
+ * distribution moved from the run it replaced. A significant shift is exactly the thing a
+ * model-risk reviewer asks about, and it was visible only in the raw JSON.
+ */
+function FreshnessCard({ freshness, drift }) {
+  const products = Array.from(new Set([...Object.keys(freshness || {}), ...Object.keys(drift || {})]))
+  if (products.length === 0) return null
+  return (
+    <Card
+      title="Freshness and drift"
+      subtitle="How old each published run is against the platform's staleness limit, and how far its score distribution moved from the run it replaced. Drift is a flag to investigate, not a verdict."
+      source="NOT_COLLECTED"
+      sourceDetail="Operational metadata from GET /meta/provenance, not a bank figure."
+      labelledBy="ds-freshness-title"
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        {products.map((product) => {
+          const f = freshness?.[product]
+          const d = drift?.[product]
+          return (
+            <div key={product} className="rounded-lg border border-line bg-ink-800 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-bold text-txt-hi">{PRODUCT_TITLE[product] || product}</span>
+                {f && (
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
+                    f.stale
+                      ? 'border-signal-rose/40 bg-signal-rose/15 text-signal-rose'
+                      : 'border-signal-teal/40 bg-signal-teal/15 text-signal-teal'
+                  }`}>
+                    {f.stale ? 'stale' : 'fresh'}
+                  </span>
+                )}
+              </div>
+              {f ? (
+                <p className="mt-1.5 text-xs leading-relaxed text-txt-mid">
+                  Published <b className="text-txt-hi">{ageText(f.age_hours)}</b> ago
+                  {f.threshold_hours != null && <> · limit {f.threshold_hours} h</>}
+                  {f.n_rows != null && <> · {num(f.n_rows)} rows</>}
+                  {f.reason && <> — {f.reason}</>}
+                </p>
+              ) : (
+                <p className="mt-1.5 text-xs text-txt-lo">No freshness recorded for this product.</p>
+              )}
+              {d?.available ? (
+                <p className="mt-1.5 text-xs leading-relaxed text-txt-mid">
+                  Score drift (PSI) <b className={DRIFT_TONE[d.band] || 'text-txt-hi'}>{d.psi}</b>
+                  {d.band && <> — {String(d.band).replace(/_/g, ' ')}</>}
+                  {d.score_field && <> on <code className="font-mono text-[11px]">{d.score_field}</code></>}
+                  {d.previous_model_run_id && (
+                    <> · against run <code className="font-mono text-[11px]">{String(d.previous_model_run_id).slice(0, 8)}</code></>
+                  )}
+                </p>
+              ) : (
+                <p className="mt-1.5 text-xs leading-relaxed text-txt-lo">
+                  No drift figure: {d?.reason || 'the platform published none for this product'}.
+                </p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </Card>
+  )
+}
+
 export default function DataSources() {
   const sync = useResource(({ signal }) => getSync({ signal }), [])
   const provenance = useResource(({ signal }) => getProvenance({ signal }), [])
@@ -228,6 +303,8 @@ export default function DataSources() {
                 <ProductRunCard key={product} product={product} run={sync.meta?.runs?.[product]} />
               ))}
             </div>
+
+            <FreshnessCard freshness={provenance.data?.freshness} drift={provenance.data?.drift} />
 
             <Card
               title="API calls"

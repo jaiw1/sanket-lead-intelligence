@@ -155,6 +155,11 @@ export function normaliseLead(raw) {
 
     consent: pick(raw, 'consent'),
     consentMarketing: pick(raw, 'consent_marketing'),
+    // The platform's own call-eligibility verdict: whether this customer may be contacted,
+    // on what consent, and what is blocking the call. It reached the client on every queue
+    // row and lead and was read by nothing.
+    contactability: pick(raw, 'contactability'),
+    contactable: pick(raw, 'contactable'),
     assignedRmId: pick(raw, 'assigned_rm_id', 'rm_id'),
     status: pick(raw, 'status'),
 

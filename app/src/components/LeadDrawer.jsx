@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  CalendarClock, Check, Copy, Lightbulb, MessageSquareQuote, PhoneCall, Quote, Send, ShieldOff, Wallet, X,
+  CalendarClock, Check, Copy, Lightbulb, MessageSquareQuote, PhoneCall, PhoneOff, Quote, Send,
+  ShieldCheck, ShieldOff, Wallet, X,
 } from 'lucide-react'
 import Amortisation from './Amortisation'
 import { NegativeChips, ReasonChips } from './Chips'
@@ -93,6 +94,7 @@ export default function LeadDrawer({ leadId, onClose, onChanged }) {
                 {lead.cityTier ? ` · tier-${lead.cityTier} city` : ''}
                 {lead.tenureM ? ` · ${Math.round(lead.tenureM / 12)}y with the bank` : ''}
                 {lead.stageReached ? ` · abandoned at ${STAGE_LABEL[lead.stageReached] || lead.stageReached}` : ''}
+                {lead.abandonTs ? ` on ${new Date(lead.abandonTs).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
               </p>
             )}
           </div>
@@ -131,6 +133,8 @@ export default function LeadDrawer({ leadId, onClose, onChanged }) {
                 onPush={() => setPushOpen(true)}
                 onDisposition={() => setDispOpen(true)}
               />
+
+              <Contactability lead={lead} />
 
               <Section title="The menu of four" subtitle="One model ranks all six products for this customer; these are the four worth a conversation.">
                 <ProductMenu lead={lead} />
@@ -237,6 +241,67 @@ function SuppressedNotice({ lead }) {
         is for review, not for a call.
       </p>
     </div>
+  )
+}
+
+/**
+ * May we call this person at all, and on what basis?
+ *
+ * The platform computes this for every lead — `contactability` carries the consent state it
+ * read, whether the customer is eligible and queueable, and the blockers standing in the
+ * way — and nothing in the app read it, so the "do not call" judgement the product claims
+ * to support was never on the RM's screen. Suppression already had a notice; consent and
+ * the non-suppression blockers (an expired window, for instance) did not.
+ */
+function Contactability({ lead }) {
+  const c = lead.contactability
+  if (!c || typeof c !== 'object') return null
+  const consent = c.consent && typeof c.consent === 'object' ? c.consent : null
+  const blockers = Array.isArray(c.blockers) ? c.blockers : []
+  const ok = c.contactable === true && blockers.length === 0
+  const Icon = c.contactable === false ? PhoneOff : ok ? ShieldCheck : PhoneCall
+  const tone = c.contactable === false
+    ? 'border-signal-rose/40 bg-signal-rose/10 text-signal-rose'
+    : ok
+      ? 'border-signal-teal/40 bg-signal-teal/10 text-signal-teal'
+      : 'border-signal-amber/40 bg-signal-amber/10 text-signal-amber'
+
+  return (
+    <section className={`rounded-xl border p-4 ${tone}`} data-testid="contactability">
+      <h3 className="flex items-center gap-2 text-sm font-bold">
+        <Icon size={15} aria-hidden="true" />
+        {c.contactable === false ? 'Not contactable' : ok ? 'Contactable' : 'Contactable, with conditions'}
+      </h3>
+      <ul className="mt-2 space-y-1 text-xs leading-relaxed text-txt-mid">
+        {consent && (
+          <li>
+            <span className="text-txt-lo">Marketing consent</span>{' '}
+            <b className="text-txt-hi">
+              {consent.granted === true ? 'granted' : consent.granted === false ? 'not granted' : consent.state || 'unknown'}
+            </b>
+            {consent.state && consent.granted != null && consent.state !== String(consent.granted) ? ` (${consent.state})` : ''}
+            {consent.source ? ` · recorded by ${consent.source}` : ''}
+            {consent.expires_at ? ` · expires ${new Date(consent.expires_at).toLocaleDateString('en-IN')}` : ''}
+          </li>
+        )}
+        <li>
+          <span className="text-txt-lo">Eligible to be offered</span>{' '}
+          <b className="text-txt-hi">{c.eligible === false ? 'no' : c.eligible === true ? 'yes' : 'not stated'}</b>
+          <span className="text-txt-lo"> · queued for calling</span>{' '}
+          <b className="text-txt-hi">{c.queueable === false ? 'no' : c.queueable === true ? 'yes' : 'not stated'}</b>
+        </li>
+        {blockers.length > 0 && (
+          <li>
+            <span className="text-txt-lo">In the way</span>{' '}
+            <b className="text-txt-hi">{blockers.map(suppressionLabel).join('; ')}</b>
+          </li>
+        )}
+      </ul>
+      <p className="mt-2 text-[11px] leading-relaxed text-txt-lo">
+        This is the platform&rsquo;s own verdict on whether the call may be made, shown beside the
+        briefing rather than behind it. A blocker is a reason to stop, not a score.
+      </p>
+    </section>
   )
 }
 

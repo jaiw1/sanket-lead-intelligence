@@ -17,7 +17,7 @@ export default function BusinessRadar({ radar }) {
     <div className="space-y-5">
       <section className="bg-signal-amber/5 border border-signal-amber/30 rounded-xl p-5">
         <div className="flex items-center gap-2 text-signal-amber mb-2">
-          <BadgeCheck size={18} /><h2 className="font-bold text-lg">Business Radar — an illustrative exhibit on real filings</h2>
+          <BadgeCheck size={18} /><h3 className="font-bold text-lg">Business Radar — an illustrative exhibit on real filings</h3>
         </div>
         <p className="text-sm text-txt-mid leading-relaxed max-w-4xl">
           A hand-weighted financial-ratio screen over <b>{radar.meta.n_companies_str} real Indian businesses'</b> annual
@@ -64,6 +64,10 @@ export default function BusinessRadar({ radar }) {
         <section className="bg-ink-700 border border-line rounded-xl p-5">
           <h3 className="font-bold text-sm">Where the headroom sits, by sector</h3>
           <p className="text-xs text-txt-lo mt-1 mb-4">Share of each sector's screened businesses with genuine borrowing headroom — where a business-banking RM should hunt.</p>
+          <div
+            role="img"
+            aria-label={`Share of each sector's screened businesses with borrowing headroom: ${sectors.map((d) => `${d.sector} ${d.headroomPct}%`).join(', ')}.`}
+          >
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={sectors} layout="vertical" margin={{ top: 0, right: 36, left: 30, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#232B4D" horizontal={false} />
@@ -77,6 +81,7 @@ export default function BusinessRadar({ radar }) {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+          </div>
         </section>
 
         <section className="bg-ink-700 border border-line rounded-xl p-5">
@@ -86,6 +91,10 @@ export default function BusinessRadar({ radar }) {
             before it; deciles are cut within the year. Businesses in the top decile raised borrowings the following
             year more often than the rest.
           </p>
+          <div
+            role="img"
+            aria-label={`Share raising borrowings the following financial year, by score decile: ${radar.backtest.deciles.map((d) => `decile ${d.decile} ${d.jump_rate_pct}%`).join(', ')}.`}
+          >
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={radar.backtest.deciles} margin={{ top: 18, right: 8, left: -16, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#232B4D" />
@@ -99,6 +108,7 @@ export default function BusinessRadar({ radar }) {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+          </div>
         </section>
       </div>
 

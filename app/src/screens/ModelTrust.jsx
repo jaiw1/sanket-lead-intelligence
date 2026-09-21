@@ -135,10 +135,10 @@ export default function ModelTrust() {
               <Calibration metrics={metrics} source={badge} detail={detail} />
             </div>
 
-            <Uncertainty metrics={metrics} source={badge} detail={detail} />
+            <Uncertainty metrics={metrics} fallback={packMetrics} source={badge} detail={detail} />
 
             <div className="grid gap-5 lg:grid-cols-2">
-              <MenuBaselines metrics={metrics} source={badge} detail={detail} />
+              <MenuBaselines metrics={metrics} fallback={packMetrics} source={badge} detail={detail} />
               <ShopperPanel metrics={metrics} source={badge} detail={detail} />
             </div>
 
@@ -307,8 +307,13 @@ function ShopperPanel({ metrics, source, detail }) {
  * interval around any of them. The fix is not a better label on one number: it is showing
  * that there are three different questions and answering each separately.
  */
-function Uncertainty({ metrics, source, detail }) {
-  const u = metrics.uncertainty
+function Uncertainty({ metrics, fallback, source, detail }) {
+  // `GET /sanket/funnel`'s `published_metrics` does not carry `uncertainty` — only the
+  // bundled export does. Falling back to the pack keeps the panel on screen (it is the one
+  // that enforces "spread, not a CI") and the footnote below says which source it used,
+  // exactly as the validation table does.
+  const fromPack = !metrics.uncertainty && Boolean(fallback?.uncertainty)
+  const u = metrics.uncertainty || fallback?.uncertainty || null
   const budget = u?.sample?.['10'] ? '10' : null
   const sample = budget ? u.sample[budget] : null
   const seed = u?.training_seed?.precision_at_budget || null
@@ -392,6 +397,15 @@ function Uncertainty({ metrics, source, detail }) {
               added to it.
             </p>
           )}
+          {fromPack && (
+            <p className="mt-2 text-[11px] leading-relaxed text-signal-amber">
+              These three intervals come from the bundled export
+              (<code className="font-mono">app/public/sanket_data.json</code>), not from the published
+              model run above: <code className="font-mono">GET /sanket/funnel</code> does not serve
+              <code className="font-mono"> metrics.uncertainty</code>. If the run and the export are not the
+              same build, read the intervals as the export&rsquo;s, not this run&rsquo;s.
+            </p>
+          )}
         </div>
       )}
     </Card>
@@ -405,8 +419,10 @@ function Uncertainty({ metrics, source, detail }) {
  * converters take the product they abandoned, so "offer them what they walked away from"
  * is already close to the ceiling. The column that matters is the switchers.
  */
-function MenuBaselines({ metrics, source, detail }) {
-  const b = metrics.menuBaselines
+function MenuBaselines({ metrics, fallback, source, detail }) {
+  // Same contract gap as Uncertainty: `menu_baselines` lives only in the bundled export.
+  const fromPack = !metrics.menuBaselines && Boolean(fallback?.menuBaselines)
+  const b = metrics.menuBaselines || fallback?.menuBaselines || null
   const rows = b ? [
     { key: 'model', name: `SANKET — menu of ${b.k}`, v: b.model, strong: true },
     { key: 'abandoned', name: 'Abandoned product, then popularity', v: b.abandoned_product },
@@ -448,6 +464,13 @@ function MenuBaselines({ metrics, source, detail }) {
               ))}
             </tbody>
           </table>
+          {fromPack && (
+            <p className="mt-3 text-[11px] leading-relaxed text-signal-amber">
+              This table comes from the bundled export, not from the published run above:{' '}
+              <code className="font-mono">GET /sanket/funnel</code> does not serve{' '}
+              <code className="font-mono">metrics.menu_baselines</code>.
+            </p>
+          )}
           <p className="mt-3 text-[11px] leading-relaxed text-txt-lo">
             {num(b.model?.n_converters)} converters, of whom {num(b.model?.n_switchers)} took a
             different product from the one they abandoned. The most-popular baseline is built

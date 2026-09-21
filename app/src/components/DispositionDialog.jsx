@@ -93,8 +93,22 @@ export default function DispositionDialog({ open, lead, onClose, onRecorded }) {
             {done.product && (<><dt className="text-txt-lo">Product</dt><dd className="text-txt-hi">{productLabel(done.product)}</dd></>)}
             {done.callback_at && (<><dt className="text-txt-lo">Call back</dt><dd className="text-txt-hi">{new Date(done.callback_at).toLocaleString('en-IN')}</dd></>)}
             {done.at && (<><dt className="text-txt-lo">Recorded at</dt><dd className="text-txt-hi">{new Date(done.at).toLocaleString('en-IN')}</dd></>)}
+            {/*
+              The platform writes two more fields on every disposition and returns them here:
+              where this call sits in the shared review-outcome taxonomy, and the policy the
+              run it answers was produced under. They are what a later audit joins on, so the
+              RM should see that they were recorded rather than have to take it on trust.
+            */}
+            {done.review_outcome && (<><dt className="text-txt-lo">Review outcome</dt><dd className="text-txt-hi">{String(done.review_outcome).replace(/_/g, ' ')}</dd></>)}
+            {done.model_run_id && (<><dt className="text-txt-lo">Model run</dt><dd className="font-mono text-txt-hi">{String(done.model_run_id).slice(0, 8)}</dd></>)}
+            {done.policy_version && (<><dt className="text-txt-lo">Policy version</dt><dd className="font-mono text-txt-hi">{done.policy_version}</dd></>)}
           </dl>
-          <p className="mt-2 text-[11px] text-txt-lo">Written to the append-only audit log against your user id.</p>
+          <p className="mt-2 text-[11px] text-txt-lo">
+            Written to the append-only audit log against your user id
+            {done.review_outcome || done.policy_version
+              ? ', together with the review outcome and the policy version of the run it answers'
+              : ''}.
+          </p>
         </div>
       ) : (
         <div className="space-y-4">

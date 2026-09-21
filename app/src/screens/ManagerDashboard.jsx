@@ -136,10 +136,15 @@ export default function ManagerDashboard() {
           <SlaVsWindow sla={data.sla} source={sourceBadge} detail={sourceDetail} />
         </div>
 
+        {/*
+          `book` is the same denominator as the KPI hint above. `data.leads` is only the
+          bundled sample in static mode, so "N suppressed of {leads}" could print a count
+          larger than the book it claims to be a part of.
+        */}
         <Suppression
           byReason={data.suppression_by_reason}
           total={data.suppressed}
-          book={data.leads}
+          book={suppressedPoolTotal}
           source={sourceBadge}
           detail={sourceDetail}
         />
@@ -213,6 +218,11 @@ function Headline({ headline, metrics, source, detail }) {
 /** Where the abandoned applications stopped. */
 function FunnelPanel({ data, source, detail }) {
   const published = data.published_metrics?.funnel
+  // `published_metrics.funnel` is a real funnel (each stage's survivors, with drop rates).
+  // `stage_reached` is not: it counts applications by the stage they STOPPED at, so its
+  // bars legitimately go up as well as down. Drawing the second under the first's wording
+  // makes an honest histogram look like a broken funnel.
+  const isFunnel = Array.isArray(published) && published.length > 0
   const rows = useMemo(() => {
     if (Array.isArray(published) && published.length) {
       return published.map((r) => ({
@@ -234,7 +244,9 @@ function FunnelPanel({ data, source, detail }) {
   return (
     <Card
       title="Where the application stopped"
-      subtitle="Start → Eligibility → KYC → Documents → ₹1,000 fee → Offer → Accept → Disburse."
+      subtitle={isFunnel
+        ? 'Start → Eligibility → KYC → Documents → ₹1,000 fee → Offer → Accept → Disburse, with the drop at each step.'
+        : 'How many abandoned applications stopped at each stage. Not a cumulative funnel — a stage with more applications than the one before it simply lost more people.'}
       source={source}
       sourceDetail={detail}
       labelledBy="funnel-title"
@@ -244,13 +256,13 @@ function FunnelPanel({ data, source, detail }) {
       ) : (
         <>
           <ChartFrame
-            title="Applications by stage reached"
-            summary={`Applications by the stage they reached: ${rows.map((r) => `${r.name} ${r.n}`).join(', ')}.`}
+            title={isFunnel ? 'Applications surviving each stage' : 'Applications by the stage they stopped at'}
+            summary={`${isFunnel ? 'Applications surviving each stage' : 'Applications by the stage they stopped at'}: ${rows.map((r) => `${r.name} ${r.n}`).join(', ')}.`}
             height={240}
             rows={rows}
             columns={[
               { key: 'name', label: 'Stage' },
-              { key: 'n', label: 'Applications' },
+              { key: 'n', label: isFunnel ? 'Reached this stage' : 'Stopped here' },
               { key: 'dropPct', label: 'Drop rate %', format: (v) => (v == null ? 'not measured' : `${v}%`) },
             ]}
           >
@@ -258,7 +270,7 @@ function FunnelPanel({ data, source, detail }) {
               <CartesianGrid strokeDasharray="3 3" stroke={GRID} horizontal={false} />
               <XAxis type="number" tick={AXIS} />
               <YAxis type="category" dataKey="name" tick={AXIS} width={92} />
-              <Tooltip contentStyle={TOOLTIP} cursor={{ fill: '#1D2549' }} formatter={(v) => [num(v), 'applications']} />
+              <Tooltip contentStyle={TOOLTIP} cursor={{ fill: '#1D2549' }} formatter={(v) => [num(v), isFunnel ? 'reached this stage' : 'stopped here']} />
               <Bar dataKey="n" radius={[0, 5, 5, 0]} isAnimationActive={false}>
                 <LabelList dataKey="n" position="right" style={{ fontSize: 11, fill: '#EAEDFB', fontWeight: 700 }} />
                 {rows.map((r) => (

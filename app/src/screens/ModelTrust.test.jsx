@@ -179,3 +179,59 @@ describe('ModelTrust — the validation table degrades cleanly without acceptanc
     expect(screen.getByText('1 pass')).toBeInTheDocument()
   })
 })
+
+describe('ModelTrust — panels the published run does not carry', () => {
+  // `GET /sanket/funnel`'s `published_metrics` has no `uncertainty` or `menu_baselines`,
+  // so on the deployed build the panel that enforces "spread, not a CI" — the whole point
+  // of that panel — rendered as "not in this build".
+  const UNCERTAINTY = {
+    sample: {
+      10: { budget: 0.1, point: 0.2906, ci_low: 0.2676, ci_high: 0.3118 },
+      headline: { interval_sentence: '9–10 → 27–31 per 100 RM calls (95% customer-clustered bootstrap)' },
+    },
+    training_seed: { precision_at_budget: { pct_low: 0.275, pct_high: 0.2896, n: 5 }, seeds: [7, 8, 9, 10, 11] },
+    generator: { spread: { precision_at_budget: { pct_low: 0.24, pct_high: 0.33 } } },
+  }
+  const MENU_BASELINES = {
+    k: 4,
+    model: { menu_hit_rate: 0.965, top_1_accuracy: 0.704, menu_hit_rate_switchers: 0.881, top_1_accuracy_switchers: 0.01, n_converters: 2764, n_switchers: 331 },
+    abandoned_product: { menu_hit_rate: 0.9, top_1_accuracy: 0.69 },
+    most_popular: { menu_hit_rate: 0.7, top_1_accuracy: 0.3 },
+  }
+  const packWithBoth = {
+    ...PACK,
+    metrics: { ...PACK.metrics, uncertainty: UNCERTAINTY, menu_baselines: MENU_BASELINES },
+  }
+
+  it('falls back to the bundled pack and labels the seed rows as a spread, not a CI', async () => {
+    mockFetchRoutes({
+      '/api/v1/sanket/funnel': funnelRoute,
+      '/api/v1/sanket/validation': errorResponse(404, 'not_found', 'none'),
+    })
+    renderScreen(<ModelTrust />, { path: '/trust', mode: 'live', user: session('manager'), pack: packWithBoth })
+
+    expect(await screen.findByText('95% confidence interval')).toBeInTheDocument()
+    expect(screen.getAllByText('spread, not a CI').length).toBeGreaterThanOrEqual(2)
+    expect(screen.queryByText(/The uncertainty breakdown is not in this build/)).not.toBeInTheDocument()
+  })
+
+  it('says which source the fallback used rather than passing it off as the run’s', async () => {
+    mockFetchRoutes({
+      '/api/v1/sanket/funnel': funnelRoute,
+      '/api/v1/sanket/validation': errorResponse(404, 'not_found', 'none'),
+    })
+    renderScreen(<ModelTrust />, { path: '/trust', mode: 'live', user: session('manager'), pack: packWithBoth })
+    expect(await screen.findByText(/come from the bundled export/)).toBeInTheDocument()
+    expect(screen.getAllByText(/does not serve/).length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('still shows the honest empty state when neither source has it', async () => {
+    mockFetchRoutes({
+      '/api/v1/sanket/funnel': funnelRoute,
+      '/api/v1/sanket/validation': errorResponse(404, 'not_found', 'none'),
+    })
+    renderScreen(<ModelTrust />, { path: '/trust', mode: 'live', user: session('manager'), pack: PACK })
+    expect(await screen.findByText(/The uncertainty breakdown is not in this build/)).toBeInTheDocument()
+  })
+})
+

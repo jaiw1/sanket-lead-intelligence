@@ -123,9 +123,17 @@ export default function Queue() {
             <h2 className="flex items-center gap-2 text-lg font-bold">
               <ListOrdered size={18} className="text-signal-amber" aria-hidden="true" /> Lead queue
             </h2>
+            {/*
+              The queue is NOT filtered to open windows — `window_due` is an optional filter,
+              and a frozen export can be delivered entirely after its windows have run out.
+              Claiming every row is "still inside its window" beside a column of CLOSED
+              badges is the first thing a reader notices.
+            */}
             <p className="mt-0.5 text-xs text-txt-lo">
-              Customers who abandoned an application and are still inside their product's contact
-              window. Showing <b className="text-txt-mid">{scope}</b>.
+              Customers who abandoned an application, ranked by how likely a call is to end in a
+              disbursement and by how soon their product&rsquo;s contact window closes. Use the
+              contact-window filter to see only the ones still inside it. Showing{' '}
+              <b className="text-txt-mid">{scope}</b>.
             </p>
           </div>
           <div className="flex items-center gap-2">

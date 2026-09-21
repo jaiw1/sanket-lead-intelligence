@@ -72,3 +72,36 @@ describe('WINDOW_FILTERS', () => {
     expect(WINDOW_FILTERS.map((f) => f.value)).toEqual(['', 'true', 'false'])
   })
 })
+
+describe('windowStatus — the camelCase shape every caller actually passes', () => {
+  // `pack.js` normaliseLead renames abandon_ts/contact_by/window_days and does NOT keep the
+  // wire spelling, so the snake_case fallbacks were unreachable in the app: a lead with a
+  // real abandonment timestamp could still render "Window unknown".
+  it('derives the window from a normalised lead’s abandonTs and windowDays', () => {
+    const s = windowStatus({ product: 'auto', abandonTs: '2026-09-15T12:00:00Z', windowDays: 3 }, NOW)
+    expect(s.days).toBe(3)
+    expect(s.abandonedAt).toBe('2026-09-15T12:00:00Z')
+    expect(s.state).toBe(WINDOW_STATE.OPEN)
+  })
+
+  it('uses a normalised lead’s contactBy as the due date', () => {
+    const s = windowStatus({ product: 'home', windowDays: 14, contactBy: '2026-09-20T00:00:00Z' }, NOW)
+    expect(s.dueBy).toBe('2026-09-20T00:00:00Z')
+    expect(s.daysLeft).toBe(4)
+  })
+
+  it('still reports unknown — never expired — when there is no timestamp at all', () => {
+    expect(windowStatus({ product: 'home' }, NOW).state).toBe(WINDOW_STATE.UNKNOWN)
+  })
+
+  it('surfaces the abandonment the queue row carries when window{} has only due_by', () => {
+    const s = windowStatus({
+      product: 'home',
+      abandonTs: '2026-07-29T07:59:56Z',
+      window: { days: 14, due_by: '2026-08-12T07:59:56Z', open: false, expired: true },
+    }, NOW)
+    expect(s.abandonedAt).toBe('2026-07-29T07:59:56Z')
+    expect(s.state).toBe(WINDOW_STATE.EXPIRED)
+  })
+})
+

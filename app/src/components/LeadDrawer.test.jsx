@@ -263,3 +263,51 @@ describe('LeadDrawer — the dialog behaves like one', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled())
   })
 })
+
+describe('Lead drawer — contactability', () => {
+  // `contactability` reached the client on every lead and was read by nothing, so the
+  // "do not call" judgement the product claims to support was never on the RM's screen.
+  const CONTACTABILITY = {
+    contactable: true,
+    queueable: false,
+    eligible: true,
+    consent: { state: 'granted', source: 'batch', granted: true, at: null, expires_at: null },
+    suppression: { suppressed: false, reasons: [], contact_reasons: [], eligibility_reasons: [] },
+    blockers: ['window_expired'],
+  }
+
+  it('shows the consent state and what is blocking the call', async () => {
+    routes({ lead: { ...LEAD_DETAIL, contactability: CONTACTABILITY, contactable: true } })
+    renderScreen(<LeadDrawer leadId={LEAD_DETAIL.lead_id} onClose={() => {}} />, { session: session('manager') })
+    const panel = await screen.findByTestId('contactability')
+    expect(within(panel).getByText(/Contactable, with conditions/)).toBeInTheDocument()
+    expect(within(panel).getByText('granted')).toBeInTheDocument()
+    expect(within(panel).getByText(/window expired/)).toBeInTheDocument()
+  })
+
+  it('says plainly when the customer may not be contacted', async () => {
+    routes({
+      lead: {
+        ...LEAD_DETAIL,
+        contactability: {
+          ...CONTACTABILITY,
+          contactable: false,
+          consent: { state: 'denied', granted: false, source: 'batch' },
+          blockers: ['no_marketing_consent'],
+        },
+      },
+    })
+    renderScreen(<LeadDrawer leadId={LEAD_DETAIL.lead_id} onClose={() => {}} />, { session: session('manager') })
+    const panel = await screen.findByTestId('contactability')
+    expect(within(panel).getByText('Not contactable')).toBeInTheDocument()
+    expect(within(panel).getByText('not granted')).toBeInTheDocument()
+  })
+
+  it('renders nothing at all when the payload carries no contactability', async () => {
+    routes({ lead: LEAD_DETAIL })
+    renderScreen(<LeadDrawer leadId={LEAD_DETAIL.lead_id} onClose={() => {}} />, { session: session('manager') })
+    await screen.findByTestId('lead-drawer')
+    await waitFor(() => expect(screen.queryByTestId('contactability')).not.toBeInTheDocument())
+  })
+})
+

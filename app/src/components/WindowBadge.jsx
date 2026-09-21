@@ -16,9 +16,16 @@ export default function WindowBadge({ lead, now, showDays = true, className = ''
   const phrase = windowPhrase(status)
   const days = status.days ?? WINDOW_DAYS[lead?.product] ?? null
 
+  const asDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : null)
+  // Both ends of the window, not just the far one: the due date only means something
+  // beside the abandonment it is measured from.
   const detail = status.state === WINDOW_STATE.UNKNOWN
     ? 'No abandonment timestamp on this lead, so the contact window cannot be placed. Not the same as closed.'
-    : `${days != null ? `${days}-day window for ${lead?.product || 'this product'}` : 'Contact window'}${status.dueBy ? `, due by ${new Date(status.dueBy).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}.`
+    : [
+      days != null ? `${days}-day window for ${lead?.product || 'this product'}` : 'Contact window',
+      status.abandonedAt ? `abandoned ${asDate(status.abandonedAt)}` : null,
+      status.dueBy ? `due by ${asDate(status.dueBy)}` : null,
+    ].filter(Boolean).join(', ') + '.'
 
   return (
     <span
