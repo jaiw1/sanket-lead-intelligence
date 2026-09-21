@@ -24,7 +24,12 @@ export default function Card({
             {title && <h3 id={labelledBy} className="text-sm font-bold text-txt-hi">{title}</h3>}
             {subtitle && <p className="mt-0.5 text-xs leading-relaxed text-txt-lo">{subtitle}</p>}
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          {/*
+            `shrink-0` plus a long action (the validation tally reads "17 pass · 1 fail ·
+            1 fail on 5-seed mean · 5 report-only") pushed the whole page 38px wider than
+            a 390px phone. The actions may wrap; they must not widen the document.
+          */}
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
             {actions}
             {source && <SourceBadge source={source} sandbox={sandbox} detail={sourceDetail} />}
           </div>

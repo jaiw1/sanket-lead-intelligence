@@ -279,7 +279,8 @@ function Contactability({ lead }) {
             <b className="text-txt-hi">
               {consent.granted === true ? 'granted' : consent.granted === false ? 'not granted' : consent.state || 'unknown'}
             </b>
-            {consent.state && consent.granted != null && consent.state !== String(consent.granted) ? ` (${consent.state})` : ''}
+            {consent.state && consent.state !== (consent.granted === true ? 'granted' : consent.granted === false ? 'not granted' : consent.state)
+              ? ` (${consent.state})` : ''}
             {consent.source ? ` · recorded by ${consent.source}` : ''}
             {consent.expires_at ? ` · expires ${new Date(consent.expires_at).toLocaleDateString('en-IN')}` : ''}
           </li>
