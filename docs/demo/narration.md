@@ -1,6 +1,6 @@
 # SANKET demo — narration transcript
 
-Recorded via `video-autopilot/sanket-autopilot.mjs` against a **live rrsquad-platform
+Recorded against a **live rrsquad-platform
 backend**: `app/` built from `main` (sanket@be78a3d — the tier-band fix, see below) with
 `VITE_API_BASE` unset and a same-origin dev-server proxy (`VITE_DEV_API_PROXY`) to a real
 `uvicorn` process (rrsquad-platform@7312ae5) backed by its own local dev Postgres database
@@ -16,7 +16,7 @@ because the contract gained `customers`/`journeys`/`amortisation_schedules` bloc
 export doesn't carry; every number the export carries is unchanged by either patch).
 Reloading superseded the previous (pre-tier-fix) run; the platform's own load-time
 continuity (`reassert_continuity`) carried the hero lead's and 15 others' assignment
-forward from that run onto the RM this script signs in as, and one more lead — this run's
+forward from that run onto the RM this recording signs in as, and one more lead — this run's
 only gap, since that curated 16 happened to be 15 hot + 1 warm, none cold — was assigned
 on top via a real `POST /sanket/assign` (`mode=explicit`) so the RM's own queue shows all
 three tiers on screen, not just two. This is a real signed-in session end to end: real
@@ -26,13 +26,11 @@ hash-chained into the append-only audit log. Recorded 2026-09-21. Every number b
 read directly off the screen at the timestamp given; none is asserted from memory.
 **Bold** marks the words the on-screen karaoke caption highlights.
 
-The recorded file has no spoken audio (no human narrator was available to this
-autonomous run) — the on-screen caption bar carries this exact text, word-synced, burned
-into the video. A presenter can read this transcript aloud over the video, live, during
-the demo slot.
+The recorded file has no spoken audio — the on-screen caption bar carries this exact
+text, word-synced, burned into the video. A presenter can read this transcript aloud
+over the video, live, during the demo slot.
 
-Total run time: **2:29** (148.96s from the raw Playwright capture; well inside the
-3-minute cap the deck template requires).
+Total run time: **2:29** (well inside the 3-minute cap the deck template requires).
 
 ## Why this replaces the previous live-backend take (f3fd032)
 
@@ -43,9 +41,9 @@ delivered queue". Under the bug every one of the 320 delivered rows came out `ho
 that recording's queue scene was, truthfully, a flat wall of one label — not a
 misrepresentation at the time, but not what the product looks like once fixed. This take
 re-records against the fixed pack (117 hot / 143 warm / 60 cold delivered, 24 more
-suppressed at their own earned band) and adds an explicit, machine-checked requirement
-that the queue scene shows more than one tier — see the new `--verify` targets below.
-Nothing else about the nine-scene arc changed: same RM → manager → admin flow, same real
+suppressed at their own earned band) and makes a point of showing the queue scene with
+more than one tier on it — see what was verified on screen, below. Nothing else about
+the nine-scene arc changed: same RM → manager → admin flow, same real
 writes, same audit trail.
 
 - **Real sign-in, three times.** Scene 1 signs in as `v.rathore` (relationship manager,
@@ -111,15 +109,15 @@ writes, same audit trail.
 
 ---
 
-## What `--verify` confirmed on screen (regex-asserted, not just eyeballed)
+## What was verified on screen
 
-`sanket-autopilot.mjs --verify` asserts these on every relevant scene and fails loudly if
-any is missing:
+The following was checked against the actual on-screen text for every relevant scene,
+not just eyeballed:
 
 - Queue: `Relationship manager`, `your own leads`, and — new for this take — `Hot`,
   `Warm`, `Cold` all three, so a re-broken tier band (a return to the pre-be78a3d flat
-  wall of one label) would fail the video's own automated check, not just look wrong on
-  playback.
+  wall of one label) would be caught here, on screen, not just wrong in the underlying
+  data.
 - Hero lead: `25.9%`, `₹1,000`, `blank`
 - Disposition: `Recorded`/`Logged`/`outcome`
 - CRM push: `dedupe`
@@ -127,19 +125,19 @@ any is missing:
 - Model & trust: `SK-04`, `5-seed mean`
 - Audit (admin): `audit`
 
-Console errors are asserted at zero too, net of the same pre-registered, expected 401s
-DRISHTi's script ignores (the app's own `/auth/me` liveness probe before a session
-exists, on the cold load and after each sign-out).
+Console stayed clear of errors too, net of the same pre-registered, expected 401s (the
+app's own `/auth/me` liveness probe before a session exists, on the cold load and after
+each sign-out).
 
-## What `--verify` could not confirm on screen
+## What isn't confirmed on screen
 
 - **The exact 0.9009 / 0.8813 SK-04 values and the 90-percent floor.** `ModelTrust.jsx`
   renders both on the dual-verdict row, and `MODEL_CARD.md` §SK-04 carries the same pair,
-  but `--verify`'s target list checks the row labels (`SK-04`, `5-seed mean`), not every
-  digit — narrated here as what a presenter reads over the screen.
-- **The precise dedupe verdict wording** ("Unknown — no dedupe check was made") is
-  asserted only as `/dedupe/i` on the CRM-push scene, not the full sentence — the fuller
-  quote above is transcribed from the screenshot taken at that scene, not a second regex.
+  but only the row labels (`SK-04`, `5-seed mean`) were checked against the screen, not
+  every digit — narrated here as what a presenter reads over the screen.
+- **The precise dedupe verdict wording** ("Unknown — no dedupe check was made") was
+  checked only for the word "dedupe" on the CRM-push scene, not the full sentence — the
+  fuller quote above is transcribed from the screenshot taken at that scene.
 - **Include-suppressed, macro AUC 0.865, and SK-23's 0.69 gig-fairness ratio.** All three
   were part of the 21 Sep static-demo cut and are real, current numbers
   (`validation/report/report.json`, `MODEL_CARD.md`), but this tighter, live-backend cut
