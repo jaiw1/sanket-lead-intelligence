@@ -60,6 +60,21 @@ roughly 3×. (The whole-book `~1%` bank-stated cold-call rate is still real and 
 the motivating problem — see "The problem" in the app's Mission Control tab — it is
 just not the number the 29 should be measured against.)
 
+**How uncertain is the 29?** Three different answers, because there are three different
+questions, and they are never added together (`MODEL_CARD.md` §9):
+
+| what varies | precision@10% | kind |
+|---|---|---|
+| which customers landed in the book | **26.8 – 31.2%** | a real 95% CI — `cust_id` resampled 1,000 times, **the queue re-selected inside every resample** |
+| which training split the model drew | 27.5 – 29.0% | spread across the 5 registered seeds, not a CI |
+| which synthetic world the book came from | 25.7 – 29.3% | spread across 8 regenerated worlds, not a CI |
+
+With its sampling interval the headline reads **9–10 → 27–31 disbursements per 100 RM
+calls**. The widest of the three is the generator: eight independently regenerated worlds
+average **27.6%**, against this world's 29.1%. That is the most important caveat on this
+page — most of the uncertainty in the number is a property of the synthetic data, not of
+the model, and a bank pilot would have none of it because it would have one real world.
+
 A pre-registered **oracle ceiling** exists for the 29: the generator solves its
 signal-to-noise knob so that a ranker who could see the *latent* index the label is
 drawn from — which no real model can — reaches precision@10% ≈ 0.32. The model reads
@@ -112,6 +127,22 @@ Ranking by account balance — the intuition a branch actually uses — is worth
 point over calling at random. A plain logistic model gets most of the way there; the
 gradient-boosted model adds another 3.2 points on top of it. Both of those are
 findings a pitch deck would rather not have, and both are published.
+
+The menu of four gets the same treatment (`metrics.menu_baselines`). Against two rules
+with no model in them at all, on the 814 converters who took a **different** product from
+the one they abandoned:
+
+| rule | menu-of-4 hit, switchers | top-1, switchers |
+|---|---|---|
+| **SANKET** | **88.1%** | **1.0%** |
+| the product they abandoned, then popularity | 68.8% | 0.0% |
+| the 4 most-taken products | 70.9% | **39.3%** |
+
+The menu is worth 17 points on switchers. The **top pick is not**: the model almost always
+names the abandoned product, so for a customer who switched it is right 1% of the time and
+a constant "offer the four most popular" rule is right 39% of the time. That is why SK-14
+(top-1 accuracy) is registered with no target, and why the product is the menu rather than
+the next-best-product.
 
 ## How it works
 
@@ -342,15 +373,22 @@ a disclosed failing value.**
   group cells checked (occupation segment × 3, city tier × 3, age band × 3, income
   band × 5), 12 pass; gig workers (0.69) and the lowest income band (0.79) do not.
   Severity is `report`, not `fail`, in `criteria.yaml` on purpose — it is a *reported*
-  measurement, never a gate a run can pass by tuning. **What it is not caused by:
-  capacity.** SK-23 has always been measured on the probability-ranked selection, and
-  the ratio is unchanged at 0.69 now that capacity has been removed from the queue's
-  ranking entirely — so the capacity blend was never the mechanism, whatever the
-  earlier wording here implied. The standing hypothesis is the behavioural income
-  estimate, accurate for only 76.4% of gig workers within ±15% (vs 95.2% overall),
-  reaching the model through the income-derived features; that is a hypothesis this
-  README should not state as a finding until it is tested feature by feature.
-  Segment-aware calling quotas remain designed, not built. `MODEL_CARD.md` §8.
+  measurement, never a gate a run can pass by tuning.
+  `src/experiments/fairness_probe.py` diagnoses it and prices the fixes; the full
+  write-up is `MODEL_CARD.md` §8, and the four findings are:
+  **(1)** gig workers convert at 0.90× the salaried rate but are contacted at 0.57× on
+  the held-out split — the ranking *amplifies* the outcome gap by 1.6×, and the gig
+  workers it does select convert 4.8 pp **better** than the salaried ones it selects,
+  which is a stricter effective threshold rather than a weaker population.
+  **(2)** At equal score they convert +1.7 pp *more*, so the score means the same thing
+  for both; the deficit is in where they land in the distribution.
+  **(3)** The retired capacity blend was contacting gig workers at **0.21×** while SK-23
+  reported 0.69 — because SK-23 measured the probability list and the queue delivered the
+  blend. Removing capacity from the ranking was a large, unclaimed fairness improvement.
+  **(4)** A within-segment quota that lifts the worst ratio to 0.80 costs **0.04 pp** of
+  precision; equalising outright costs 0.14 pp. Neither is shipped: a contact quota is a
+  policy the bank chooses, and choosing it on synthetic data would be choosing it on a
+  simulation. What ships is the measurement and the price.
 
 `MODEL_CARD.md` §9 carries the same table generated a few hours earlier
 (2026-09-16), before validation runners 08–12 (ablation, stress, seeds, fairness,
@@ -392,6 +430,11 @@ python3 src/make_book.py                          # 60,000 customers x 30 months
 python3 src/make_journeys.py                       # journeys, campaigns, labels (drop-off population)
 python3 src/score_and_pack.py                       # 5 seeds, full exhibits (~11 min)
 python3 src/score_and_pack.py --seeds 7 --quick     # 1 seed, skips OOT/permutation/ladder (~3 min)
+
+# (optional) the long experiments — each writes data/experiments/*.json, which the pack
+# and the validation report read if present and report as not-run if absent
+python3 src/experiments/generator_variation.py      # 8 regenerated worlds (~8 min)
+python3 src/experiments/fairness_probe.py           # SK-23's cause and its remedies (~2 min)
 # (optional) python3 src/make_radar.py              # appendix Business Radar exhibit; needs the
                                                       # source financial dataset, not in this repo
 

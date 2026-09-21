@@ -6,7 +6,7 @@
 
 These 25 acceptance bands were registered at **2026-09-16T10:47:14+05:30** by RR Squad, before any model result for SANKET existed.
 
-`validation/criteria.yaml` first entered git at **2026-09-16T11:06:09+05:30** — that commit timestamp, not this file, is the evidence. This report was generated at 2026-09-21T15:25:52+05:30 from commit `b4d5c1c8d697`.
+`validation/criteria.yaml` first entered git at **2026-09-16T11:06:09+05:30** — that commit timestamp, not this file, is the evidence. This report was generated at 2026-09-21T16:41:08+05:30 from commit `234c0f16e58b`.
 
 **Amendments after registration:**
 - *2026-09-21T00:00:00+05:30* (RR Squad — third-party review response) — DESCRIPTION ONLY. SK-04's threshold (>= 0.90), op, severity, runner, metric key and scope are all unchanged. What changed is the wording: the rationale used to say the criterion existed so "the RM queue's SLA" would not be "fiction", which reads as a claim that SK-04 measures whether a relationship manager made contact before the lead expired. It does not. It measures conversion timing among converters — of the held-out rows inside the contact budget that disbursed, the share that disbursed inside the offered product's window. The note now states that explicitly, and states that contact-SLA compliance is measured nowhere in this pack. Rationale: A third-party review (2026-09-21, §5) found the 90.1% being described as an operational contact-SLA result in the README, the model card and the cockpit. No contact timestamp exists in this pipeline, so that reading is unsupported by anything in the repo. The band itself was never the problem and is deliberately left where it was registered; loosening or retitling a metric because its description was wrong would be the exact move pre-registration exists to prevent.
@@ -18,14 +18,14 @@ NEW WORDING. The scoring unit is a (customer, month) row for customers in the DR
 
 ## All criteria
 
-**About the `Interval` column.** It is not always a confidence interval, and the `Detail` column on every row says which of the two it is. Where a metric has a cross-seed spread it is the **5-seed spread** — the 2.5-97.5 percentile of the metric across the registered seeds [7, 8, 9, 10, 11], a measure of *training-seed variability*, not of sampling error around the `Observed` value. `Observed` is always the packed seed (seed 7) and can fall outside that spread; that is a property of a five-point percentile interval, not a defect. Every other row carries the packed seed's own 95% Wilson or Hanley-McNeil confidence interval. A customer-clustered bootstrap, which is what `criteria.yaml confidence.method` actually asks for, is not computed by this pack and is not approximated out of the five seeds.
+**About the `Interval` column.** It is not always a confidence interval, and the `Detail` column on every row says which of the three kinds it is. In preference order: (1) the **customer-clustered percentile bootstrap** `criteria.yaml confidence.method` registers — `cust_id` resampled with replacement and the queue re-selected by `model.policy` inside every resample — available for the headline precision and baseline numbers, and a genuine 95% confidence interval around `Observed`; (2) the **5-seed spread**, the 2.5-97.5 percentile of the metric across the registered seeds [7, 8, 9, 10, 11], which measures *training-seed variability* and is **not** a confidence interval — `Observed` is always the packed seed (seed 7) and can fall outside it, which is a property of a five-point percentile interval rather than a defect; (3) the packed seed's own 95% Wilson or Hanley-McNeil interval, for the metrics neither of the first two covers. Generator variability is a fourth question again and is reported separately in `metrics.uncertainty.generator`, never merged into any of these.
 
 ### 01_holdout
 
 | ID | Metric | Scope | Band | Observed | Interval | n | Severity | Status |
 |---|---|---|---|---|---|---|---|---|
-| SK-01 | random_contact_disbursement_rate | overall | ∈ [0.08, 0.1] | 0.0948 | [0.0894, 0.0944] | 29154 | fail | PASS |
-| SK-02 | precision_at_10pct_budget | overall | ∈ [0.25, 0.35] | 0.2906 | [0.275, 0.2896] | 2915 | fail | PASS |
+| SK-01 | random_contact_disbursement_rate | overall | ∈ [0.08, 0.1] | 0.0948 | [0.0901, 0.0998] | 29154 | fail | PASS |
+| SK-02 | precision_at_10pct_budget | overall | ∈ [0.25, 0.35] | 0.2906 | [0.2676, 0.3118] | 2915 | fail | PASS |
 | SK-03 | precision_at_5pct_and_20pct_budget | overall | reported, no target | {'precision_at_5pct': 0.358, 'precision_at_20pct': 0.2301} | — | — | report | reported |
 | SK-04 | window_respect_rate | overall | ≥ 0.9 | 0.9009 | [0.8697, 0.899] | 908 | fail | PASS |
 | SK-05 | window_shopper_auc | overall | ≥ 0.7 | 0.847 | [0.8416, 0.8525] | 29154 | fail | PASS |
@@ -35,8 +35,8 @@ NEW WORDING. The scoring unit is a (customer, month) row for customers in the DR
 
 | Cell | Observed | Interval | n | Status |
 |---|---|---|---|---|
-| precision_at_5pct | 0.358 | [0.3069, 0.3549] | 1458 | reported |
-| precision_at_20pct | 0.2301 | [0.2133, 0.2291] | 5831 | reported |
+| precision_at_5pct | 0.358 | [0.3212, 0.3916] | 1458 | reported |
+| precision_at_20pct | 0.2301 | [0.2144, 0.2458] | 5831 | reported |
 
 </details>
 

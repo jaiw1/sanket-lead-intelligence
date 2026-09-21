@@ -53,9 +53,71 @@ from validation.criteria import Criterion, Result, RunnerContext
 from validation.runners import _refit as rf
 from validation.runners import _shared as sh
 
-INPUTS: tuple[str, ...] = ("data/model_metrics.json",)
+INPUTS: tuple[str, ...] = ("data/model_metrics.json",
+                           "data/experiments/fairness_probe.json")
 
 _GIG_DIM, _GIG_GROUP = "Segment", "gig"
+
+#: `src/experiments/fairness_probe.py`'s output. Optional: the runner reports the
+#: probe's findings when it is there and says it has not been run when it is not.
+#: It is never allowed to change SK-23's graded value, which stays
+#: `metrics.registered.adverse_impact_ratio` from the pack.
+_PROBE_REL = "data/experiments/fairness_probe.json"
+
+
+def _probe(ctx: RunnerContext) -> dict | None:
+    import json
+
+    path = ctx.repo_root / _PROBE_REL
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _probe_note(ctx: RunnerContext) -> str:
+    """The diagnosis and the costed remedies, in one paragraph of the SK-23 detail.
+
+    SK-23 says the gig ratio is 0.69 and stops. That is a finding without a cause
+    and without a price, which is the least useful shape a disclosed failure can
+    take. `src/experiments/fairness_probe.py` supplies both.
+    """
+    doc = _probe(ctx)
+    if not doc:
+        return (f"DIAGNOSIS: not run. `python3 src/experiments/fairness_probe.py` writes "
+                f"{_PROBE_REL} — which feature contributions carry the gap, whether gig "
+                f"workers convert as often at the same score, and what each remedy costs "
+                f"in precision. Reported as not run rather than left unexplained.")
+    f = doc.get("finding") or {}
+    trade = doc.get("trade_off") or []
+    variants = {v["label"]: v for v in doc.get("ranking_variants") or []}
+    attrib = doc.get("feature_attribution") or {}
+    against = ", ".join(f"{r['feature']} ({r['gap']:+.3f})"
+                        for r in (attrib.get("most_against_gig") or [])[:4])
+    remedies = "; ".join(
+        f"{t['option']} -> precision {t['precision']:.4f} "
+        f"(costs {t['precision_cost_pp']:.2f} pp), gig ratio {t['worst_segment_ratio']}"
+        for t in trade[1:])
+    blend = variants.get("blend, capacity weight 0.35")
+    blend_note = (f" The retired 0.65/0.35 capacity blend, which was the ranking the queue "
+                  f"actually delivered until 2026-09-21, scored a gig ratio of "
+                  f"{blend['gig_ratio']} on this same split — far worse than the {f.get('contact_ratio')} "
+                  f"the probability ranking gives, and worse than SK-23 ever reported, because "
+                  f"SK-23 has always been measured on the probability list."
+                  if blend else "")
+    return (
+        f"DIAGNOSIS (`{_PROBE_REL}`, held-out split, not the snapshot, so the ratios differ "
+        f"from the graded value above): gig contact ratio {f.get('contact_ratio')} against an "
+        f"OUTCOME ratio of {f.get('outcome_ratio')} — the queue amplifies that gap by "
+        f"{f.get('amplification')}x. The gig workers it does select convert "
+        f"{f.get('precision_gap_when_selected_pp')} pp better than the salaried ones it "
+        f"selects, which is a stricter effective threshold, not a weaker population. "
+        f"Mean SHAP most against gig at the contact boundary: {against}."
+        f"{blend_note} "
+        f"REMEDIES, PRICED: {remedies}. Nothing was tuned to 0.80; the exchange rate is "
+        f"published so the choice stays a policy decision.")
 
 
 def run(criteria: list[Criterion], ctx: RunnerContext) -> list[Result]:
@@ -104,12 +166,13 @@ def _sk23(ctx: RunnerContext, m: dict, fairness: list[dict]) -> Result:
                if gig else "No 'gig' cell found in metrics.fairness.")
 
     tpr_note = _tpr_gap_exhibit(ctx)
+    probe_note = _probe_note(ctx)
     detail = (f"four-fifths ratio = group selection rate / best group's selection rate in the "
              f"same dim, at the live 10% contact budget, over the eligible snapshot population "
              f"(`model.metrics.fairness_table`). Protected proxies evaluated: Segment "
              f"(occupation), City tier, Age band, Income band — gender/religion/caste/marital "
              f"status/pin-code are excluded outright by policy and are not in the data at all "
-             f"(`model.copy.EXCLUDED_FEATURES`). {fail_note} {gig_note} {tpr_note}")
+             f"(`model.copy.EXCLUDED_FEATURES`). {fail_note} {gig_note} {tpr_note} {probe_note}")
 
     value = registered_air if registered_air is not None else (gig["ratio"] if gig else None)
     n = gig["n"] if gig else None

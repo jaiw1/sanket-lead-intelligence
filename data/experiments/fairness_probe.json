@@ -1,0 +1,583 @@
+{
+ "seed": 7,
+ "budget": 0.1,
+ "ranking": "probability",
+ "n_holdout_rows": 29154,
+ "n_holdout_customers": 3305,
+ "precision_at_budget": 0.2906,
+ "by_segment": [
+  {
+   "group": "gig",
+   "n": 4437,
+   "selection_rate": 0.0654,
+   "ratio": 0.5681,
+   "conversion_rate": 0.0874,
+   "precision_when_selected": 0.3241,
+   "n_selected": 290
+  },
+  {
+   "group": "self-employed",
+   "n": 7106,
+   "selection_rate": 0.0843,
+   "ratio": 0.7327,
+   "conversion_rate": 0.0934,
+   "precision_when_selected": 0.3222,
+   "n_selected": 599
+  },
+  {
+   "group": "salaried",
+   "n": 17611,
+   "selection_rate": 0.115,
+   "ratio": 1.0,
+   "conversion_rate": 0.0972,
+   "precision_when_selected": 0.2764,
+   "n_selected": 2026
+  }
+ ],
+ "by_income_band": [
+  {
+   "group": "Q1 lowest",
+   "n": 5831,
+   "selection_rate": 0.0883,
+   "ratio": 0.7641,
+   "conversion_rate": 0.0851,
+   "precision_when_selected": 0.2913,
+   "n_selected": 515
+  },
+  {
+   "group": "Q4",
+   "n": 5831,
+   "selection_rate": 0.0888,
+   "ratio": 0.7685,
+   "conversion_rate": 0.0948,
+   "precision_when_selected": 0.3108,
+   "n_selected": 518
+  },
+  {
+   "group": "Q5 highest",
+   "n": 5831,
+   "selection_rate": 0.0991,
+   "ratio": 0.8576,
+   "conversion_rate": 0.0966,
+   "precision_when_selected": 0.3114,
+   "n_selected": 578
+  },
+  {
+   "group": "Q3",
+   "n": 5830,
+   "selection_rate": 0.1081,
+   "ratio": 0.9349,
+   "conversion_rate": 0.0907,
+   "precision_when_selected": 0.2476,
+   "n_selected": 630
+  },
+  {
+   "group": "Q2",
+   "n": 5831,
+   "selection_rate": 0.1156,
+   "ratio": 1.0,
+   "conversion_rate": 0.1068,
+   "precision_when_selected": 0.2967,
+   "n_selected": 674
+  }
+ ],
+ "outcomes_at_comparable_score": {
+  "segment": {
+   "focus": "gig",
+   "reference": "salaried",
+   "by_decile": [
+    {
+     "decile": 1,
+     "n_focus": 660,
+     "rate_focus": 0.0318,
+     "mean_score_focus": 0.0106,
+     "n_reference": 1417,
+     "rate_reference": 0.0233,
+     "mean_score_reference": 0.0108,
+     "gap_pp": 0.85
+    },
+    {
+     "decile": 2,
+     "n_focus": 548,
+     "rate_focus": 0.0328,
+     "mean_score_focus": 0.017,
+     "n_reference": 1550,
+     "rate_reference": 0.0329,
+     "mean_score_reference": 0.0169,
+     "gap_pp": -0.01
+    },
+    {
+     "decile": 3,
+     "n_focus": 582,
+     "rate_focus": 0.0326,
+     "mean_score_focus": 0.0248,
+     "n_reference": 1595,
+     "rate_reference": 0.0332,
+     "mean_score_reference": 0.025,
+     "gap_pp": -0.06
+    },
+    {
+     "decile": 4,
+     "n_focus": 558,
+     "rate_focus": 0.0502,
+     "mean_score_focus": 0.03,
+     "n_reference": 1615,
+     "rate_reference": 0.0316,
+     "mean_score_reference": 0.0301,
+     "gap_pp": 1.86
+    },
+    {
+     "decile": 5,
+     "n_focus": 418,
+     "rate_focus": 0.0789,
+     "mean_score_focus": 0.0346,
+     "n_reference": 1776,
+     "rate_reference": 0.0524,
+     "mean_score_reference": 0.0349,
+     "gap_pp": 2.65
+    },
+    {
+     "decile": 6,
+     "n_focus": 414,
+     "rate_focus": 0.0676,
+     "mean_score_focus": 0.0433,
+     "n_reference": 1759,
+     "rate_reference": 0.0637,
+     "mean_score_reference": 0.0431,
+     "gap_pp": 0.39
+    },
+    {
+     "decile": 7,
+     "n_focus": 293,
+     "rate_focus": 0.1126,
+     "mean_score_focus": 0.0568,
+     "n_reference": 1973,
+     "rate_reference": 0.0993,
+     "mean_score_reference": 0.0563,
+     "gap_pp": 1.33
+    },
+    {
+     "decile": 8,
+     "n_focus": 354,
+     "rate_focus": 0.1469,
+     "mean_score_focus": 0.0814,
+     "n_reference": 1912,
+     "rate_reference": 0.1276,
+     "mean_score_reference": 0.0804,
+     "gap_pp": 1.93
+    },
+    {
+     "decile": 9,
+     "n_focus": 317,
+     "rate_focus": 0.1956,
+     "mean_score_focus": 0.1119,
+     "n_reference": 1988,
+     "rate_reference": 0.1605,
+     "mean_score_reference": 0.1112,
+     "gap_pp": 3.51
+    },
+    {
+     "decile": 10,
+     "n_focus": 293,
+     "rate_focus": 0.3208,
+     "mean_score_focus": 0.238,
+     "n_reference": 2026,
+     "rate_reference": 0.2764,
+     "mean_score_reference": 0.233,
+     "gap_pp": 4.44
+    }
+   ],
+   "mean_gap_pp": 1.69,
+   "n_usable_deciles": 10,
+   "reading": "At the same predicted score the focus group converts at a similar rate, so the selection gap is tracking a real difference in propensity rather than a mis-ranking."
+  },
+  "income": {
+   "focus": "Q1 lowest",
+   "reference": "Q5 highest",
+   "by_decile": [
+    {
+     "decile": 1,
+     "n_focus": 821,
+     "rate_focus": 0.0292,
+     "mean_score_focus": 0.0107,
+     "n_reference": 582,
+     "rate_reference": 0.0241,
+     "mean_score_reference": 0.0106,
+     "gap_pp": 0.51
+    },
+    {
+     "decile": 2,
+     "n_focus": 675,
+     "rate_focus": 0.0341,
+     "mean_score_focus": 0.0168,
+     "n_reference": 682,
+     "rate_reference": 0.0337,
+     "mean_score_reference": 0.0167,
+     "gap_pp": 0.04
+    },
+    {
+     "decile": 3,
+     "n_focus": 682,
+     "rate_focus": 0.0279,
+     "mean_score_focus": 0.0247,
+     "n_reference": 603,
+     "rate_reference": 0.0431,
+     "mean_score_reference": 0.025,
+     "gap_pp": -1.52
+    },
+    {
+     "decile": 4,
+     "n_focus": 678,
+     "rate_focus": 0.0383,
+     "mean_score_focus": 0.03,
+     "n_reference": 536,
+     "rate_reference": 0.0504,
+     "mean_score_reference": 0.0296,
+     "gap_pp": -1.21
+    },
+    {
+     "decile": 5,
+     "n_focus": 491,
+     "rate_focus": 0.0611,
+     "mean_score_focus": 0.035,
+     "n_reference": 656,
+     "rate_reference": 0.0686,
+     "mean_score_reference": 0.0351,
+     "gap_pp": -0.75
+    },
+    {
+     "decile": 6,
+     "n_focus": 543,
+     "rate_focus": 0.07,
+     "mean_score_focus": 0.0432,
+     "n_reference": 557,
+     "rate_reference": 0.061,
+     "mean_score_reference": 0.0431,
+     "gap_pp": 0.9
+    },
+    {
+     "decile": 7,
+     "n_focus": 448,
+     "rate_focus": 0.0893,
+     "mean_score_focus": 0.0565,
+     "n_reference": 549,
+     "rate_reference": 0.1038,
+     "mean_score_reference": 0.0564,
+     "gap_pp": -1.45
+    },
+    {
+     "decile": 8,
+     "n_focus": 487,
+     "rate_focus": 0.1191,
+     "mean_score_focus": 0.0793,
+     "n_reference": 548,
+     "rate_reference": 0.1186,
+     "mean_score_reference": 0.0802,
+     "gap_pp": 0.05
+    },
+    {
+     "decile": 9,
+     "n_focus": 491,
+     "rate_focus": 0.1792,
+     "mean_score_focus": 0.1117,
+     "n_reference": 539,
+     "rate_reference": 0.1688,
+     "mean_score_reference": 0.1109,
+     "gap_pp": 1.04
+    },
+    {
+     "decile": 10,
+     "n_focus": 515,
+     "rate_focus": 0.2913,
+     "mean_score_focus": 0.2366,
+     "n_reference": 579,
+     "rate_reference": 0.3126,
+     "mean_score_reference": 0.2383,
+     "gap_pp": -2.13
+    }
+   ],
+   "mean_gap_pp": -0.45,
+   "n_usable_deciles": 10,
+   "reading": "At the same predicted score the focus group converts at a similar rate, so the selection gap is tracking a real difference in propensity rather than a mis-ranking."
+  }
+ },
+ "ranking_variants": [
+  {
+   "capacity_weight": 0.0,
+   "label": "probability only (shipped)",
+   "precision": 0.2906,
+   "worst_ratio": 0.57,
+   "worst_group": "Segment: gig",
+   "gig_ratio": 0.57
+  },
+  {
+   "capacity_weight": 0.15,
+   "label": "blend, capacity weight 0.15",
+   "precision": 0.2779,
+   "worst_ratio": 0.38,
+   "worst_group": "Income band: Q1 lowest",
+   "gig_ratio": 0.45
+  },
+  {
+   "capacity_weight": 0.35,
+   "label": "blend, capacity weight 0.35",
+   "precision": 0.2192,
+   "worst_ratio": 0.09,
+   "worst_group": "Income band: Q1 lowest",
+   "gig_ratio": 0.21
+  }
+ ],
+ "remedies": {
+  "equal_rate_quota": {
+   "rule": "equal selection rate per segment (ratio 1.00 by construction)",
+   "dimension": "segment",
+   "floor": null,
+   "n_selected": 2915,
+   "k_budget": 2915,
+   "precision": 0.2892,
+   "worst_ratio": 0.71,
+   "worst_group": "Age band: 46+",
+   "gig_ratio": 1.0,
+   "unconstrained_rate": {
+    "gig": 0.0654,
+    "salaried": 0.115,
+    "self-employed": 0.0843
+   },
+   "target_rate": {
+    "gig": 0.0998,
+    "salaried": 0.1,
+    "self-employed": 0.1001
+   },
+   "by_group": [
+    {
+     "group": "gig",
+     "n": 4437,
+     "selection_rate": 0.0998,
+     "ratio": 0.9979,
+     "conversion_rate": 0.0874,
+     "precision_when_selected": 0.2889,
+     "n_selected": 443
+    },
+    {
+     "group": "salaried",
+     "n": 17611,
+     "selection_rate": 0.1,
+     "ratio": 0.9994,
+     "conversion_rate": 0.0972,
+     "precision_when_selected": 0.2805,
+     "n_selected": 1761
+    },
+    {
+     "group": "self-employed",
+     "n": 7106,
+     "selection_rate": 0.1001,
+     "ratio": 1.0,
+     "conversion_rate": 0.0934,
+     "precision_when_selected": 0.3108,
+     "n_selected": 711
+    }
+   ]
+  },
+  "four_fifths_floor": {
+   "rule": "minimum four-fifths ratio 0.80",
+   "dimension": "segment",
+   "floor": 0.8,
+   "n_selected": 2915,
+   "k_budget": 2915,
+   "precision": 0.2902,
+   "worst_ratio": 0.74,
+   "worst_group": "Income band: Q4",
+   "gig_ratio": 0.8,
+   "unconstrained_rate": {
+    "gig": 0.0654,
+    "salaried": 0.115,
+    "self-employed": 0.0843
+   },
+   "target_rate": {
+    "gig": 0.087,
+    "salaried": 0.1086,
+    "self-employed": 0.0868
+   },
+   "by_group": [
+    {
+     "group": "self-employed",
+     "n": 7106,
+     "selection_rate": 0.0868,
+     "ratio": 0.7998,
+     "conversion_rate": 0.0934,
+     "precision_when_selected": 0.316,
+     "n_selected": 617
+    },
+    {
+     "group": "gig",
+     "n": 4437,
+     "selection_rate": 0.087,
+     "ratio": 0.8013,
+     "conversion_rate": 0.0874,
+     "precision_when_selected": 0.3031,
+     "n_selected": 386
+    },
+    {
+     "group": "salaried",
+     "n": 17611,
+     "selection_rate": 0.1086,
+     "ratio": 1.0,
+     "conversion_rate": 0.0972,
+     "precision_when_selected": 0.2793,
+     "n_selected": 1912
+    }
+   ]
+  }
+ },
+ "feature_attribution": {
+  "status": "ok",
+  "n_rows": 2814,
+  "n_gig": 372,
+  "band": "score percentile 0.84-0.96",
+  "most_against_gig": [
+   {
+    "feature": "is_dropoff_product",
+    "gig_mean": 1.36471,
+    "salaried_mean": 1.4689,
+    "gap": -0.1042
+   },
+   {
+    "feature": "journey_stated_income_ratio",
+    "gig_mean": 0.01449,
+    "salaried_mean": 0.11047,
+    "gap": -0.09597
+   },
+   {
+    "feature": "journey_last_product_matches",
+    "gig_mean": 0.65222,
+    "salaried_mean": 0.6939,
+    "gap": -0.04168
+   },
+   {
+    "feature": "journey_fee_balk",
+    "gig_mean": 0.01188,
+    "salaried_mean": 0.04924,
+    "gap": -0.03736
+   },
+   {
+    "feature": "ecom_share",
+    "gig_mean": -0.02021,
+    "salaried_mean": 0.01087,
+    "gap": -0.03108
+   },
+   {
+    "feature": "credits_cv_6m",
+    "gig_mean": -0.01649,
+    "salaried_mean": 0.00964,
+    "gap": -0.02612
+   },
+   {
+    "feature": "upi_share",
+    "gig_mean": -0.01852,
+    "salaried_mean": 0.00403,
+    "gap": -0.02255
+   },
+   {
+    "feature": "emi_headroom_ratio",
+    "gig_mean": -0.00413,
+    "salaried_mean": 0.01586,
+    "gap": -0.01999
+   },
+   {
+    "feature": "upi_count_3m",
+    "gig_mean": 0.00066,
+    "salaried_mean": 0.01445,
+    "gap": -0.01379
+   },
+   {
+    "feature": "journey_doc_refusal",
+    "gig_mean": 0.03722,
+    "salaried_mean": 0.04952,
+    "gap": -0.0123
+   }
+  ],
+  "most_for_gig": [
+   {
+    "feature": "credits_gr_6m",
+    "gig_mean": 0.03733,
+    "salaried_mean": -0.00775,
+    "gap": 0.04508
+   },
+   {
+    "feature": "journey_blank_field_ratio",
+    "gig_mean": 0.13658,
+    "salaried_mean": 0.08392,
+    "gap": 0.05266
+   },
+   {
+    "feature": "product",
+    "gig_mean": 0.19122,
+    "salaried_mean": 0.12367,
+    "gap": 0.06754
+   },
+   {
+    "feature": "journey_stage_idx",
+    "gig_mean": 0.252,
+    "salaried_mean": 0.16268,
+    "gap": 0.08931
+   },
+   {
+    "feature": "product_window_days",
+    "gig_mean": 0.17195,
+    "salaried_mean": 0.08002,
+    "gap": 0.09193
+   }
+  ],
+  "total_gap_log_odds": 0.09167,
+  "definition": "mean TreeSHAP contribution (log-odds) for the pitched product, gig minus salaried, on held-out rows whose score sits within six percentiles of the contact cut"
+ },
+ "trade_off": [
+  {
+   "option": "shipped (probability ranking, no quota)",
+   "precision": 0.2906,
+   "worst_segment_ratio": 0.5681,
+   "precision_cost_pp": 0.0,
+   "ratio_gain": 0.0
+  },
+  {
+   "option": "blend, capacity weight 0.15",
+   "precision": 0.2779,
+   "worst_segment_ratio": 0.45,
+   "precision_cost_pp": 1.27,
+   "ratio_gain": -0.1181
+  },
+  {
+   "option": "blend, capacity weight 0.35",
+   "precision": 0.2192,
+   "worst_segment_ratio": 0.21,
+   "precision_cost_pp": 7.14,
+   "ratio_gain": -0.3581
+  },
+  {
+   "option": "equal selection rate per segment (ratio 1.00 by construction)",
+   "precision": 0.2892,
+   "worst_segment_ratio": 1.0,
+   "precision_cost_pp": 0.14,
+   "ratio_gain": 0.4319
+  },
+  {
+   "option": "minimum four-fifths ratio 0.80",
+   "precision": 0.2902,
+   "worst_segment_ratio": 0.8,
+   "precision_cost_pp": 0.04,
+   "ratio_gain": 0.2319
+  }
+ ],
+ "finding": {
+  "contact_ratio": 0.5681,
+  "outcome_ratio": 0.8992,
+  "amplification": 1.583,
+  "gig_precision_when_selected": 0.3241,
+  "salaried_precision_when_selected": 0.2764,
+  "precision_gap_when_selected_pp": 4.77,
+  "mean_conversion_gap_at_equal_score_pp": 1.69,
+  "reads": "Gig workers convert about as often as salaried customers (8.74% against 9.72%, a ratio of 0.8992), but are contacted at a ratio of 0.5681. The queue therefore AMPLIFIES a small outcome difference into a large contact difference. The gig workers it does select convert +4.8 percentage points better than the salaried ones it selects, which is what a stricter effective threshold looks like: only the most obvious gig cases clear it. That is a property of the ranking, not of the population."
+ },
+ "note": "Nothing here is tuned to 0.80. The table prices each option in percentage points of precision against percentage points of contact ratio; choosing between them is a policy decision, not a modelling one.",
+ "runtime_s": 35.8
+}

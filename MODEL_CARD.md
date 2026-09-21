@@ -479,12 +479,75 @@ pretending to have solved it.
 2026-09-21. SK-23 has always been measured on the probability-ranked selection, and the
 ratio is unchanged at **0.69** now that capacity has been removed from the queue's
 ranking entirely (§8) — so a term that was never in the measured selection cannot have
-been depressing it. The standing hypothesis is the income numbers below: the behavioural
-income estimate is materially worse for gig workers, and it reaches the model through
-the income-derived features rather than through capacity. That is a hypothesis, stated
-as one. Which features carry the exclusion, whether outcomes at comparable eligibility
-justify any of it, and what a within-segment quota would cost in precision are open
-questions, not findings.
+been depressing it.
+
+`src/experiments/fairness_probe.py` replaces that wrong explanation with measurements.
+It runs on the **held-out split** rather than the snapshot, so its ratios are stricter
+than SK-23's graded 0.69 and are not a substitute for it; what they are is diagnostic.
+
+**1. The queue amplifies a small outcome gap into a large contact gap.**
+
+| segment | n | contact rate | four-fifths ratio | conversion rate | precision when selected |
+|---|---|---|---|---|---|
+| gig | 4,437 | 6.54% | **0.57** | 8.74% | **32.4%** |
+| self-employed | 7,106 | 8.43% | 0.73 | 9.34% | 32.2% |
+| salaried | 17,611 | 11.50% | 1.00 | 9.72% | 27.6% |
+
+Gig workers convert at 0.90× the salaried rate and are contacted at 0.57× — the ranking
+**amplifies the gap by 1.58×**. And the gig workers it does select convert **4.8
+percentage points better** than the salaried ones it selects. That is what a stricter
+effective threshold looks like: only the most obvious gig cases clear it, so the ones
+that do are unusually good. A group being under-selected while over-performing on
+selection is a property of the ranking, not of the population.
+
+**2. At the same score, gig workers convert slightly more, not less.** Within pooled
+score deciles the gig-minus-salaried conversion gap averages **+1.7 pp**. The model is
+not badly mis-calibrated within segment; the deficit is in where gig workers land in the
+score distribution, not in what the score means once they are there.
+
+**3. The retired capacity blend was far worse than SK-23 ever reported.** On this split:
+
+| ranking | precision@10% | gig ratio |
+|---|---|---|
+| probability only (shipped) | 29.06% | **0.57** |
+| blend, capacity weight 0.15 | 27.79% | 0.45 |
+| blend, capacity weight 0.35 (the queue delivered until 2026-09-21) | 21.92% | **0.21** |
+
+The queue an RM actually received was contacting gig workers at **0.21×** the salaried
+rate while SK-23 reported 0.69, because SK-23 was measuring the probability-ranked list
+and the queue was not. Removing capacity from the ranking (§8) was a large fairness
+improvement that nobody was claiming credit for, because nobody had measured the list
+being delivered.
+
+**4. Which features carry it.** Mean TreeSHAP for the pitched product, gig minus
+salaried, on rows within six percentiles of the contact cut: `is_dropoff_product`
+(−0.104), `journey_stated_income_ratio` (−0.096), `journey_last_product_matches`
+(−0.042), `journey_fee_balk` (−0.037), then the behavioural-income family —
+`credits_cv_6m` (−0.026, income volatility), `upi_share` (−0.023),
+`emi_headroom_ratio` (−0.020). The irregular-income story is real but small; the larger
+terms are journey-shape features, which is a different and more tractable problem.
+
+**The remedies, priced.** Nothing below was tuned to 0.80 — this is an exchange rate, and
+the choice belongs to a human.
+
+| option | precision@10% | cost | gig ratio |
+|---|---|---|---|
+| shipped (probability ranking, no quota) | 29.06% | — | 0.57 |
+| minimum four-fifths floor of 0.80, within segment | 29.02% | **−0.04 pp** | 0.80 |
+| equal selection rate per segment | 28.92% | **−0.14 pp** | 1.00 |
+| blend, capacity weight 0.15 | 27.79% | −1.27 pp | 0.45 |
+| blend, capacity weight 0.35 | 21.92% | −7.14 pp | 0.21 |
+
+A within-segment quota that lifts the worst ratio to 0.80 costs **four hundredths of a
+percentage point** of precision — about one conversion in every 2,500 calls. Equalising
+the rate outright costs 0.14 pp. Both are, on this data, close to free, and both are far
+cheaper than the capacity blend that was being delivered for free in the other direction.
+
+**This is not shipped.** A contact quota is a policy the bank must choose, not a default
+a model author should install, and choosing it on synthetic data would be choosing it on
+a simulation. What ships is the measurement and the price. The quota rule itself is
+implemented and tested (`src/experiments/fairness_probe.py::_quota`) so that turning it
+on is a decision rather than a project.
 
 | Income estimation (held-out, snapshot month, n = 1,694) | |
 |---|---|
@@ -575,28 +638,81 @@ is the finding; it is never hidden and never tuned toward.
 1 reported failure (SK-23, the gig gap) · 2 not run in this script (SK-19, SK-22 — validation
 runners 08 and 10 emit them; `validation/report/REPORT.md` has their values).**
 
-### What the intervals in this card are, and are not
+### Uncertainty: three questions, three answers, never added together
 
-Two kinds of interval appear here and in `validation/report/REPORT.md`, and they answer
-different questions:
+`metrics.uncertainty` keeps three estimands apart. They are not interchangeable and they
+do not combine into one interval, which is why the validation report's column is called
+`Interval` and every row says which kind it carries.
 
-- **95% confidence interval** — Wilson for proportions, Hanley-McNeil for AUCs, computed
-  on the packed seed's own held-out rows. It is sampling uncertainty around the number
-  printed beside it. (The export contract carries the method name verbatim; it used to
-  relabel Hanley-McNeil as DeLong, which is a different method, and no longer does.)
-- **5-seed spread** — the 2.5th to 97.5th percentile of the metric across the registered
-  training seeds [7, 8, 9, 10, 11]. It measures *training-seed variability*. It is **not**
-  a confidence interval and the packed seed's value can fall outside it, because five
-  points interpolate well inside their own min and max. Until 2026-09-21 the validation
-  report labelled these "95% CI" beside seed-7 point estimates, which put several
-  estimates outside their displayed interval; they are now labelled "Interval" with the
-  kind named on every row.
+| what varies | precision@10% | kind | how |
+|---|---|---|---|
+| **Sampling** — which customers landed in the book | **26.76 – 31.18%** | genuine 95% CI | `cust_id` resampled with replacement, 1,000 times, over 3,305 held-out customers; **the queue is re-selected by `model.policy` inside every resample** |
+| **Training seed** — which fit/calibrate/holdout split | 27.50 – 28.96% | spread, not a CI | 2.5–97.5 percentile across the registered seeds [7, 8, 9, 10, 11] |
+| **Generator** — which synthetic world the book came from | 25.73 – 29.27% | spread, not a CI | 8 worlds regenerated end to end (book + journeys + labels), each scored at the *same* model seed 7 |
 
-**Neither is a customer-clustered bootstrap**, which is what `criteria.yaml
-confidence.method` actually registers and what sampling uncertainty over a queue
-selection properly requires — the resample has to be at `cust_id` and the queue has to be
-re-selected inside each resample. That is not computed, and it is deliberately not faked
-out of the five seeds.
+The headline with its own sampling interval: **9–10 → 27–31 disbursements per 100 RM
+calls** (95% customer-clustered bootstrap).
+
+Three things follow, and none of them is comfortable:
+
+1. **The registered method is now honoured.** `criteria.yaml confidence.method` asks for
+   a percentile bootstrap resampled at `cust_id`. The pack persists the packed seed's
+   held-out predictions (`data/predictions/holdout_seed7.npz`) and `model.bootstrap`
+   resamples them. The interval is wider than the Wilson one it replaces (27.44–30.73%)
+   because a customer's thirty monthly rows are not thirty independent observations —
+   which is exactly the correction a row-level interval was hiding. Resampling the
+   *queue selection* rather than the row outcomes is what makes it a statement about the
+   policy: `k`, the eligible pool and the percentiles all move with the pool.
+2. **The generator spread is the widest of the three, at 3.5 pp.** Eight worlds give a
+   mean precision@10% of **27.64%**, against the shipped world's 29.06%. The shipped
+   generator seed is near the optimistic end of its own distribution (it is not the
+   maximum — 20260712 reaches 29.27% — so it is not cherry-picked, but the headline
+   would read "9 → 28" as a mean across worlds rather than "9 → 29"). **Most of the
+   uncertainty in this number is a property of the synthetic data, not of the model**,
+   and a real deployment would have none of it because it would have one real world.
+   That is the strongest argument in this card for treating every figure in it as a
+   statement about a simulation until real data arrives.
+3. **They are separated on purpose.** Every world in the generator experiment is scored
+   at model seed 7, so nothing in that 3.5 pp is training variance; the seed spread is
+   computed on one world, so nothing in its 1.5 pp is generator variance. Mixing them
+   would produce one number attributable to neither.
+
+Reproduce: `python3 src/score_and_pack.py` writes the first two;
+`python3 src/experiments/generator_variation.py` (about eight minutes) writes the third
+into `data/experiments/generator_variation.json`, which the pack reads and reports as
+`not_measured` if it is absent.
+
+### The menu against rules that need no model
+
+Quoting a 96.5% menu-of-4 hit rate on its own is a claim about the population: most
+converters take the product they abandoned, so a rule with no model in it already scores
+well. `metrics.menu_baselines` puts all three side by side, on every converter and on the
+**switchers** — the 814 converters who took a different product from the one they walked
+away from, the only group where a menu can add anything.
+
+| rule | menu-of-4 hit | top-1 | menu hit, switchers | top-1, switchers |
+|---|---|---|---|---|
+| **SANKET** | **96.5%** | 70.4% | **88.1%** | **1.0%** |
+| abandoned product, then popularity | 90.8% | 70.6% | 68.8% | 0.0% |
+| the 4 most-taken products | 80.5% | 31.0% | 70.9% | **39.3%** |
+
+Two readings, and the second is the uncomfortable one:
+
+- **The menu earns its keep on switchers.** 88.1% against 70.9% for the best no-model
+  rule is 17 points, on the group that matters. On all converters the margin over the
+  abandoned-product rule is 5.7 points, which is real but much smaller than the headline
+  96.5% suggests.
+- **Top-1 on switchers is 1.0%, and a constant rule beats it at 39.3%.** The model
+  almost always names the product the customer abandoned, so for a customer who switched
+  it is almost always wrong at position one. Offering the four most popular products
+  would be right nine times as often for that group. This is the clearest evidence in the
+  card that SK-14 (top-1 accuracy, reported with no target) should stay untargeted, and
+  that the menu — not the top pick — is the product. It is also a concrete lead: a
+  second-stage model that predicts *whether* a customer will switch could route those
+  cases differently.
+
+The most-popular ordering is computed from **training** positives only; building it from
+the held-out labels would be reading the answer sheet.
 
 ---
 
