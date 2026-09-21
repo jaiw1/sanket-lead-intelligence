@@ -803,15 +803,15 @@ the held-out labels would be reading the answer sheet.
 15. **The Business Radar screen is an appendix exhibit and validates nothing here.**
     `src/make_radar.py` scores real Indian companies' published filings with four
     hand-chosen weights over four financial ratios. It shares no code, features, label or
-    population with this model. Its backtest is **not point-in-time**: companies with any
-    default anywhere in their recorded history are excluded before the historical years
-    are scored, and the percentile transforms are pooled across all company-years — both
-    use information that did not exist at the dates being scored, so the reported `2.0×`
-    is an upper bound of unmeasured size. Its outcome, "total borrowings rose on the next
-    filing", is not an IDBI disbursement, and nobody called those companies, so nothing
-    there evidences that an RM call causes anything. Rebuilding it as-of each date, with
-    an expanding-window backtest and company-clustered uncertainty, is the fix and has
-    not been done.
+    population with this model. Its backtest **is** point-in-time as of 2026-09-21 —
+    eligibility uses only defaults dated on or before each scored year, the percentile
+    transforms are fitted on an expanding window of prior filings, deciles are cut within
+    the year, and the interval is a company-clustered bootstrap: **1.88× (1.83–1.93)**
+    across seven evaluation years, against **1.96×** for the retired look-ahead
+    calculation, which is published beside it. The lift drifts down over the window
+    (1.87× in 2018 to 1.61× in 2024). What no rebuild fixes: its outcome, "total
+    borrowings rose on the next filing", is not an IDBI disbursement, and nobody called
+    those companies, so nothing there evidences that an RM call causes anything.
 16. **The delivered queue is a prefix of the priced budget.** The headline prices a 10%
     contact budget (553 calls at the snapshot); the cockpit ships the first 320 of the
     same ranked list. Both numbers are published (§8) and both come from one selection

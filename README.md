@@ -454,31 +454,40 @@ them checked in.
 ## Appendix — the Business Radar exhibit
 
 The app carries one screen, **Business radar**, that is not part of SANKET. It scores
-real Indian companies' published annual filings as business-banking prospects and
-backtests whether the top-ranked ones raised borrowings the following year (`2.0×` the
-rest, top decile vs the other nine). It is included because the retail book is
-synthetic and it is worth showing that the team can work with real filings.
+real Indian companies' published annual filings (26,202 companies, 161,618 company-years)
+as business-banking prospects and backtests whether the top-ranked ones raised borrowings
+the following year. It is included because the retail book is synthetic and it is worth
+showing that the team can work with real filings. It proves nothing about SANKET.
 
-It proves nothing about SANKET, and three specific things about it are worth stating
-plainly rather than leaving for a reader to find:
+**It is now a point-in-time backtest.** It was not until 2026-09-21, and the two
+look-aheads were specific: every company that *ever* defaulted was dropped before the
+historical years were scored, so a 2018 row was filtered with a 2023 default; and each
+ratio's percentile rank was taken across all company-years pooled, so a 2018 company was
+normalised against 2023 peers. Both are gone. Defaults are read with their dates and a
+company is eligible at year Y only if it has no default dated on or before Y; the
+percentile transforms are fitted on an **expanding window** of filings up to and
+including Y; deciles are cut **within** the year.
+
+| | top decile | the rest | lift |
+|---|---|---|---|
+| **point-in-time, pooled over 7 evaluation years** | **40.6%** | 21.6% | **1.88×** (95% company-clustered CI 1.83–1.93) |
+| the retired look-ahead calculation | — | — | 1.96× |
+
+The bias was real but modest — about eight hundredths of a multiple — and the exhibit
+survives the correction. The year-by-year numbers are published too, because a pooled
+figure hides a drift and there is one: **1.87× (2018) → 1.98× (2021) → 1.61× (2024)**,
+with the last year built on roughly a third as many filings as the first.
+
+Two things it still is not, and no rebuild fixes either:
 
 1. **It is a different model.** Four hand-chosen weights over four financial ratios
    (income growth 40, interest cover 25, borrowing headroom 25, positive net worth 10).
    SANKET is a trained LightGBM over a retail drop-off population predicting
    disbursement inside a product window after an RM call. They share no code, no
    features, no label and no population.
-2. **The backtest is not point-in-time, so the `2.0×` is an upper bound.** Companies
-   with any default anywhere in their recorded history are excluded *before* the
-   historical years are scored (`src/make_radar.py`, `load_default_history`), and each
-   ratio's percentile rank is taken across all company-years pooled together
-   (`pctl`). Both use information that did not exist at the dates being scored. Doing
-   it properly means recomputing eligibility and the percentile transforms as of each
-   historical date, with an expanding-window backtest and company-clustered
-   uncertainty. That has not been done, and until it is, the number belongs in an
-   appendix.
-3. **"Raised borrowings" is not an IDBI disbursement.** The outcome is an increase in
+2. **"Raised borrowings" is not an IDBI disbursement.** The outcome is an increase in
    total borrowings from *any* lender on the next filing. Nobody called these
-   companies — there is no treatment and therefore no causal claim available.
+   companies — there is no treatment, so there is no causal claim available.
 
 Only derived aggregates and anonymised exemplars ship with the app; no company names
 and no raw rows.

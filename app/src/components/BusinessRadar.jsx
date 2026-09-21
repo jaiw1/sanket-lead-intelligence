@@ -41,14 +41,22 @@ export default function BusinessRadar({ radar }) {
           <div className="text-xs text-txt-lo">clean history + credit headroom</div>
         </div>
         <div className="bg-ink-700 border border-line rounded-xl p-4">
-          <div className="text-2xl font-bold text-signal-amber">{radar.backtest.top_multiple.toFixed(1)}×</div>
-          <div className="text-sm font-semibold mt-0.5">Backtest lift (optimistic)</div>
-          <div className="text-xs text-txt-lo">top-decile companies raised borrowings from some lender next year at this multiple of the rest — not point-in-time, so read it as an upper bound</div>
+          <div className="text-2xl font-bold text-signal-amber">{radar.backtest.top_multiple.toFixed(2)}×</div>
+          <div className="text-sm font-semibold mt-0.5">Backtest lift, point-in-time</div>
+          <div className="text-xs text-txt-lo">
+            top-decile companies raised borrowings from some lender the following year at this multiple of the rest
+            {radar.backtest.company_clustered_ci
+              ? ` (95% company-clustered ${radar.backtest.company_clustered_ci.ci_low}–${radar.backtest.company_clustered_ci.ci_high}×)`
+              : ''}
+            {radar.backtest.lookahead_top_multiple
+              ? `. The same calculation with the look-ahead this exhibit used to carry reads ${radar.backtest.lookahead_top_multiple.toFixed(2)}×.`
+              : ''}
+          </div>
         </div>
         <div className="bg-ink-700 border border-line rounded-xl p-4">
           <div className="text-2xl font-bold text-txt-hi">{radar.meta.years}</div>
-          <div className="text-sm font-semibold mt-0.5">Years of history</div>
-          <div className="text-xs text-txt-lo">real filings, real outcomes</div>
+          <div className="text-sm font-semibold mt-0.5">Evaluation years</div>
+          <div className="text-xs text-txt-lo">each scored using only the filings that existed at the time</div>
         </div>
       </div>
 
@@ -72,8 +80,12 @@ export default function BusinessRadar({ radar }) {
         </section>
 
         <section className="bg-ink-700 border border-line rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-1"><TrendingUp size={15} className="text-signal-amber" /><h3 className="font-bold text-sm">Did the radar rank borrowing correctly, after the fact?</h3></div>
-          <p className="text-xs text-txt-lo mt-1 mb-4">Backtest on real filings: businesses the radar ranked highest went on to raise borrowings the following year more often. The ranking was computed with later years in view, so this is a retrospective ordering, not a forecast anyone could have made at the time.</p>
+          <div className="flex items-center gap-2 mb-1"><TrendingUp size={15} className="text-signal-amber" /><h3 className="font-bold text-sm">Did the radar predict borrowing, point-in-time?</h3></div>
+          <p className="text-xs text-txt-lo mt-1 mb-4">
+            Each year is scored using only filings up to that year, and only companies with no default dated on or
+            before it; deciles are cut within the year. Businesses in the top decile raised borrowings the following
+            year more often than the rest.
+          </p>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={radar.backtest.deciles} margin={{ top: 18, right: 8, left: -16, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#232B4D" />
@@ -126,9 +138,44 @@ export default function BusinessRadar({ radar }) {
         </div>
       </section>
 
+      {Array.isArray(radar.backtest.by_year) && radar.backtest.by_year.length > 0 && (
+        <section className="bg-ink-700 border border-line rounded-xl p-5">
+          <h3 className="font-bold text-sm">Year by year, and the trend</h3>
+          <p className="text-xs text-txt-lo mt-1 mb-3">
+            An expanding window: every year is ranked against the filings that preceded it. A pooled number can hide a
+            drift, so each year is published.
+          </p>
+          <div className="overflow-x-auto scroll-thin">
+            <table className="w-full text-xs">
+              <caption className="sr-only">Top-decile borrowing lift by evaluation year</caption>
+              <thead>
+                <tr className="text-left text-txt-lo">
+                  <th scope="col" className="py-1.5 pr-3 font-semibold">Year scored</th>
+                  <th scope="col" className="py-1.5 pr-3 text-right font-semibold">Companies</th>
+                  <th scope="col" className="py-1.5 pr-3 text-right font-semibold">Top decile</th>
+                  <th scope="col" className="py-1.5 pr-3 text-right font-semibold">The rest</th>
+                  <th scope="col" className="py-1.5 text-right font-semibold">Lift</th>
+                </tr>
+              </thead>
+              <tbody>
+                {radar.backtest.by_year.map((r) => (
+                  <tr key={r.year} className="border-t border-line">
+                    <th scope="row" className="py-1.5 pr-3 text-left font-medium text-txt-mid">{r.year}</th>
+                    <td className="py-1.5 pr-3 text-right tabular-nums text-txt-lo">{r.n.toLocaleString('en-IN')}</td>
+                    <td className="py-1.5 pr-3 text-right tabular-nums">{Math.round(r.top_decile_rate * 100)}%</td>
+                    <td className="py-1.5 pr-3 text-right tabular-nums">{Math.round(r.rest_rate * 100)}%</td>
+                    <td className="py-1.5 text-right font-bold tabular-nums text-signal-amber">{r.multiple.toFixed(2)}×</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       <p className="text-[11px] text-txt-lo">
         Sector-level aggregates and anonymised exemplars from real Indian companies' published annual financials and credit-rating histories; only derived aggregates ship with this app.
-        Distressed or default-history businesses are screened out before ranking — using each company's whole recorded history, including events after the years being scored, which is why the backtest above is an upper bound rather than a measurement.
+        Businesses are screened out of a given year only if they had already defaulted by that year — a company that defaults later is still a prospect at the earlier date, which is what makes this a backtest rather than a hindsight ranking.
       </p>
     </div>
   )

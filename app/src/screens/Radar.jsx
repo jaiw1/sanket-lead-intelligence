@@ -45,10 +45,11 @@ export default function Radar() {
               code, features, label or population with SANKET&rsquo;s LightGBM.
             </li>
             <li>
-              <b className="text-txt-hi">The backtest is not point-in-time.</b> Companies with any default
-              anywhere in their recorded history are excluded before the historical years are scored, and the
-              percentile ranks are pooled across all years. Both use information that did not exist at the dates
-              being scored, so the lift is optimistic by an amount nothing here measures.
+              <b className="text-txt-hi">The backtest is point-in-time, since 21 September 2026.</b> Each year is
+              scored using only filings up to that year, and a company is excluded only if it had already defaulted
+              by then. It used to drop every company that ever defaulted and rank every year against every other,
+              both of which read the future. Correcting it moved the lift from 1.96× to 1.88×, and that 1.96× is
+              still published beside it so the size of the bias is a measurement rather than a claim.
             </li>
             <li>
               <b className="text-txt-hi">&ldquo;Raised borrowings&rdquo; is not a disbursement by this bank.</b> It
