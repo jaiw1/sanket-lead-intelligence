@@ -123,6 +123,20 @@ keeps the band their probability earned rather than being relabelled `cold` on t
 out; whether the bank may call them is carried separately. MODEL_CARD §8 has the
 derivation.
 
+**Those tier counts are the least stable numbers on this page, and we would rather say so
+than be caught at it.** Isotonic calibration is a step function, so the 320 delivered leads
+sit on **24** distinct probabilities, not 320 — plateaus of 15 to 60 leads that all carry
+exactly the same number. A cut is a line through that staircase, so it moves a whole plateau
+or none of it, and two plateaus sit just outside the cuts: 22 leads at 0.325 (above `hot`'s
+0.30) and 21 leads at 0.2019 (above `warm`'s 0.20). A difference far too small to matter
+elsewhere — a different CPU, a rebuilt LightGBM, a rounding change — re-tiers **15 to 22
+leads at once** while precision moves by **less than 0.4 of a percentage point** and every
+pre-registered band stays where it is. We have not moved the cuts into a gap to make the
+number look steadier; that would change who an RM rings in order to flatter a statistic.
+Every run measures it into `metrics.delivered_queue.tier_plateau_sensitivity` and the
+validation pack reports it as **SK-26** (reported, never gated). Read `hot` and `warm` as
+coarse labels; the probability printed beside them is the finer number.
+
 The cockpit exports the first **320** rows of that ranked list rather than the whole
 553 the 10% budget buys — a tighter budget (5.8%), whose held-out precision is
 **33.1%** (95% CI 30.9–35.4%), reported separately as
@@ -263,9 +277,26 @@ has now run against SANKET's book, so `data/bank/pulled.json` exists and a `--ba
 `mode: mixed` — a family whose API answered is `BANK_API` at **run** level. Per customer it
 stays honest: `src/model/bank.py` records the identifiers the pull actually came back with and
 badges a customer `BANK_API` only if they are one of them. The sandbox's sample ids and this
-book's generated ids are disjoint, so **no customer row carries `BANK_API`**; each reads
-`FIXTURE` if the committed `data/bank/fixture.json` covers them (120 of 60,000) and `SIMULATED`
-otherwise, exactly as before the pull. The genuine bank data in a `--bank` export is the
+book's generated ids are disjoint, so **no customer row earns `BANK_API` on its own**; each
+reads `FIXTURE` if the committed `data/bank/fixture.json` covers them (120 of 60,000) and
+`SIMULATED` otherwise, exactly as before the pull.
+
+**One customer is the deliberate exception, and it says so on the record.** The platform's
+dedupe path is API 456, which searches on `panCardNo` and refuses a request without one, so a
+lead with no PAN can never be dedupe-checked — and no generated customer has a PAN, because
+inventing one is exactly what this provenance apparatus exists to prevent. So the demo's hero
+lead (`LB-2006372`) has its **identity fields only** — `cif_id`, `pan`, `entity_name`,
+`mobile` — bound to the sandbox's own sample master record (`custId 68453002`), read out of
+what APIs 456 and 365 actually answered. That customer's `identity` family reads `BANK_API`
+and the record carries `demo_binding: true` plus a one-line `demo_binding_note` saying the
+identity came from the sandbox sample and everything else is synthetic; the cockpit badges it
+**"Bank API (sandbox sample, demo binding)"**, never a bare "Bank API". Its balances, income,
+holdings, score and tier are the generator's and their families are computed exactly as they
+are for every other customer — the binding is one line in `src/model/export.py`
+(`DEMO_BINDINGS`), applies to nothing else, and applies at all only when `--bank` is passed
+and the pull really answered about that record.
+
+The genuine bank data in a `--bank` export is the
 run-level endpoint block, the fetched amortisation schedules and what the account-manager API
 returned — all carried and badged where they are. The currently shipped app export
 (`app/public/sanket_data.json` → `provenance`) predates the pull and still reads
@@ -332,7 +363,9 @@ later, at lead→application.
 
 ## Validation
 
-All 25 acceptance bands live in `validation/criteria.yaml`, and — the whole point of
+All 26 acceptance bands live in `validation/criteria.yaml` — 25 of them registered
+before any result existed, and SK-26 appended on 22 September as a disclosure that gates
+nothing (the amendment block records it) — and — the whole point of
 pre-registration — that file first entered git at **2026-09-16T11:06:09+05:30**,
 *before* any of these results existed; that commit timestamp is the evidence, not this
 README. Run `make -C validation validate` to regenerate
@@ -377,6 +410,7 @@ a disclosed failing value.**
 | SK-23 | adverse-impact ratio (fairness) | ≥ 0.80 (reported, not gated) | **0.69 (gig)** | **FAIL, disclosed on purpose** — see below |
 | SK-24 | gig failure disclosed on screen | must exist | yes | pass |
 | SK-25 | baseline ladder | reported | 4 rungs (table above) | reported |
+| SK-26 | tier-plateau sensitivity | reported, added 22 Sep | 0 leads within ±0.005 of the `hot` cut, **21** of `warm` | reported |
 
 **The two honest fails, both disclosed rather than tuned away:**
 

@@ -320,6 +320,11 @@ REGISTERED_BANDS: dict[str, tuple[str, str, object, str]] = {
     "SK-23": ("adverse_impact_ratio", "ge", 0.80, "report"),
     "SK-24": ("gig_worker_failure_disclosure", "exists", None, "report"),
     "SK-25": ("precision_at_10pct_by_baseline_rung", "report", None, "report"),
+    # Added after registration (2026-09-22; see `criteria.yaml amendments`).
+    # Reported with no band, deliberately: a threshold on how near a plateau sits
+    # to a tier cut would be an incentive to move the cut, which would change who
+    # gets called to make a stability number look better.
+    "SK-26": ("tier_plateau_sensitivity", "report", None, "report"),
 }
 
 

@@ -4,9 +4,9 @@
   "registered_at": "2026-09-16T10:47:14+05:30",
   "registered_by": "RR Squad",
   "provenance": {
-    "generated_at": "2026-09-21T20:49:27+05:30",
+    "generated_at": "2026-09-22T03:33:35+05:30",
     "python": "3.12.4",
-    "git_commit": "30ad0e80a14311c702d4d4a35c48dc319fe3d4af",
+    "git_commit": "c626fb1d1a0345eacba161037c0e24dfc8d5f806",
     "git_dirty": true,
     "criteria_registered_at": "2026-09-16T10:47:14+05:30",
     "criteria_first_committed_at": "2026-09-16T11:06:09+05:30"
@@ -19,7 +19,7 @@
     "warn": 0,
     "pending": 0,
     "skipped_low_n": 0,
-    "report": 9,
+    "report": 10,
     "pass": 16
   },
   "criteria": [
@@ -39,6 +39,7 @@
       "rationale": "The denominator of the entire pitch. \"9 → 30 disbursements per 100 RM calls\" is only meaningful if the 9 is real, so the untargeted random-contact disbursement rate is pre-registered as a band in its own right rather than being read off whatever the generator happened to produce.",
       "source": "plan §B L9 bands (\"baseline 8–10% (asserted)\"); §D gate G3",
       "note": "Also asserted inside the generator (§B L6 SD-S4 solves the contact-effect θ to land in this band). Asserting it here as well means a generator change that drifts the baseline cannot pass silently.\nAMENDED 2026-09-16 — see `amendments` at the foot of this file. The BAND IS UNCHANGED at [0.08, 0.10]; the scoring population is now written down as the drop-off population (consented, contactable, an abandoned attempt in the trailing 12 months, no disbursement in flight) at the (customer, month) grain, and this metric is the disbursement rate among a uniformly random 10% contact sample of it. Source table: `data/labels.csv` (`eligible_for_contact = 1`, column `label_disbursed_in_window`).",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-01",
         "value": 0.0948,
@@ -71,6 +72,7 @@
       "rationale": "The headline claim. Contact the top 10% of the consented held-out book and roughly 30 in 100 of those calls end in a disbursement. The upper bound matters as much as the lower: a synthetic book that yields 60% precision has leaked its own generative structure and no bank reviewer would believe it.",
       "source": "plan §B L9 bands (\"precision@10% 25–35%\"); §D gate G3",
       "note": "Band is on the point estimate; the 95% CI is reported beside it.\nAMENDED 2026-09-16 — see `amendments` at the foot of this file. The BAND IS UNCHANGED at [0.25, 0.35]; the scoring population is the same drop-off population as SK-01, model-ranked at the same 10% contact budget, so the \"9 → 30 per 100 RM calls\" headline is two numbers over one denominator. The generator (§B L6 SD-S4) tunes a single signal-to-noise knob so that an ORACLE ranker — one that sees the latent index the label was drawn from — reaches ~0.32. That is a ceiling on this criterion, not a prediction of it: the model reads those latents only through noisy observables and will land below it.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-02",
         "value": 0.2906,
@@ -100,6 +102,7 @@
       "rationale": "The shape of the precision curve either side of the operating budget, with CIs. A curve that is flat between 5% and 20% would mean the ranking is not doing much, whatever the single headline number says.",
       "source": "plan §B L9 bands (\"+ @5/@20 w/ CI\")",
       "note": "REPORTED, NO TARGET — the plan pre-registers a band at 10% only.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-03",
         "value": {
@@ -150,6 +153,7 @@
       "rationale": "Per-product windows are a mentor mandate: a gold-loan lead is worthless on day three, a home-loan lead is alive for a fortnight. If the model pitches a one-day product to people who take a fortnight to close, the window it prints beside the lead does not describe the product it is selling.",
       "source": "plan §B L9 bands (\"window respect ≥ 90% (new)\")",
       "note": "WHAT THIS MEASURES: conversion timing among converters. Of the held-out customers inside the contact budget who do disburse, the share whose disbursement falls within the pre-registered window of the product the model offered them (see label_definition.conversion_windows_days). A conversion that lands outside the offered product's window counts against this criterion even though it is a real disbursement.\nWHAT THIS IS NOT: it is NOT contact-SLA compliance. It does not measure whether a relationship manager made contact before the lead's contact_by expired, and it never should be quoted as if it did. Nothing in this pipeline observes an RM dialling — there are no contact timestamps in the delivered pack — so contact-SLA compliance is unmeasured. The earlier phrasing (\"the RM queue's SLA\") was wrong and is retired.\nINTERPRETATION: the plan introduces \"window respect\" without defining it; the definition above is this pack's registration of it. The threshold is unchanged from pre-registration.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-04",
         "value": 0.9009,
@@ -179,6 +183,7 @@
       "rationale": "Window-shopper detection is the feature that keeps RM time away from tyre-kickers. Deliberately a modest floor: the generator makes the signal informative but NOT deterministic (§B L6 SD-S3 — some genuine buyers balk at the fee once), so a high AUC here would mean the synthetic data had made the problem too easy.",
       "source": "plan §B L9 bands (\"shopper AUC ≥ 0.70\")",
       "note": "AUC against the generator's latent window_shopper flag on the held-out book.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-05",
         "value": 0.847,
@@ -206,6 +211,7 @@
       "rationale": "The exact two numbers that go on the deck and in the README, emitted from the same run as everything else so they cannot drift apart from the evidence. Replaces the retired \"28×\" claim everywhere.",
       "source": "plan §B L7 SM-2 (\"9 → 30 disbursements per 100 RM calls\")",
       "note": "Derived from SK-01 and SK-02; reported, no separate band.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-06",
         "value": "9 → 29 disbursements per 100 RM calls",
@@ -230,6 +236,7 @@
       "rationale": "A prospecting model is retrained on a cadence but used continuously. Losing more than 5 percentage points of precision on later months means the queue goes stale faster than the bank can refresh it.",
       "source": "plan §B L9 bands (\"OOT degradation ≤ 5 pp\")",
       "note": "Measured in PERCENTAGE POINTS (holdout precision@10% minus out-of-time precision@10%), not as a ratio. Improvement is reported as a negative degradation and passes.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-07",
         "value": -0.7982,
@@ -256,6 +263,7 @@
       "rationale": "This is what licenses the 3-models-to-1 collapse (§B L7 SM-1). One model with `product` as a categorical is only defensible if it holds its own on every product, including the two thin ones.",
       "source": "plan §B L9 bands (\"per-product AUC ≥ 0.75\"); §D gate G3 (\"×6\")",
       "note": "All six products, with CI. min_n is 0 deliberately: \"×6\" means all six, so a thin product is a generator problem to fix, not a cell to exempt.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-08",
         "value": 0.804,
@@ -352,6 +360,7 @@
       "rationale": "Unweighted mean of the six per-product AUCs, so a large product cannot carry the average while a small one is being failed.",
       "source": "plan §B L9 bands (\"macro ≥ 0.78\")",
       "note": null,
+      "added_at": null,
       "result": {
         "criterion_id": "SK-09",
         "value": 0.8648,
@@ -381,6 +390,7 @@
       "rationale": "AUC and precision@10% with CI and n for every level of all seven cuts. Only the product cut carries a pre-registered floor, so the remaining six are reported in full and read by a human — including the cells that look bad.",
       "source": "plan §B L9 (12 runners, cut list); owner direction 7 (\"validated across every cut\")",
       "note": "min_n of 500 is carried over from the calibration cell-size convention used on the DRISHTi side rather than inventing a second number. Cells below 500 are listed with their n and marked skipped_low_n.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-10",
         "value": "33 cells across 7 registered cuts",
@@ -813,6 +823,7 @@
       "rationale": "The lead drawer shows a probability to an RM who will act on it. If a \"40%\" lead converts at 15%, the RM stops trusting the queue within a week.",
       "source": "plan §B L9 bands (\"ECE ≤ 0.03 overall\")",
       "note": null,
+      "added_at": null,
       "result": {
         "criterion_id": "SK-11",
         "value": 0.00717,
@@ -842,6 +853,7 @@
       "rationale": "One model across six products can be well calibrated on average while being systematically over-confident on the products it saw least.",
       "source": "plan §B L9 bands (\"ECE ≤ 0.03 overall + per product\")",
       "note": "The plan states a single figure (0.03) for both the overall and the per-product clause, so the same 0.03 is registered here — NOT a looser per-cell band. min_n is 0 for the same reason as SK-08.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-12",
         "value": 0.00267,
@@ -911,6 +923,7 @@
       "rationale": "The mentors asked for a menu of four, not a single next-best product. The menu earns its place only if the product the customer actually takes is inside it four times in five.",
       "source": "plan §B L9 bands (\"menu-of-4 hit rate ≥ 80% (new)\")",
       "note": "INTERPRETATION: among held-out customers who disburse, the share whose realised product appears in the model's top-4 `product_menu` at the snapshot month. Random ordering over six products would score ~0.67, so 0.80 is a real but not heroic bar — recorded here so nobody later mistakes it for a strong result.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-13",
         "value": 0.9649,
@@ -940,6 +953,7 @@
       "rationale": "The same measurement at rank 1. Reported so the menu's value over a single recommendation is visible as a number rather than asserted.",
       "source": "plan §B L9 (menu of 4); §D gate G3",
       "note": "REPORTED, NO PRE-REGISTERED TARGET — deliberately. Setting a top-1 target would push the model back toward the single-recommendation behaviour the menu exists to replace.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-14",
         "value": 0.7044,
@@ -969,6 +983,7 @@
       "rationale": "The four window-shopper signals the mentors named — vague / blank answers, refusing to share income details, balking at the ₹1,000 fee, and refusing documents — must each push the disbursement probability DOWN. A signal that came out positive would mean the model had learned the opposite of the behaviour the business named, and the negative chips in the lead drawer would be lying to the RM.",
       "source": "plan §D gate G3 (\"4 signals negative\"); mentor mandate (window-shopper signals)",
       "note": "INTERPRETATION: direction is measured as the sign of the signal's mean signed contribution on the held-out book; all four must be negative, hence a count of 4. Filed under rank-order because it is a direction-of-effect check on the score, not a leakage or ablation test.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-15",
         "value": 4,
@@ -995,6 +1010,7 @@
       "rationale": "Population Stability Index of the score distribution between the training window and the most recent window. 0.10 is the conventional \"no meaningful shift\" line in bank model-risk practice.",
       "source": "plan §B L9 bands (\"PSI ≤ 0.10\")",
       "note": null,
+      "added_at": null,
       "result": {
         "criterion_id": "SK-16",
         "value": 0.00882,
@@ -1006,6 +1022,46 @@
         "figures": [
           "psi_score.png"
         ]
+      }
+    },
+    {
+      "id": "SK-26",
+      "runner": "06_stability",
+      "metric": "tier_plateau_sensitivity",
+      "scope": "overall",
+      "cut": null,
+      "op": "report",
+      "threshold": null,
+      "min_n": 0,
+      "severity": "report",
+      "rationale": "Isotonic calibration is a step function, so the 320 delivered leads do not sit on 320 distinct probabilities — they sit on about two dozen plateaus of 15 to 60 leads each. A tier cut is a horizontal line through that staircase: it moves a whole plateau or none of it. Two plateaus sit just outside the cuts (22 leads at 0.325 above `hot`'s 0.30, 21 leads at 0.2019 above `warm`'s 0.20), so a numeric difference far too small to move precision — a different CPU, a library rebuild, a rounding change — can re-tier fifteen to twenty-two leads at once while every gated band stays exactly where it is. Nothing else in this pack measures that, because every other criterion is about a rate and rates are what plateaus leave alone. An RM reading `hot` on a queue screen deserves to know the label is coarser than it looks.",
+      "source": "post-registration disclosure, 2026-09-22 (README \"Adding a criterion\")",
+      "note": "REPORTED, NEVER GATED, and deliberately so: there is no defensible band here. A plateau near a cut is a property of isotonic calibration on this data, not a defect to be tuned away, and setting a threshold would invite moving the cuts to satisfy it — which would change who is called in order to make a stability number look better. The reported value is the count of delivered leads within +/-0.005 of either cut; `cuts[*].nearest_above` and `nearest_below` carry the distance to the next plateau on each side, because a count of zero does not mean a cut is safe. Read from `data/model_metrics.json` -> `metrics.delivered_queue.tier_plateau_sensitivity`, which `src/model/policy.py::tier_plateau_sensitivity` computes on the same delivered 320 rows `metrics.delivered_queue.tiers` counts.",
+      "added_at": "2026-09-22T00:00:00+05:30",
+      "result": {
+        "criterion_id": "SK-26",
+        "value": 21,
+        "ci": null,
+        "n": 320,
+        "status": "report",
+        "detail": "320 delivered leads sit on 24 distinct calibrated probabilities (isotonic plateaus, largest 60 leads). Reported value is the worst cut's count within +/-0.005. A count of 0 does not mean a cut is safe: hot cut 0.3 — nearest plateau above is 22 lead(s) at 0.325; warm cut 0.2 — nearest plateau above is 21 lead(s) at 0.201923. Reported, never gated (criteria.yaml SK-26 note): precision moves by a fraction of a point where the tier label moves by whole plateaus, and no band here could be anything but invented after the fact.",
+        "breakdown": [
+          {
+            "level": "hot cut (p >= 0.3)",
+            "value": 0,
+            "n": 320,
+            "detail": "nearest plateau above: 22 lead(s) at 0.325 (+0.025)",
+            "status": "report"
+          },
+          {
+            "level": "warm cut (p >= 0.2)",
+            "value": 21,
+            "n": 320,
+            "detail": "nearest plateau above: 21 lead(s) at 0.201923 (+0.001923)",
+            "status": "report"
+          }
+        ],
+        "figures": []
       }
     },
     {
@@ -1021,6 +1077,7 @@
       "rationale": "The application-journey layer is the single biggest leakage hazard in SANKET: every feature about a journey is computed from a timeline that ends in the very outcome being predicted. Not one model input may draw on data timestamped after `abandon_ts` (or after disbursement, for the converters).",
       "source": "plan §B L9 bands (\"leakage: nothing after abandon_ts\")",
       "note": "Zero tolerance, as written. Enforced as a count of violating features, so the report names the offending feature rather than just failing. Pairs with the existing rule in src/score_and_pack.py EXCLUDED_FEATURES that nothing after an application starts may be used at prospecting.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-17",
         "value": 0,
@@ -1065,6 +1122,7 @@
       "rationale": "Retrain the full pipeline on randomly permuted labels. Anything outside chance means the evaluation harness itself leaks — the strongest single check that the reported precision is real.",
       "source": "plan §B L9 bands (\"permutation ∈ [0.48,0.52]\")",
       "note": "INTERPRETATION: the permutation is of the LABEL, with split, features and hyper-parameters untouched. Averaged over the registered seeds.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-18",
         "value": 0.5062,
@@ -1091,6 +1149,7 @@
       "rationale": "Which families actually carry the model — cross-bank transactions from API 595/739, salary-credit behaviour, dwell signals, journey friction, shopper signals. Reported so the \"what would we lose without this API\" question has an evidenced answer.",
       "source": "plan §B L9 (runner 08)",
       "note": "The plan specifies runner 08 for SANKET but pre-registers no band for it, so no threshold was invented. Reported with CIs; a human reads it.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-19",
         "value": {
@@ -1378,6 +1437,7 @@
       "rationale": "One seed is an anecdote. Five is the minimum at which the CI below means anything.",
       "source": "plan §B L9 bands (\"≥5 seeds\"); §D gate G7",
       "note": null,
+      "added_at": null,
       "result": {
         "criterion_id": "SK-20",
         "value": 5,
@@ -1404,6 +1464,7 @@
       "rationale": "The headline precision must be a property of the model, not of the seed. Registered in percentage points: a cross-seed interval wider than 4 pp would put the 25–35% band itself within noise.",
       "source": "plan §B L9 bands (\"CI ≤ 4 pp\")",
       "note": null,
+      "added_at": null,
       "result": {
         "criterion_id": "SK-21",
         "value": 1.4639,
@@ -1430,6 +1491,7 @@
       "rationale": "Behaviour when the book shifts: consent withdrawal at scale, a suppression-rule sweep (§B L6 SD-S6), cross-bank transaction data (595/739) unavailable, and a doubled window-shopper share.",
       "source": "plan §B L9 (runner 10)",
       "note": "The plan specifies runner 10 for SANKET but pre-registers no band for it, so no threshold was invented. The scenarios themselves ARE pre-registered here so the set cannot be chosen after seeing which ones look good.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-22",
         "value": {
@@ -1492,6 +1554,7 @@
       "rationale": "Four-fifths rule on the contact rate: least-contacted group ÷ most-contacted group within each protected-proxy attribute, at the live contact budget.",
       "source": "plan §B L9 bands (\"fairness incl. the documented gig failure\")",
       "note": "REPORTED, NOT GATED. SANKET excludes gender, religion, caste, marital status and pin-code outright by policy (src/score_and_pack.py EXCLUDED_FEATURES), so the protected-proxy attributes evaluated are occupation_segment, income_band, city_tier and age band. The 0.80 reference line is the conventional four-fifths threshold, recorded so the report can say how far each attribute sits from it.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-23",
         "value": 0.69,
@@ -1631,6 +1694,7 @@
       "rationale": "A known, accepted failure mode: irregular gig-economy income reads as instability to a model trained mostly on salaried credits, so gig workers are under-contacted. It is disclosed rather than tuned away, because tuning it away on synthetic data would be pretending to have solved it.",
       "source": "plan §B L9 bands (\"fairness incl. the documented gig failure\")",
       "note": "INTERPRETATION: registered as an existence check — the fairness section of REPORT.md must contain a quantified statement of the gig-worker gap, and it must be carried into the README's \"What we did not build, and why\". Kept at severity `report` because the plan lists it among reported findings; it is nonetheless a G5 honesty-gate item.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-24",
         "value": true,
@@ -1657,6 +1721,7 @@
       "rationale": "Contextualises the gain: random contact, then balance-ranked contact (what a branch does today), then a logistic scorecard, then the LightGBM model, each with CI. If balance-ranking is within noise of the model, that is the honest finding and the deck says so.",
       "source": "plan §B L9 (runner 12)",
       "note": "The plan specifies runner 12 but pre-registers no band for it, so no threshold was invented. The rungs ARE pre-registered here so the comparison set cannot be chosen after the fact.",
+      "added_at": null,
       "result": {
         "criterion_id": "SK-25",
         "value": [
@@ -1754,6 +1819,16 @@
     }
   ],
   "amendments": [
+    {
+      "at": "2026-09-22T00:00:00+05:30",
+      "by": "RR Squad",
+      "criteria": [
+        "SK-26"
+      ],
+      "change": "ADDITION ONLY. No registered band moves, and no threshold, severity, op or scope of SK-01..SK-25 is touched. SK-26 (`tier_plateau_sensitivity`, runner 06_stability, `severity: report`, no threshold) is appended, and it gates nothing.",
+      "rationale": "The pack measured how much precision moves and never how much the TIER LABEL moves, and those turn out to be very different quantities. The delivered queue sits on about two dozen isotonic plateaus of 15 to 60 leads; a 22-lead plateau at 0.325 and a 21-lead plateau at 0.2019 sit just above the 0.30 and 0.20 cuts, so an arithmetic difference small enough to leave precision inside its own confidence interval — the nightly box runs on x86 and this repo's numbers were measured on arm64 — can still re-tier fifteen to twenty-two leads at once. That is a real limit of what `hot` means on the queue screen, it was not disclosed anywhere, and the honest response to finding it is to publish it rather than to quietly move a cut. Registered as a disclosure with no band because any band here would be invented after the fact and would create an incentive to tune the cuts.",
+      "loosening": false
+    },
     {
       "at": "2026-09-21T00:00:00+05:30",
       "by": "RR Squad — third-party review response",

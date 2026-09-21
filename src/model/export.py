@@ -10,6 +10,11 @@ most of it under ``blended``. This module builds that shape from the same
 in-memory objects :func:`model.pack.run` already computed — no second model
 run, no second read of the CSVs.
 
+One customer's identity fields are bound to the Atlas sandbox's own sample
+master record so the platform's CRM-push demonstration has a PAN to dedupe on —
+:data:`DEMO_BINDINGS` and the block above it say exactly which customer, which
+fields, and what is deliberately *not* touched.
+
 Only produced when ``--bank`` is passed (``score_and_pack.py``'s ``--bank``
 flag; see ``model.bank``). Three ``meta`` fields are deliberately left as
 placeholders — ``model_run_id``, ``git_sha``, ``criteria_sha`` — because the
@@ -108,6 +113,115 @@ def _cif_id(cust_id: str) -> str:
     """
     digits = "".join(ch for ch in str(cust_id) if ch.isdigit())
     return f"9{int(digits[-8:] or 0):08d}"
+
+
+# --------------------------------------------------------------------------- #
+# demo bindings — ONE generated customer tied to the sandbox's sample record
+# --------------------------------------------------------------------------- #
+#
+# Why this exists. The platform's dedupe path is API 456, and 456 searches on
+# ``panCardNo``: a request with that field blank is refused by the gateway
+# (HTTP 400, "panCardNo is mandatory"), so a lead carrying no PAN can never be
+# dedupe-checked and the CRM push dry-run says exactly that — "this lead carries
+# no PAN". Every customer in this book is generated and none of them has one.
+# Inventing a PAN is precisely what the rest of this module exists to prevent.
+#
+# The Atlas sandbox does hold a small number of real sample master records. This
+# binds ONE of them to ONE customer — the hero lead of the demo script,
+# ``docs/demo/narration.md`` — so the push demonstration asks the real endpoint a
+# question it can really answer, with an id that is really the bank's.
+#
+# The binding is deliberately the narrowest thing that works:
+#
+# * **One customer, named by id.** Not a rule, not a heuristic, not "the first
+#   lead" — a literal ``cust_id`` in :data:`DEMO_BINDINGS`, so the blast radius
+#   is readable in one line and every other customer is byte-identical to what
+#   it was before.
+# * **Identity fields only.** ``cif_id``, ``pan``, ``entity_name``, ``mobile``
+#   come from the bank's own 456/365 answer. Balances, income, holdings, the
+#   journey, the score and the tier are the generator's, unchanged, and their
+#   provenance families are computed exactly as they are for everybody else —
+#   see :func:`build_customers`, which asks
+#   :meth:`bank.BankContext.provenance_for` with the customer's *synthetic* CIF
+#   so the bound ``cif_id`` cannot silently promote ``casa_behaviour`` or
+#   ``holdings`` to ``BANK_API`` along with ``identity``.
+# * **Declared in the record itself.** ``demo_binding: true`` and a one-line
+#   ``demo_binding_note`` ride on the customer, so a reader of the export sees
+#   the arrangement without reading this file.
+# * **Nothing without a pull.** No ``--bank``, no ``pulled.json``, or a pull that
+#   did not answer about that ``custId`` — and the binding does not apply at all.
+#   Then the customer is what it always was.
+
+#: ``cust_id`` -> the sandbox ``custId`` whose identity it is bound to.
+DEMO_BINDINGS: dict[str, str] = {
+    # The demo's hero lead <- the sandbox's sample master record (PAN FGHPP4567T,
+    # the one PAN API 456 answers 200 for; verified live 2026-09-22).
+    "LB-2006372": "68453002",
+}
+
+#: The one line every bound record carries, verbatim.
+DEMO_BINDING_NOTE = ("identity fields come from the bank sandbox's sample customer record, "
+                     "bound for the CRM-push demonstration; all other fields are synthetic")
+
+#: The badge value ``app/public/sanket_data.json`` uses for a demo-bound identity
+#: family. The platform contract's ``provenance_source`` enum has three values and
+#: no fourth, so ``data/export/sanket_export.json`` says plain ``BANK_API`` and
+#: carries ``demo_binding`` beside it; this longer string is the cockpit's own
+#: vocabulary, which ``app/src/components/SourceBadge.jsx`` renders as
+#: "Bank API (sandbox sample, demo binding)".
+DEMO_BINDING_SOURCE = "BANK_API+demo_binding"
+
+
+def _sandbox_record(bank_ctx: B.BankContext, api_id: str, bank_cust_id: str) -> dict:
+    """The one answered record of ``api_id`` that is *about* ``bank_cust_id``."""
+    entry = ((bank_ctx.pulled or {}).get("apis") or {}).get(str(api_id)) or {}
+    if not isinstance(entry, dict) or entry.get("provenance") != "BANK_API":
+        return {}
+    for rec in entry.get("records") or []:
+        if not isinstance(rec, dict):
+            continue
+        if str(rec.get("custId") or rec.get("customerID") or "").strip() == bank_cust_id:
+            return rec
+    return {}
+
+
+def demo_binding_for(cust_id: str, bank_ctx: B.BankContext) -> dict | None:
+    """The bound identity fields for ``cust_id``, or ``None`` if nothing binds.
+
+    Read out of the pull rather than typed here: a PAN in this file would be a
+    PAN this repo asserts, and the whole point is that it is the bank's.
+    """
+    bank_cust_id = DEMO_BINDINGS.get(str(cust_id))
+    if bank_cust_id is None or not bank_ctx.enabled or bank_ctx.pulled is None:
+        return None
+    # "API 456 answered" is not "API 456 answered about this record" — the same
+    # distinction `BankContext.fetched_for` draws, applied to the sandbox id.
+    if bank_cust_id not in bank_ctx.bank_keys:
+        return None
+
+    master = _sandbox_record(bank_ctx, "456", bank_cust_id)       # identity master
+    account = _sandbox_record(bank_ctx, "365", bank_cust_id)      # account inquiry
+    pan = str(master.get("panGirNum") or "").strip()
+    if not pan:
+        # No PAN, no binding: a bound record with no PAN would buy the demo
+        # nothing (456 refuses the search) and cost it the only honest reason
+        # for doing this at all.
+        return None
+
+    out: dict[str, object] = dict(cif_id=bank_cust_id, pan=pan,
+                                  demo_binding=True, demo_binding_note=DEMO_BINDING_NOTE)
+    # 456 is the contract's named source for the name; 365's `personName.name`
+    # is the same string for the same `custId` and stands in if 456 omitted it.
+    name = str(master.get("custName")
+               or (account.get("personName") or {}).get("name") or "").strip()
+    if name:
+        out["entity_name"] = name
+    # The contract names this field `custMobileNo`; the sandbox's sample record
+    # spells the number it holds `custPagerNo`, so both are read, in that order.
+    mobile = str(master.get("custMobileNo") or master.get("custPagerNo") or "").strip()
+    if mobile:
+        out["mobile"] = mobile
+    return out
 
 
 #: The method name travels unchanged.
@@ -264,6 +378,17 @@ def build_customers(snap_rows: pd.DataFrame, rm_map: dict, bank_ctx: B.BankConte
         est_income = float(overlay.get("credits_med_6m") or r.credits_med_6m or 0.0)
         rm = rm_map.get(cust_id)
         cif_id = str(overlay.get("cif_id") or _cif_id(cust_id))
+        # Computed BEFORE the binding replaces `cif_id`, and deliberately so:
+        # `provenance_for` badges a customer BANK_API for every family the pull
+        # answered about them, and the bound sandbox id IS one the pull answered
+        # about. Asking with the synthetic CIF keeps the other seven families
+        # reading exactly what they read for every unbound customer, and leaves
+        # `identity` as the only thing the binding moves.
+        provenance = bank_ctx.provenance_for(cust_id, cif_id)
+        binding = demo_binding_for(cust_id, bank_ctx)
+        if binding is not None:
+            cif_id = str(binding["cif_id"])
+            provenance = dict(provenance, identity="BANK_API")
         row = dict(
             cust_id=cust_id,
             cif_id=cif_id,
@@ -278,8 +403,15 @@ def build_customers(snap_rows: pd.DataFrame, rm_map: dict, bank_ctx: B.BankConte
             holdings=list(overlay.get("holdings") or []),
             # The cif_id too, not just the cust_id: the sandbox is keyed by the bank's own
             # customer ids, so that is the id a fetched record would be found under.
-            provenance=bank_ctx.provenance_for(cust_id, cif_id),
+            provenance=provenance,
         )
+        if binding is not None:
+            # pan / entity_name / mobile are the bank's own strings (API 456, with
+            # 365 as the name fallback); `demo_binding` + the note declare the
+            # arrangement on the record that carries it.
+            for key in ("pan", "entity_name", "mobile", "demo_binding", "demo_binding_note"):
+                if key in binding:
+                    row[key] = binding[key]
         if overlay.get("branch_code"):
             row["branch_code"] = str(overlay["branch_code"])
         elif rm is not None:
@@ -447,10 +579,17 @@ def build_amortisation_schedules() -> dict:
 
 
 def build_leads(leads_internal: list[dict], rm_map: dict,
-               amort_ref_by_product: dict[str, str]) -> list[dict]:
+               amort_ref_by_product: dict[str, str],
+               bank_ctx: B.BankContext | None = None) -> list[dict]:
     out = []
     for lead in leads_internal:
         cust_id = lead["id"]
+        # A bound customer's lead has to agree with its customer row: the
+        # contract says `leads[].id` MUST appear in `customers[]`, and the
+        # platform sends `lead.cif_id` to the dedupe gateway
+        # (`app/services/sanket.py::dedupe_preview`). Two different CIFs for one
+        # customer would ask the bank about somebody who does not exist.
+        binding = (demo_binding_for(cust_id, bank_ctx) if bank_ctx is not None else None)
         suppressed = bool(lead["suppressed"])
         rm = rm_map.get(cust_id)
         assigned_rm_id = None if suppressed or rm is None else rm.rm_id
@@ -471,7 +610,8 @@ def build_leads(leads_internal: list[dict], rm_map: dict,
                          hi=dict(q=lead["objection"]["q"], a=lead["objection"]["a"])) \
             if not suppressed else None
         row = dict(
-            id=cust_id, cif_id=_cif_id(cust_id), segment=lead["segment"], age=lead["age"],
+            id=cust_id, cif_id=(str(binding["cif_id"]) if binding else _cif_id(cust_id)),
+            segment=lead["segment"], age=lead["age"],
             city_tier=lead["city_tier"], tenure_m=lead["tenure_m"], consent=bool(lead["consent"]),
             product=lead["product"], product_menu=menu, tier=lead["tier"], lang=lead["lang"],
             # `score` is the queue's ordering key (model.policy.DEFAULT_RANKING);
@@ -499,7 +639,12 @@ def build_leads(leads_internal: list[dict], rm_map: dict,
             # left `window.abandoned_at`, `due_by`, `open` and `expired` null on
             # every real export while the bank FIXTURE set it and looked fine.
             journey_ref=lead.get("journey_ref"), spark=lead["spark"], provenance=dict(
-                identity="SIMULATED", casa_behaviour="SIMULATED", cross_bank="SIMULATED",
+                # `identity` is the one family a demo binding moves, and only on
+                # the bound lead; see DEMO_BINDINGS. The explanation rides on the
+                # matching `customers[]` row (`demo_binding_note`), because that
+                # is where the bound fields themselves are.
+                identity=("BANK_API" if binding else "SIMULATED"),
+                casa_behaviour="SIMULATED", cross_bank="SIMULATED",
                 holdings="SIMULATED", digital="SIMULATED", consent="SIMULATED",
                 journey="SIMULATED", model="SIMULATED"),
         )
@@ -529,7 +674,7 @@ def build_export(cfg, meta: dict, counts: dict, metrics: dict, leads_internal: l
         customers=build_customers(snap_rows, rm_map, bank_ctx),
         journeys=build_journeys(tables["journeys"], tables["events"], tables["label_truth"],
                                cust_ids, bank_ctx),
-        leads=build_leads(leads_internal, rm_map, amort_ref_by_product),
+        leads=build_leads(leads_internal, rm_map, amort_ref_by_product, bank_ctx),
         amortisation_schedules=amort_schedules,
         gig_case_id=str(gig_case_id),
     )
@@ -562,4 +707,6 @@ def write(payload: dict, path: Path) -> None:
 
 __all__ = ["build_export", "build_meta", "build_counts", "build_metrics",
            "build_customers", "build_journeys", "build_amortisation_schedules",
-           "build_leads", "write", "SCHEMA_VERSION"]
+           "build_leads", "write", "SCHEMA_VERSION",
+           "DEMO_BINDINGS", "DEMO_BINDING_NOTE", "DEMO_BINDING_SOURCE",
+           "demo_binding_for"]

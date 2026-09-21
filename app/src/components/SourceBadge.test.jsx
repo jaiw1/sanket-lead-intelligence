@@ -8,6 +8,8 @@ describe('normaliseSource', () => {
     ['BANK_API', false, SOURCE.BANK_API],
     ['BANK_API', true, SOURCE.BANK_API_SANDBOX],
     ['BANK_API+sandbox_fixture', false, SOURCE.BANK_API_SANDBOX],
+    ['BANK_API+demo_binding', false, SOURCE.BANK_API_DEMO_BINDING],
+    ['BANK_API+demo_binding', true, SOURCE.BANK_API_DEMO_BINDING],
     ['bank_api', false, SOURCE.BANK_API],
     ['SIMULATED', false, SOURCE.SIMULATED],
     ['FIXTURE', false, SOURCE.FIXTURE],
@@ -18,13 +20,26 @@ describe('normaliseSource', () => {
     expect(normaliseSource(value, sandbox)).toBe(expected)
   })
 
-  it('has copy for all five provenance states the plan requires', () => {
+  it('has copy for all five provenance states the plan requires, plus the demo binding', () => {
     expect(Object.keys(SOURCES)).toEqual([
-      'BANK_API', 'BANK_API+sandbox_fixture', 'SIMULATED', 'FIXTURE', 'NOT_COLLECTED',
+      'BANK_API', 'BANK_API+sandbox_fixture', 'BANK_API+demo_binding',
+      'SIMULATED', 'FIXTURE', 'NOT_COLLECTED',
     ])
     for (const spec of Object.values(SOURCES)) {
       expect(spec.description.length).toBeGreaterThan(30)
     }
+  })
+})
+
+describe('the demo binding', () => {
+  it('says on the badge itself that the identity is a sandbox sample, not this customer', () => {
+    render(<SourceBadge source="BANK_API+demo_binding" />)
+    const trigger = screen.getByRole('button')
+    expect(trigger).toHaveTextContent('Bank API (sandbox sample, demo binding)')
+    // Never the unqualified badge: a bound identity is a real bank record about
+    // somebody else, and "Bank API" alone would read as "these are this
+    // customer's own bank details".
+    expect(trigger.textContent).not.toBe(SOURCES[SOURCE.BANK_API].label)
   })
 })
 

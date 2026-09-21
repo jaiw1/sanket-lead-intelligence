@@ -5,7 +5,7 @@ checks them, and the report a bank model-risk reviewer reads.
 
 ```
 validation/
-  criteria.yaml   the contract: 25 pre-registered bands, 7 cuts, splits, seeds
+  criteria.yaml   the contract: 25 pre-registered bands + 1 added, 7 cuts, splits, seeds
   criteria.py     schema + loader (pydantic v2) and the runner contract
   run.py          discovery, execution, grading, exit code
   report.py       REPORT.md + report.json + figures/
@@ -118,7 +118,13 @@ pass, and `validate-strict` — the form gate G7 uses — correctly exits non-ze
 1. Append an entry to `criteria:` in `criteria.yaml` with a **new** id
    (`SK-NN`), a `runner` from the twelve, a `metric`, a `scope`, an `op` and
    `threshold`, a `min_n`, a `severity`, a `rationale` and a `source`. Add a
-   `note:` if the band needs interpreting.
+   `note:` if the band needs interpreting, and — if the registration date has
+   passed — an **`added_at:`** timestamp. That field is what keeps `REPORT.md`
+   honest: the pre-registration sentence counts only the bands that were in the
+   file at `registered_at`, and every later addition is listed separately
+   underneath it instead of being folded into the claim. Record the reason in
+   `amendments:` at the same time (`loosening: false`) so a reviewer reads it in
+   the report rather than in a diff.
 2. Run `make -C validation criteria-test`. The schema rejects duplicate ids,
    unknown runners, non-numeric thresholds, inverted `between` bounds, and a
    `per_cut` criterion naming a cut that is not declared.

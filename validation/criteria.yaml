@@ -674,11 +674,75 @@ criteria:
       threshold was invented. The rungs ARE pre-registered here so the comparison
       set cannot be chosen after the fact.
 
+  # -- added after registration (README "Adding a criterion") -----------------
+  # SK-26 was not registered on 2026-09-16; it was appended on 2026-09-22 and is
+  # listed in `amendments:` below so a reviewer sees that from the report rather
+  # than by diffing this file. It adds a disclosure and gates nothing, which is
+  # the only direction this file may move.
+  - id: SK-26
+    added_at: "2026-09-22T00:00:00+05:30"
+    runner: "06_stability"
+    metric: tier_plateau_sensitivity
+    scope: overall
+    op: report
+    threshold: null
+    min_n: 0
+    severity: report
+    source: "post-registration disclosure, 2026-09-22 (README \"Adding a criterion\")"
+    rationale: >-
+      Isotonic calibration is a step function, so the 320 delivered leads do not
+      sit on 320 distinct probabilities — they sit on about two dozen plateaus of
+      15 to 60 leads each. A tier cut is a horizontal line through that
+      staircase: it moves a whole plateau or none of it. Two plateaus sit just
+      outside the cuts (22 leads at 0.325 above `hot`'s 0.30, 21 leads at 0.2019
+      above `warm`'s 0.20), so a numeric difference far too small to move
+      precision — a different CPU, a library rebuild, a rounding change — can
+      re-tier fifteen to twenty-two leads at once while every gated band stays
+      exactly where it is. Nothing else in this pack measures that, because
+      every other criterion is about a rate and rates are what plateaus leave
+      alone. An RM reading `hot` on a queue screen deserves to know the label is
+      coarser than it looks.
+    note: >-
+      REPORTED, NEVER GATED, and deliberately so: there is no defensible band
+      here. A plateau near a cut is a property of isotonic calibration on this
+      data, not a defect to be tuned away, and setting a threshold would invite
+      moving the cuts to satisfy it — which would change who is called in order
+      to make a stability number look better. The reported value is the count of
+      delivered leads within +/-0.005 of either cut; `cuts[*].nearest_above` and
+      `nearest_below` carry the distance to the next plateau on each side,
+      because a count of zero does not mean a cut is safe. Read from
+      `data/model_metrics.json` -> `metrics.delivered_queue.tier_plateau_sensitivity`,
+      which `src/model/policy.py::tier_plateau_sensitivity` computes on the same
+      delivered 320 rows `metrics.delivered_queue.tiers` counts.
+
 # -----------------------------------------------------------------------------
 # Amendments — append only. Loosening a registered band requires an entry here
 # with a date and a reason, and the reason has to survive a bank reviewer.
 # -----------------------------------------------------------------------------
 amendments:
+  - at: "2026-09-22T00:00:00+05:30"
+    by: "RR Squad"
+    criteria: ["SK-26"]
+    loosening: false
+    change: >-
+      ADDITION ONLY. No registered band moves, and no threshold, severity, op or
+      scope of SK-01..SK-25 is touched. SK-26 (`tier_plateau_sensitivity`,
+      runner 06_stability, `severity: report`, no threshold) is appended, and it
+      gates nothing.
+    rationale: >-
+      The pack measured how much precision moves and never how much the TIER
+      LABEL moves, and those turn out to be very different quantities. The
+      delivered queue sits on about two dozen isotonic plateaus of 15 to 60
+      leads; a 22-lead plateau at 0.325 and a 21-lead plateau at 0.2019 sit just
+      above the 0.30 and 0.20 cuts, so an arithmetic difference small enough to
+      leave precision inside its own confidence interval — the nightly box runs
+      on x86 and this repo's numbers were measured on arm64 — can still re-tier
+      fifteen to twenty-two leads at once. That is a real limit of what `hot`
+      means on the queue screen, it was not disclosed anywhere, and the honest
+      response to finding it is to publish it rather than to quietly move a cut.
+      Registered as a disclosure with no band because any band here would be
+      invented after the fact and would create an incentive to tune the cuts.
+
   - at: "2026-09-21T00:00:00+05:30"
     by: "RR Squad — third-party review response"
     criteria: ["SK-04"]

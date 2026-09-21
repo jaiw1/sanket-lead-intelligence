@@ -157,9 +157,25 @@ class ModelConfig:
     #: synthetic, every provenance family ``SIMULATED``.  See ``model.bank``.
     bank: bool = False
 
+    #: The estimator's hyper-parameters, plus the three keys that pin its
+    #: *determinism*.  ``deterministic=True`` and ``force_row_wise=True`` take
+    #: the thread-count-dependent histogram path out of the build, and
+    #: ``num_threads=4`` fixes the count the remaining reduction runs over, so
+    #: two runs of this file on ONE machine produce bit-identical trees.  They
+    #: were measured against the run they replaced and moved no number in
+    #: ``data/model_metrics.json``: the packed seed's precision@10%, the
+    #: delivered 117/143/60 and every pre-registered band are unchanged.
+    #:
+    #: ``num_threads`` wins over ``n_jobs`` inside LightGBM's own
+    #: ``_choose_param_value``, so the two do not fight; ``n_jobs`` is kept
+    #: because it is the constructor argument scikit-learn clones on.
+    #:
+    #: **This buys reproducibility on one machine, not across CPU
+    #: architectures** — see MODEL_CARD §11.
     lgbm: dict = field(default_factory=lambda: dict(
         n_estimators=600, learning_rate=0.04, num_leaves=31, min_child_samples=60,
         subsample=0.8, subsample_freq=1, colsample_bytree=0.8, n_jobs=-1, verbose=-1,
+        deterministic=True, force_row_wise=True, num_threads=4,
     ))
 
     @property

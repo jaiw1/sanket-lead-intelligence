@@ -39,7 +39,9 @@ from validation.run import grade
 
 MY_RUNNERS = ("01_holdout", "02_oot", "03_by_cut", "04_calibration",
              "05_rank_order", "06_stability")
-MY_CRITERIA = tuple(f"SK-{i:02d}" for i in range(1, 17))
+#: SK-26 was added to this runner set after registration (2026-09-22,
+#: `criteria.yaml amendments`) and is graded here like any other.
+MY_CRITERIA = tuple(f"SK-{i:02d}" for i in range(1, 17)) + ("SK-26",)
 
 _VALID_STATUSES: set[str] = {"pass", "fail", "warn", "report", "pending", "skipped_low_n", "error"}
 
@@ -123,6 +125,26 @@ def _synthetic_metrics() -> dict:
                 "unconstrained": {}, "n_rows": 999, "n_rows_available": 999,
             },
             "stability": {"psi_score_distribution": 0.25},  # > 0.10 -> fail
+            # SK-26 is `op: report`, so neither count below can pass or fail —
+            # the point of staging one cut with leads inside the window and one
+            # with none is that BOTH still grade `report`, and that the runner
+            # reads the worst of them (2) as the criterion's value.
+            "delivered_queue": {
+                "tier_plateau_sensitivity": {
+                    "window": 0.005, "leads": 320, "distinct_probabilities": 3,
+                    "largest_plateau": 200,
+                    "cuts": {
+                        "hot": {"cut": 0.30, "within": 0,
+                                "nearest_above": {"value": 0.33, "distance": 0.03, "n": 200},
+                                "nearest_below": {"value": 0.28, "distance": 0.02, "n": 118}},
+                        "warm": {"cut": 0.20, "within": 2,
+                                 "nearest_above": {"value": 0.2019, "distance": 0.0019, "n": 2},
+                                 "nearest_below": None},
+                    },
+                    "plateaus": [{"value": 0.33, "n": 200}, {"value": 0.28, "n": 118},
+                                 {"value": 0.2019, "n": 2}],
+                },
+            },
             "seeds": {"n": 1, "list": [7], "spread": {}},
         },
     }
@@ -154,7 +176,7 @@ def test_status_mapping_synthetic_metrics(synthetic_root, criteria_doc, make_ctx
         "SK-16",   # PSI 0.25 > 0.10
     }
     expected_pass = {"SK-01", "SK-05", "SK-09"}
-    expected_report = {"SK-03", "SK-06", "SK-14"}
+    expected_report = {"SK-03", "SK-06", "SK-14", "SK-26"}
 
     for cid in expected_fail:
         assert by_id[cid].status == "fail", f"{cid}: expected fail, got {by_id[cid].status}"
@@ -171,7 +193,12 @@ def test_status_mapping_synthetic_metrics(synthetic_root, criteria_doc, make_ctx
     assert low_n_cells and low_n_cells[0]["status"] == "skipped_low_n"
     assert low_n_cells[0]["n"] == 100
 
-    # every one of this lane's 16 criteria was graded — none silently pending
+    # SK-26 takes the WORST cut's count as its value, and carries one cell per cut.
+    assert by_id["SK-26"].value == 2
+    assert {c["status"] for c in by_id["SK-26"].breakdown} == {"report"}
+    assert [c["level"].split(" ")[0] for c in by_id["SK-26"].breakdown] == ["hot", "warm"]
+
+    # every one of this lane's criteria was graded — none silently pending
     for cid in MY_CRITERIA:
         assert by_id[cid].status is not None
         assert by_id[cid].status != "pending", f"{cid} unexpectedly pending against synthetic data"

@@ -81,6 +81,13 @@ class Criterion(BaseModel):
     rationale: str = Field(min_length=1)
     source: str = Field(min_length=1)
     note: str | None = None
+    #: Set only on a criterion APPENDED after `registered_at`. Absent means "was
+    #: in the file when it was registered", which is what the report's
+    #: pre-registration sentence claims about every band it counts — so a band
+    #: added later has to say so here rather than be quietly folded into that
+    #: count. Adding is the one direction this file may move (README, "Adding a
+    #: criterion"); the matching `amendments:` entry carries the reason.
+    added_at: _dt.datetime | None = None
 
     @field_validator("runner")
     @classmethod

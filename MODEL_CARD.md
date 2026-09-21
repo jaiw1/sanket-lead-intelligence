@@ -421,6 +421,31 @@ the 320 rows the cockpit ships, against 147 / 151 / 22 under the old percentile 
 thresholds ride in the export at `metrics.delivered_queue.tier_thresholds`, and the delivered
 breakdown at `metrics.delivered_queue.tiers`, so a screen never has to guess them.
 
+**Those three counts are more fragile than any number beside them, and the fragility is
+structural.** Isotonic calibration is a step function: it maps whole runs of raw score onto
+one fitted value, so the 320 delivered leads do not sit on 320 distinct probabilities — they
+sit on **24**, in plateaus of 15 to 60 leads each (45 leads at 0.3627, 53 at 0.2353, 60 at
+0.1690, and so on). A tier cut is a horizontal line through that staircase, so it moves a
+whole plateau or none of it. Two plateaus sit just outside the cuts: **22 leads at 0.3250**,
+a quarter of a point above `hot`'s 0.30, and **21 leads at 0.2019**, two-tenths of a point
+above `warm`'s 0.20. A difference too small to matter anywhere else — a different CPU, a
+LightGBM rebuild, a change in how a float is rounded — therefore re-tiers **15 to 22 leads at
+once** while precision moves by **less than 0.4 of a percentage point** and every
+pre-registered band stays exactly where it is. The two quantities are not on the same scale
+and never were: precision is a rate over a list, and a plateau crossing a line is a label
+change for everyone on it.
+
+This is disclosed, not fixed. Nudging the cuts to sit in a gap would make the number look
+stable by changing which customers an RM is told to ring first, which is the wrong direction
+of causation. Every run measures it into
+`metrics.delivered_queue.tier_plateau_sensitivity` — leads within ±0.005 of each cut, plus
+the distance to the nearest plateau on each side, because a count of zero (which is what the
+`hot` cut reads today) does not mean a cut is safe. `validation/criteria.yaml` registers it
+as **SK-26, reported and never gated**; `src/model/policy.py::tier_plateau_sensitivity`
+computes it. The practical reading for an RM-facing screen: `hot` and `warm` are coarse
+labels on a staircase, and the boundary between them is worth less than the probability
+printed beside it.
+
 **A suppressed customer keeps the band their probability earned.** "We may not call this
 person" is not a statement about how likely they were to buy, and the export carries the two
 facts separately — `tier` beside `suppressed` and `suppression_reason`. Until this change
@@ -732,10 +757,14 @@ is the finding; it is never hidden and never tuned toward.
 | SK-23 | adverse_impact_ratio | ≥ 0.80 (reported) | **0.69 (gig)** | **FAIL, disclosed** |
 | SK-24 | gig failure disclosed | exists | yes | **pass** |
 | SK-25 | baseline ladder | reported | 4 rungs | report |
+| SK-26 | tier_plateau_sensitivity | reported (added 22 Sep) | 0 at the `hot` cut, **21** at `warm` | report |
 
 **17 pass · 1 gating band that passes on the packed seed and fails on the seed mean (SK-04) ·
 1 reported failure (SK-23, the gig gap) · 2 not run in this script (SK-19, SK-22 — validation
-runners 08 and 10 emit them; `validation/report/REPORT.md` has their values).**
+runners 08 and 10 emit them; `validation/report/REPORT.md` has their values).** SK-26 is the
+one band not registered on 16 September: it was appended on 22 September as a disclosure, it
+gates nothing, and `validation/criteria.yaml`'s amendment block says so where a reviewer
+reads it. Adding a criterion is the only direction that file may move.
 
 ### Uncertainty: three questions, three answers, never added together
 
@@ -989,6 +1018,45 @@ python3 -m pytest tests/test_model*.py -q
 Outputs: `app/public/sanket_data.json` (the cockpit) and `data/model_metrics.json` (the
 validation runners' input). Neither is committed; both are regenerable.
 
+### Bit-reproducible on one machine, not across CPU architectures
+
+The estimator is pinned for determinism — `deterministic=True`, `force_row_wise=True`,
+`num_threads=4` in `ModelConfig.lgbm` — which takes the thread-count-dependent histogram
+path out of the build. Re-run this pipeline on the same machine, from the same book, and
+every number is bit-identical. Pinning them moved nothing: the run they were measured
+against produced the same precision, the same 117 / 143 / 60 and the same verdict on every
+band.
+
+**They do not make the model reproducible across CPU architectures, and nothing can.** The
+laptop these numbers were measured on is arm64; the deployed nightly box is x86-64, running
+a different LightGBM binary compiled against different floating-point paths. Histogram sums
+accumulate in a different order, a split whose gain differs in the twelfth decimal place
+falls the other way, and from that point the two runs grow different trees. The same
+`--seeds 7,8,9,10,11 --bank` command on the box produces:
+
+| | laptop (arm64) | nightly box (x86-64) |
+|---|---|---|
+| delivered hot / warm / cold | 117 / 143 / 60 | **100 / 144 / 76** |
+| precision@10% (SK-02) | 0.2906 | **0.2868** |
+| pool hot / warm / cold | 154 / 201 / 7101 | **139 / 198 / 7119** |
+
+The precision difference is **0.38 of a percentage point**, comfortably inside the packed
+seed's own 95% confidence interval (26.8–31.2%) and inside the 5-seed spread; SK-02's
+registered band is [0.25, 0.35] and both numbers sit in it. The tier counts move far more
+than that for the reason §8 gives: the delivered queue sits on two dozen isotonic plateaus
+and a cut moves whole plateaus at once, so 17 leads change label while the rate they are
+drawn from barely moves. Neither is a defect. They are what "different binary" means, and
+the second table is what a reviewer should expect to see if they re-run this on their own
+hardware.
+
+**What follows operationally.** The deployed nightly job therefore re-validates SANKET as a
+**candidate** on its own numbers and does not republish: a run whose trees were grown by a
+different binary is a different run, and quietly swapping its output in behind the published
+one would mean the deck's numbers and the live queue came from two models nobody compared.
+The box's run is graded against the same pre-registered bands, and it passes them; what it
+does not do is overwrite the run this card describes. Promotion is a decision, taken by
+looking at both, not a side effect of a cron job.
+
 ---
 
 ## 12. The export contract — what the front end must change
@@ -1208,6 +1276,31 @@ byte-for-byte the SM-1–5 pipeline, every family `SIMULATED`. With it:
    halves are fixed together, and `abandoned_at` is now read off that attempt's own `abandon_ts`
    rather than back-computed from the whole-day `days_since_abandon` feature, which rounded the
    date a day forward on 343 of 344 leads.
+
+5. **Bind one customer's identity to the sandbox's sample record — declared, narrow, and
+   nothing else.** The platform's dedupe path is API 456, which searches on `panCardNo` and
+   refuses a body without one (HTTP 400, "panCardNo is mandatory"), so a lead carrying no PAN
+   can never be dedupe-checked; the CRM push dry-run says exactly that. No generated customer
+   has a PAN, and synthesising one is the single thing this whole provenance apparatus exists
+   to prevent. So `src/model/export.py::DEMO_BINDINGS` — one line, one `cust_id` — binds the
+   demo's hero lead `LB-2006372` to the sandbox's sample master record `custId 68453002`,
+   taking `cif_id`, `pan`, `entity_name` and `mobile` from what APIs 456 and 365 actually
+   answered rather than from anything typed in this repo. That customer's `identity` family
+   reads `BANK_API`; the record also carries `demo_binding: true` and a one-line
+   `demo_binding_note` ("identity fields come from the bank sandbox's sample customer record,
+   bound for the CRM-push demonstration; all other fields are synthetic"), both added to the
+   platform contract for this purpose, and the contract now *requires* the note whenever the
+   flag is true so a bound record cannot be an unexplained badge.
+
+   What it deliberately does **not** do: the other seven families are computed by asking
+   `BankContext.provenance_for` with the customer's *synthetic* CIF, so binding the sandbox id
+   cannot silently promote `casa_behaviour` or `holdings` along with `identity`; the lead row
+   takes the same `cif_id` (the contract says `leads[].id` must appear in `customers[]`, and
+   the platform sends `lead.cif_id` to the gateway) and nothing more; every other customer in
+   the export is byte-identical to what it was; and with no `--bank`, no pull, or a pull that
+   did not answer about that record, the binding does not apply at all. In the cockpit the
+   badge reads **"Bank API (sandbox sample, demo binding)"** — never a bare "Bank API", which
+   would claim these are the customer's own bank details.
 
 **Validated clean against `rrsquad-platform/contracts/validate.py` / the schema directly** (see
 `tests/test_model_export.py`, which skips if the sibling platform repo is absent) — **zero

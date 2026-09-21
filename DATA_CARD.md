@@ -80,6 +80,18 @@ date and the figure actually found. All seven checked out within 20% of the anch
 uses — none needed a discrepancy note for the owner, and the generator was not changed. `sourced`
 remains empty: nothing in this book claims to be a direct reproduction of a published figure.
 
+**One sandbox record reaches the EXPORT, and never this book (2026-09-22).** The statement at the
+top of this card — no Atlas-sandbox or customer record anywhere in the generator — is unchanged
+and still exact: nothing below §1 reads the sandbox, and no row of any file in §1 contains a bank
+value. What changed is one step downstream of the generator. `src/model/export.py::DEMO_BINDINGS`
+binds the identity fields of exactly one customer (`LB-2006372`) in
+`data/export/sanket_export.json` to the Atlas sandbox's own sample master record
+(`custId 68453002`), so the platform's API 456 dedupe path has a PAN to search on — it refuses a
+request without one. The bound record says so in itself (`demo_binding: true` plus a one-line
+note), only its `cif_id` / `pan` / `entity_name` / `mobile` come from the bank, and no model
+input, label, parameter or number in this card is touched by it. MODEL_CARD §13 has the full
+scope.
+
 ---
 
 ## 1. What is generated

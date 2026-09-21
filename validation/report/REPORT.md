@@ -1,14 +1,17 @@
 # SANKET — validation report
 
-**Verdict: PASS**  ·  16 pass · 0 fail · 0 warn · 0 pending · 0 skipped · 9 reported
+**Verdict: PASS**  ·  16 pass · 0 fail · 0 warn · 0 pending · 0 skipped · 10 reported
 
 ## Pre-registration
 
 These 25 acceptance bands were registered at **2026-09-16T10:47:14+05:30** by RR Squad, before any model result for SANKET existed.
 
-`validation/criteria.yaml` first entered git at **2026-09-16T11:06:09+05:30** — that commit timestamp, not this file, is the evidence. This report was generated at 2026-09-21T20:49:27+05:30 from commit `30ad0e80a143`.
+**1 further band was ADDED after registration** and is therefore not covered by that claim: `SK-26` (tier_plateau_sensitivity, severity `report`, added 2026-09-22T00:00:00+05:30). Adding a band is the only post-registration change this contract permits; each one's reason is in the amendments below.
+
+`validation/criteria.yaml` first entered git at **2026-09-16T11:06:09+05:30** — that commit timestamp, not this file, is the evidence. This report was generated at 2026-09-22T03:33:35+05:30 from commit `c626fb1d1a03`.
 
 **Amendments after registration:**
+- *2026-09-22T00:00:00+05:30* (RR Squad) — ADDITION ONLY. No registered band moves, and no threshold, severity, op or scope of SK-01..SK-25 is touched. SK-26 (`tier_plateau_sensitivity`, runner 06_stability, `severity: report`, no threshold) is appended, and it gates nothing. Rationale: The pack measured how much precision moves and never how much the TIER LABEL moves, and those turn out to be very different quantities. The delivered queue sits on about two dozen isotonic plateaus of 15 to 60 leads; a 22-lead plateau at 0.325 and a 21-lead plateau at 0.2019 sit just above the 0.30 and 0.20 cuts, so an arithmetic difference small enough to leave precision inside its own confidence interval — the nightly box runs on x86 and this repo's numbers were measured on arm64 — can still re-tier fifteen to twenty-two leads at once. That is a real limit of what `hot` means on the queue screen, it was not disclosed anywhere, and the honest response to finding it is to publish it rather than to quietly move a cut. Registered as a disclosure with no band because any band here would be invented after the fact and would create an incentive to tune the cuts.
 - *2026-09-21T00:00:00+05:30* (RR Squad — third-party review response) — DESCRIPTION ONLY. SK-04's threshold (>= 0.90), op, severity, runner, metric key and scope are all unchanged. What changed is the wording: the rationale used to say the criterion existed so "the RM queue's SLA" would not be "fiction", which reads as a claim that SK-04 measures whether a relationship manager made contact before the lead expired. It does not. It measures conversion timing among converters — of the held-out rows inside the contact budget that disbursed, the share that disbursed inside the offered product's window. The note now states that explicitly, and states that contact-SLA compliance is measured nowhere in this pack. Rationale: A third-party review (2026-09-21, §5) found the 90.1% being described as an operational contact-SLA result in the README, the model card and the cockpit. No contact timestamp exists in this pipeline, so that reading is unsupported by anything in the repo. The band itself was never the problem and is deliberately left where it was registered; loosening or retitling a metric because its description was wrong would be the exact move pre-registration exists to prevent.
 - *2026-09-16T00:00:00+05:30* (RR Squad — architect ruling) — SCOPING, NOT THRESHOLDS. No band moves. SK-01 stays [0.08, 0.10], SK-02 stays [0.25, 0.35], SK-18 stays [0.48, 0.52], SK-17 stays 0 — all `fail`, all with their ceilings. What is amended is the SCORING POPULATION SK-01 and SK-02 are computed over, which was under-specified at registration because this file was written before the application-journey layer (plan §B L6 SD-S2) existed and so before there was a drop-off population to name. The same entry re-points runner 07 at the files that layer actually emitted; SK-17 and SK-18 are listed only because that runner answers them, and neither band changes.
 
@@ -140,6 +143,16 @@ NEW WORDING. The scoring unit is a (customer, month) row for customers in the DR
 | ID | Metric | Scope | Band | Observed | Interval | n | Severity | Status |
 |---|---|---|---|---|---|---|---|---|
 | SK-16 | psi_score_distribution | overall | ≤ 0.1 | 0.0088 | — | 29154 | fail | PASS |
+| SK-26 | tier_plateau_sensitivity | overall | reported, no target | 21 | — | 320 | report | reported |
+
+<details><summary>SK-26 — per-cell breakdown (2 cells)</summary>
+
+| Cell | Observed | Interval | n | Status |
+|---|---|---|---|---|
+| hot cut (p >= 0.3) | 0 | — | 320 | reported |
+| warm cut (p >= 0.2) | 21 | — | 320 | reported |
+
+</details>
 
 ### 07_leakage
 
@@ -394,6 +407,12 @@ Contextualises the gain: random contact, then balance-ranked contact (what a bra
 *Source:* plan §B L9 (runner 12)
   
 *Note:* The plan specifies runner 12 but pre-registers no band for it, so no threshold was invented. The rungs ARE pre-registered here so the comparison set cannot be chosen after the fact.
+
+**SK-26 — tier_plateau_sensitivity** (reported, no target, severity `report`)  
+Isotonic calibration is a step function, so the 320 delivered leads do not sit on 320 distinct probabilities — they sit on about two dozen plateaus of 15 to 60 leads each. A tier cut is a horizontal line through that staircase: it moves a whole plateau or none of it. Two plateaus sit just outside the cuts (22 leads at 0.325 above `hot`'s 0.30, 21 leads at 0.2019 above `warm`'s 0.20), so a numeric difference far too small to move precision — a different CPU, a library rebuild, a rounding change — can re-tier fifteen to twenty-two leads at once while every gated band stays exactly where it is. Nothing else in this pack measures that, because every other criterion is about a rate and rates are what plateaus leave alone. An RM reading `hot` on a queue screen deserves to know the label is coarser than it looks.  
+*Source:* post-registration disclosure, 2026-09-22 (README "Adding a criterion")
+  
+*Note:* REPORTED, NEVER GATED, and deliberately so: there is no defensible band here. A plateau near a cut is a property of isotonic calibration on this data, not a defect to be tuned away, and setting a threshold would invite moving the cuts to satisfy it — which would change who is called in order to make a stability number look better. The reported value is the count of delivered leads within +/-0.005 of either cut; `cuts[*].nearest_above` and `nearest_below` carry the distance to the next plateau on each side, because a count of zero does not mean a cut is safe. Read from `data/model_metrics.json` -> `metrics.delivered_queue.tier_plateau_sensitivity`, which `src/model/policy.py::tier_plateau_sensitivity` computes on the same delivered 320 rows `metrics.delivered_queue.tiers` counts.
 
 ## Figures
 

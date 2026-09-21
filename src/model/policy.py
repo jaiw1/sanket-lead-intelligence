@@ -262,6 +262,84 @@ def tier_counts(tier: np.ndarray, mask: np.ndarray | None = None) -> dict:
     return {name: int((t == name).sum()) for name in TIERS}
 
 
+#: Half-width of the window :func:`tier_plateau_sensitivity` counts leads in,
+#: on either side of each cut.  0.005 is half a percentage point of calibrated
+#: probability — smaller than the gap between any two numbers a reviewer would
+#: call "the same result", and far smaller than the 2.9-point width of the
+#: headline's own confidence interval.
+PLATEAU_WINDOW = 0.005
+
+
+def _nearest_plateau(ordered: list[dict], cut: float) -> dict | None:
+    """The first plateau of an already-cut-ordered list, with its distance."""
+    if not ordered:
+        return None
+    first = ordered[0]
+    return dict(value=first["value"], distance=round(abs(first["value"] - cut), 6),
+                n=first["n"])
+
+
+def tier_plateau_sensitivity(p, window: float = PLATEAU_WINDOW) -> dict:
+    """How many delivered leads one hair's-breadth of arithmetic would re-tier.
+
+    **Reported, never gated.**  Isotonic calibration is a step function: it maps
+    whole runs of raw scores onto a single fitted value, so the delivered queue
+    does not sit on 320 distinct probabilities — it sits on a couple of dozen
+    *plateaus* of 15 to 60 leads each, every lead on a plateau carrying exactly
+    the same number.  A tier cut is a horizontal line through that staircase.
+    It therefore either misses a plateau entirely or moves the whole plateau at
+    once, and "how close is the nearest plateau to a cut" is a completely
+    different question from "how much would precision move", which is the
+    quantity every pre-registered band is about.
+
+    Returns, per cut:
+
+    ``within``        leads whose probability is within ``window`` of the cut —
+                      the ones a rounding difference could re-tier.
+    ``nearest_above`` / ``nearest_below``
+                      the closest plateau on each side, as
+                      ``{value, distance, n}``.  A cut can read ``within: 0``
+                      and still be one plateau away from moving twenty leads,
+                      which is the case this exhibit exists to make visible, so
+                      the distance is reported beside the count rather than
+                      left to be inferred from a zero.
+
+    ``leads`` is the count the ``within`` numbers are out of, and ``plateaus``
+    is the whole staircase — value and size, richest first.
+    """
+    p = np.asarray(p, dtype=float)
+    p = p[np.isfinite(p)]
+    values, sizes = np.unique(np.round(p, 9), return_counts=True)
+    plateaus = [dict(value=round(float(v), 6), n=int(c))
+                for v, c in sorted(zip(values, sizes), key=lambda vc: -vc[0])]
+
+    cuts: dict[str, dict] = {}
+    for name, cut in (("hot", TIER_HOT), ("warm", TIER_WARM)):
+        above = sorted((pl for pl in plateaus if pl["value"] >= cut), key=lambda pl: pl["value"])
+        below = sorted((pl for pl in plateaus if pl["value"] < cut), key=lambda pl: -pl["value"])
+        cuts[name] = dict(
+            cut=round(float(cut), 6),
+            within=int(((p >= cut - window) & (p <= cut + window)).sum()),
+            nearest_above=_nearest_plateau(above, cut),
+            nearest_below=_nearest_plateau(below, cut),
+        )
+
+    return dict(
+        window=round(float(window), 6),
+        leads=int(len(p)),
+        distinct_probabilities=int(len(values)),
+        largest_plateau=(plateaus and max(pl["n"] for pl in plateaus)) or 0,
+        cuts=cuts,
+        plateaus=plateaus,
+        note="Reported, not gated. Isotonic calibration puts the delivered queue on a "
+             "handful of plateaus, so a tier cut moves whole plateaus at once: a "
+             f"difference too small to shift precision by half a point can still re-tier "
+             f"every lead on a plateau. `cuts[*].within` counts leads inside +/-{window} of "
+             "a cut; `nearest_above`/`nearest_below` give the distance to the next plateau "
+             "on each side, because a count of zero does not mean the cut is safe.",
+    )
+
+
 def precision_at(y: np.ndarray, scores: PolicyScores, budget: float) -> dict:
     """Precision among the rows the policy would actually call at this budget.
 
@@ -285,6 +363,7 @@ __all__ = [
     "RANKING_BLEND", "RANKING_PROBABILITY", "RANKINGS", "DEFAULT_RANKING",
     "INTENT_WEIGHT", "CAPACITY_WEIGHT", "CAPACITY_CAP", "PolicyScores",
     "TIER_HOT", "TIER_WARM", "TIERS", "tier_of", "tier_counts",
+    "PLATEAU_WINDOW", "tier_plateau_sensitivity",
     "any_product_probability", "product_choice", "capacity_score",
     "intent_percentile", "score_pool",
     "rank_order", "budget_k", "select", "tiers", "precision_at",

@@ -112,9 +112,25 @@ def render_markdown(doc: CriteriaDoc, results: list[Result], out_dir: Path, stri
     L.append("")
     L.append("## Pre-registration")
     L.append("")
-    L.append(f"These {len(doc.criteria)} acceptance bands were registered at "
+    # Bands appended after registration are counted separately and named. The
+    # sentence below is the strongest claim this report makes, and it is only
+    # true of the criteria that were actually in the file at `registered_at` —
+    # folding a later addition into that number would quietly overstate it.
+    added = [c for c in doc.criteria if c.added_at is not None]
+    L.append(f"These {len(doc.criteria) - len(added)} acceptance bands were registered at "
              f"**{doc.registered_at.isoformat()}** by {doc.registered_by}, before any model "
              f"result for {doc.product} existed.")
+    if added:
+        L.append("")
+        L.append(f"**{len(added)} further band"
+                 + ("s were" if len(added) > 1 else " was")
+                 + " ADDED after registration** and "
+                 + ("are" if len(added) > 1 else "is")
+                 + " therefore not covered by that claim: "
+                 + ", ".join(f"`{c.id}` ({c.metric}, severity `{c.severity}`, added "
+                             f"{c.added_at.isoformat()})" for c in added)
+                 + ". Adding a band is the only post-registration change this contract "
+                   "permits; each one's reason is in the amendments below.")
     if prov["criteria_first_committed_at"]:
         L.append("")
         L.append(f"`validation/criteria.yaml` first entered git at "

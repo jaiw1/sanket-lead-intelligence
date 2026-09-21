@@ -489,6 +489,14 @@ def build_queue(base: pd.DataFrame, P: np.ndarray, rk, shopper_score: np.ndarray
                              score="calibrated probability of the pitched product — "
                                    "the same score the queue is ranked on"),
         pool_tiers=pool_tiers,
+        # How fragile those three counts are. Reported, never gated: the
+        # delivered queue sits on a couple of dozen isotonic plateaus, so a
+        # tier cut moves a whole plateau or none of it, and the size of that
+        # movement has nothing to do with how much precision moved. Validation
+        # criterion SK-26 reads this block; MODEL_CARD §8 and the README state
+        # it in words.
+        tier_plateau_sensitivity=PO.tier_plateau_sensitivity(
+            scores.rank_score[order[: cfg.queue_size]]),
         note="The cockpit exports the first `queue_size` rows of the ranked list the "
              "contact budget buys. `hot`/`warm`/`cold` are fixed probability bands on "
              "that same ranking score, not queue membership, so the delivered list "
@@ -749,6 +757,19 @@ def run(cfg: ModelConfig, out_json: Path | None = None,
     # ---- queue -------------------------------------------------------------- #
     leads, counts, extra = build_queue(base, P, rk, shopper_all, u_all,
                                        tables["panel"], tables["journeys"], cfg, snap, rm_map)
+
+    # SM-6 demo binding: one lead's IDENTITY family is the sandbox's own sample
+    # master record, so the platform's CRM push has a real PAN to dedupe on.
+    # `model.export.DEMO_BINDINGS` is the whole arrangement — which customer,
+    # which fields, and why every other family stays exactly where it was.
+    # Applied here rather than inside `_lead` so the cockpit pack and the
+    # platform export read the same one definition, and so a run without
+    # `--bank` (or without a pull that answered) changes nothing at all.
+    demo_bound = []
+    for lead in leads:
+        if EXP.demo_binding_for(lead["id"], bank_ctx) is not None:
+            lead["provenance"]["identity"] = EXP.DEMO_BINDING_SOURCE
+            demo_bound.append(lead["id"])
     sup, n_pool = extra["suppression"], extra["n_contactable"]
     snap_rows, Psnap, elig_snap = extra["snap_rows"], extra["P"], extra["elig"]
 
@@ -876,6 +897,9 @@ def run(cfg: ModelConfig, out_json: Path | None = None,
                                     default=float("nan")),
         "gig_worker_failure_disclosure": bool(income.get("gig_within15") is not None),
         "precision_at_10pct_by_baseline_rung": ladder,
+        # SK-26, added after registration (criteria.yaml amendments, 2026-09-22):
+        # reported, never gated. The same block validation runner 06 reads.
+        "tier_plateau_sensitivity": delivered["tier_plateau_sensitivity"],
         "auc_and_precision_at_10pct": {},
     }
     registered["auc_and_precision_at_10pct"] = _by_cut(hb, Ph, y, p_top, cfg)
@@ -899,6 +923,10 @@ def run(cfg: ModelConfig, out_json: Path | None = None,
         "SK-23": registered["adverse_impact_ratio"],
         "SK-24": registered["gig_worker_failure_disclosure"],
         "SK-25": ladder or None,
+        # The count per cut, not the whole staircase — `metrics.registered` and
+        # `metrics.delivered_queue` both carry the full block.
+        "SK-26": {name: c["within"] for name, c
+                  in delivered["tier_plateau_sensitivity"]["cuts"].items()},
     }, seed_means={
         "SK-01": spread["baseline"]["mean"],
         "SK-02": spread["precision_at_budget"]["mean"],
@@ -1047,6 +1075,19 @@ def run(cfg: ModelConfig, out_json: Path | None = None,
             # 433 rate -> TYPICAL_EMI, and a single string here would hide which
             # products took which step.
             emi_source={p: EMI.EMI_SOURCE[p] for p in PRODUCTS},
+            # Named, not implied. A badge that reads BANK_API on one lead and
+            # SIMULATED on the other 319 has to say why, in the same file.
+            demo_binding=(dict(
+                leads=demo_bound,
+                bound_to={cid: EXP.DEMO_BINDINGS[cid] for cid in demo_bound},
+                fields=["cif_id", "pan", "entity_name", "mobile"],
+                source="IDBI Atlas sandbox sample master record (API 456, with API 365 "
+                       "as the name fallback)",
+                badge=EXP.DEMO_BINDING_SOURCE,
+                note=EXP.DEMO_BINDING_NOTE,
+            ) if demo_bound else
+                "no lead is bound in this run: --bank was not passed, no pull is on this "
+                "checkout, or the pull did not answer about the bound sandbox record"),
             pending=["data/export/sanket_export.json (SM-6's platform contract shape) is "
                      "only emitted when --bank is passed",
                      "meta.model_run_id / git_sha / criteria_sha in that export are filled "

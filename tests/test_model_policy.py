@@ -403,3 +403,76 @@ def test_the_shipped_band_counts_add_up(shipped: dict) -> None:
     assert sum(d["tiers"].values()) == len(d["top_ids"])
     assert d["tier_thresholds"]["hot"] == PO.TIER_HOT
     assert d["tier_thresholds"]["warm"] == PO.TIER_WARM
+
+
+# --------------------------------------------------------------------------- #
+# SK-26 — how fragile the tier labels are (reported, never gated)
+# --------------------------------------------------------------------------- #
+
+def test_the_plateau_window_counts_only_what_is_inside_it() -> None:
+    """Exact arithmetic on a staircase whose answer is known by construction."""
+    p = ([0.35] * 5              # well above hot
+         + [0.302] * 3           # inside +/-0.005 of 0.30
+         + [0.297] * 2           # inside, below the cut
+         + [0.25] * 4            # between the cuts, near neither
+         + [0.1985] * 7)         # inside +/-0.005 of 0.20
+    out = PO.tier_plateau_sensitivity(p, window=0.005)
+
+    assert out["leads"] == 21
+    assert out["distinct_probabilities"] == 5
+    assert out["largest_plateau"] == 7
+    assert out["cuts"]["hot"]["within"] == 5          # 0.302 and 0.297
+    assert out["cuts"]["warm"]["within"] == 7         # 0.1985 only
+    assert out["cuts"]["hot"]["nearest_above"] == dict(value=0.302, distance=0.002, n=3)
+    assert out["cuts"]["hot"]["nearest_below"] == dict(value=0.297, distance=0.003, n=2)
+    # `warm`'s nearest plateau is BELOW it — the 7 leads at 0.1985 that the
+    # window catches are cold today and one hair of arithmetic from being warm.
+    assert out["cuts"]["warm"]["nearest_below"] == dict(value=0.1985, distance=0.0015, n=7)
+    assert out["cuts"]["warm"]["nearest_above"] == dict(value=0.25, distance=0.05, n=4)
+
+
+def test_a_window_that_catches_nothing_still_reports_the_distance() -> None:
+    """The case the shipped pack is actually in.
+
+    `hot` reads `within: 0` while a 22-lead plateau sits a quarter of a point
+    above it. A zero that does not carry the distance would read as "this cut is
+    safe", which is the opposite of true.
+    """
+    out = PO.tier_plateau_sensitivity([0.325] * 22 + [0.15] * 8, window=0.005)
+    hot = out["cuts"]["hot"]
+    assert hot["within"] == 0
+    assert hot["nearest_above"]["n"] == 22
+    assert hot["nearest_above"]["distance"] == 0.025
+    assert "does not mean the cut is safe" in out["note"]
+
+
+def test_the_shipped_queue_sits_on_plateaus_not_on_distinct_scores(shipped: dict) -> None:
+    """The disclosure in MODEL_CARD §8 and the README, checked against the artefact.
+
+    If isotonic ever stopped plateauing — every delivered lead on its own
+    probability — the disclosure would be wrong and should be removed rather
+    than left standing. That is what this asserts: the shape, not the exact
+    numbers, which move with the machine (MODEL_CARD §11).
+    """
+    block = shipped["metrics"]["delivered_queue"]["tier_plateau_sensitivity"]
+    delivered = sum(shipped["metrics"]["delivered_queue"]["tiers"].values())
+
+    assert block["leads"] == delivered
+    assert block["distinct_probabilities"] < delivered / 5, \
+        "the queue is not plateaued — re-check the tier-fragility disclosure"
+    assert block["largest_plateau"] >= 15
+    assert set(block["cuts"]) == {"hot", "warm"}
+    for name, cut in block["cuts"].items():
+        assert cut["cut"] == {"hot": PO.TIER_HOT, "warm": PO.TIER_WARM}[name]
+        assert cut["within"] >= 0
+        # Every cut names the nearest plateau above it, so a `within` of zero is
+        # never the whole story.
+        assert cut["nearest_above"] is None or cut["nearest_above"]["n"] >= 1
+
+
+def test_the_plateaus_account_for_every_delivered_lead(shipped: dict) -> None:
+    block = shipped["metrics"]["delivered_queue"]["tier_plateau_sensitivity"]
+    assert sum(pl["n"] for pl in block["plateaus"]) == block["leads"]
+    assert len(block["plateaus"]) == block["distinct_probabilities"]
+    values = [pl["value"] for pl in block["plateaus"]]
+    assert values == sorted(values, reverse=True), "plateaus are reported richest first"

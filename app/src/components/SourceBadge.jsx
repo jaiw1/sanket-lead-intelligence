@@ -14,6 +14,7 @@ import { Beaker, CircleSlash, Database, FlaskConical, Landmark } from 'lucide-re
 export const SOURCE = {
   BANK_API: 'BANK_API',
   BANK_API_SANDBOX: 'BANK_API+sandbox_fixture',
+  BANK_API_DEMO_BINDING: 'BANK_API+demo_binding',
   SIMULATED: 'SIMULATED',
   FIXTURE: 'FIXTURE',
   NOT_COLLECTED: 'NOT_COLLECTED',
@@ -32,6 +33,13 @@ export const SOURCES = {
     className: 'bg-idbi-green/10 text-idbi-green border-idbi-green/30',
     description:
       'Fetched from a real IDBI Atlas endpoint, but the sandbox returns canned data shared across APIs. The call and the shape are real; the values are not the bank’s production numbers.',
+  },
+  [SOURCE.BANK_API_DEMO_BINDING]: {
+    label: 'Bank API (sandbox sample, demo binding)',
+    icon: Beaker,
+    className: 'bg-idbi-green/10 text-idbi-green border-idbi-green/30',
+    description:
+      'This lead’s identity fields — CIF, PAN, name, mobile — are the sandbox’s own sample customer record, bound to this lead so the CRM push can run a real API 456 dedupe (which refuses a request with no PAN). Everything else about the lead, including every score on this screen, is synthetic.',
   },
   [SOURCE.SIMULATED]: {
     label: 'Simulated',
@@ -62,6 +70,11 @@ export function normaliseSource(value, sandbox = false) {
   if (!raw) return SOURCE.NOT_COLLECTED
   const upper = raw.toUpperCase().replace(/\s+/g, '')
   if (upper === 'BANK_API+SANDBOX_FIXTURE' || upper === 'BANK_API_SANDBOX') return SOURCE.BANK_API_SANDBOX
+  // One lead is bound to the sandbox's sample master record so the CRM-push demo has a
+  // PAN to dedupe on (`src/model/export.py::DEMO_BINDINGS`). It is a real bank record
+  // really fetched, so it is not `sandbox_fixture` — but it is not this customer either,
+  // and the badge has to say both.
+  if (upper === 'BANK_API+DEMO_BINDING' || upper === 'BANK_API_DEMO_BINDING') return SOURCE.BANK_API_DEMO_BINDING
   if (upper === 'BANK_API') return sandbox ? SOURCE.BANK_API_SANDBOX : SOURCE.BANK_API
   if (upper === 'SIMULATED') return SOURCE.SIMULATED
   if (upper === 'FIXTURE') return SOURCE.FIXTURE

@@ -1,7 +1,12 @@
 """
-06 Stability — PSI on the score, CSI on a few raw feature-family proxies
+06 Stability — PSI on the score, CSI on a few raw feature-family proxies, and
+how fragile the tier labels are
 
-Pre-registered criteria this runner answers: SK-16
+Pre-registered criteria this runner answers: SK-16. SK-26 was added after
+registration (2026-09-22, `criteria.yaml amendments`) and is answered here too:
+it is a stability question about the same held-out score, one step further on —
+PSI asks whether the score distribution moved, SK-26 asks how much the *labels*
+cut out of it would move if it did.
 
 Consumes
 --------
@@ -22,13 +27,21 @@ Consumes
   `profile` / `shopper` / `product` are reported as not computed here rather
   than approximated from a column that is not really them.
 
+* ``data/model_metrics.json`` —
+  ``metrics.delivered_queue.tier_plateau_sensitivity``, computed by
+  `src/model/policy.py::tier_plateau_sensitivity` over the same 320 delivered
+  rows `metrics.delivered_queue.tiers` counts, for SK-26.
+
 Produces
 --------
 * ``figures/psi_score.png`` — the score PSI against the 0.10 ceiling.
-* SK-16 (`psi_score_distribution`, `<= 0.10`). No other criterion is registered
-  for this runner; the CSI table is reported in `detail` for a human to read,
-  per the README's "the per-feature CSI table is emitted alongside for the
-  report even though only PSI gates."
+* SK-16 (`psi_score_distribution`, `<= 0.10`); the CSI table is reported in
+  `detail` for a human to read, per the README's "the per-feature CSI table is
+  emitted alongside for the report even though only PSI gates."
+* SK-26 (`tier_plateau_sensitivity`, reported, no target), one cell per tier
+  cut. Every cell is `report`: `criteria.yaml` registers no band, on purpose —
+  a threshold here would create a reason to move the cuts, which would change
+  who gets called in order to improve a stability number.
 
 Method
 ------
@@ -63,7 +76,9 @@ def run(criteria: list[Criterion], ctx: RunnerContext) -> list[Result]:
     stability = m.get("stability") or {}
     psi = stability.get("psi_score_distribution")
     if psi is None:
-        return [Result("SK-16", status="pending", detail="metrics.stability.psi_score_distribution not present")]
+        return [Result("SK-16", status="pending",
+                       detail="metrics.stability.psi_score_distribution not present"),
+                *_plateau_results(criteria, m)]
 
     per_seed = ((m.get("seeds") or {}).get("per_seed") or [{}])[0]
     n = per_seed.get("n_holdout_rows")
@@ -88,7 +103,55 @@ def run(criteria: list[Criterion], ctx: RunnerContext) -> list[Result]:
     except Exception:
         pass
 
-    return [result]
+    return [result, *_plateau_results(criteria, m)]
+
+
+def _plateau_results(criteria: list[Criterion], m: dict) -> list[Result]:
+    """SK-26 — how many delivered leads sit within a hair of a tier cut.
+
+    Silent unless the criterion is registered, so this runner keeps working
+    against an older `criteria.yaml` that does not carry SK-26.
+    """
+    if not any(c.id == "SK-26" for c in criteria):
+        return []
+
+    block = ((m.get("delivered_queue") or {}).get("tier_plateau_sensitivity")) or {}
+    cuts = block.get("cuts") or {}
+    if not cuts:
+        return [Result("SK-26", status="pending",
+                       detail="metrics.delivered_queue.tier_plateau_sensitivity not present "
+                              "(re-run src/score_and_pack.py)")]
+
+    breakdown = []
+    for name, cut in cuts.items():
+        near = cut.get("nearest_above") or {}
+        breakdown.append(dict(
+            level=f"{name} cut (p >= {cut.get('cut')})",
+            value=int(cut.get("within") or 0),
+            n=int(block.get("leads") or 0),
+            detail=(f"nearest plateau above: {near.get('n')} lead(s) at "
+                    f"{near.get('value')} (+{near.get('distance')})"),
+        ))
+    # Ordered by cut, descending, so `hot` reads first however the dict came.
+    breakdown.sort(key=lambda cell: -float(cuts[cell["level"].split(" ")[0]]["cut"]))
+
+    worst = max(cuts.values(), key=lambda c: (c.get("within") or 0))
+    detail = (
+        f"{block.get('leads')} delivered leads sit on {block.get('distinct_probabilities')} "
+        f"distinct calibrated probabilities (isotonic plateaus, largest "
+        f"{block.get('largest_plateau')} leads). Reported value is the worst cut's count "
+        f"within +/-{block.get('window')}. A count of 0 does not mean a cut is safe: "
+        + "; ".join(
+            f"{name} cut {c.get('cut')} — nearest plateau above is "
+            f"{(c.get('nearest_above') or {}).get('n')} lead(s) at "
+            f"{(c.get('nearest_above') or {}).get('value')}"
+            for name, c in cuts.items())
+        + ". Reported, never gated (criteria.yaml SK-26 note): precision moves by a fraction "
+          "of a point where the tier label moves by whole plateaus, and no band here could "
+          "be anything but invented after the fact."
+    )
+    return [Result("SK-26", value=int(worst.get("within") or 0),
+                   n=int(block.get("leads") or 0), breakdown=breakdown, detail=detail)]
 
 
 def _csi_proxies(ctx: RunnerContext, cut_month: int | None) -> tuple[str, list[dict]]:
