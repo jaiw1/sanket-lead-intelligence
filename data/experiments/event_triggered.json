@@ -1,0 +1,1313 @@
+{
+ "seed": 7,
+ "budget": 0.1,
+ "n_selected": 2915,
+ "n_new_leads": 468,
+ "n_one_day_products": 786,
+ "one_day_share_of_queue": 0.2696,
+ "months_in_holdout": 23,
+ "calls_per_working_day_at_capacity_1": 8.82,
+ "busiest_month_volume": 194,
+ "working_days_per_month": 22,
+ "lags_replayed": [
+  0,
+  1,
+  3
+ ],
+ "capacity_multipliers": [
+  1.0,
+  0.5
+ ],
+ "cells": [
+  {
+   "regime": "monthly",
+   "ingestion_lag_days": 0,
+   "weekends_excluded": false,
+   "calls_per_working_day": 8.8,
+   "leads_contacted": 2915,
+   "duplicate_rows_suppressed": 0,
+   "all_products": {
+    "n": 2915,
+    "sla_compliance": 0.0199,
+    "dead_on_arrival": 0.9619,
+    "median_days_to_contact": 134.0,
+    "p90_days_to_contact": 309.0,
+    "post_contact_disbursement": 0.2906,
+    "post_contact_disbursement_in_time": 0.3793
+   },
+   "one_day_products": {
+    "n": 786,
+    "sla_compliance": 0.0013,
+    "dead_on_arrival": 0.9924,
+    "median_days_to_contact": 132.5,
+    "p90_days_to_contact": 322.0,
+    "post_contact_disbursement": 0.2913,
+    "post_contact_disbursement_in_time": 1.0
+   },
+   "longer_windows": {
+    "n": 2129,
+    "sla_compliance": 0.0268,
+    "dead_on_arrival": 0.9507,
+    "median_days_to_contact": 134.0,
+    "p90_days_to_contact": 304.0,
+    "post_contact_disbursement": 0.2903,
+    "post_contact_disbursement_in_time": 0.3684
+   },
+   "newly_abandoned": {
+    "n": 468,
+    "sla_compliance": 0.1239,
+    "dead_on_arrival": 0.7628,
+    "median_days_to_contact": 22.0,
+    "p90_days_to_contact": 35.3,
+    "post_contact_disbursement": 0.3291,
+    "post_contact_disbursement_in_time": 0.3793
+   },
+   "newly_abandoned_one_day": {
+    "n": 149,
+    "sla_compliance": 0.0067,
+    "dead_on_arrival": 0.9597,
+    "median_days_to_contact": 22.0,
+    "p90_days_to_contact": 38.0,
+    "post_contact_disbursement": 0.3423,
+    "post_contact_disbursement_in_time": 1.0
+   }
+  },
+  {
+   "regime": "monthly",
+   "ingestion_lag_days": 0,
+   "weekends_excluded": false,
+   "calls_per_working_day": 4.4,
+   "leads_contacted": 2915,
+   "duplicate_rows_suppressed": 0,
+   "all_products": {
+    "n": 2915,
+    "sla_compliance": 0.0089,
+    "dead_on_arrival": 0.9619,
+    "median_days_to_contact": 154.0,
+    "p90_days_to_contact": 331.0,
+    "post_contact_disbursement": 0.2906,
+    "post_contact_disbursement_in_time": 0.4231
+   },
+   "one_day_products": {
+    "n": 786,
+    "sla_compliance": 0.0013,
+    "dead_on_arrival": 0.9924,
+    "median_days_to_contact": 153.0,
+    "p90_days_to_contact": 345.5,
+    "post_contact_disbursement": 0.2913,
+    "post_contact_disbursement_in_time": 1.0
+   },
+   "longer_windows": {
+    "n": 2129,
+    "sla_compliance": 0.0117,
+    "dead_on_arrival": 0.9507,
+    "median_days_to_contact": 155.0,
+    "p90_days_to_contact": 328.0,
+    "post_contact_disbursement": 0.2903,
+    "post_contact_disbursement_in_time": 0.4
+   },
+   "newly_abandoned": {
+    "n": 468,
+    "sla_compliance": 0.0556,
+    "dead_on_arrival": 0.7628,
+    "median_days_to_contact": 35.5,
+    "p90_days_to_contact": 69.0,
+    "post_contact_disbursement": 0.3291,
+    "post_contact_disbursement_in_time": 0.4231
+   },
+   "newly_abandoned_one_day": {
+    "n": 149,
+    "sla_compliance": 0.0067,
+    "dead_on_arrival": 0.9597,
+    "median_days_to_contact": 37.0,
+    "p90_days_to_contact": 70.4,
+    "post_contact_disbursement": 0.3423,
+    "post_contact_disbursement_in_time": 1.0
+   }
+  },
+  {
+   "regime": "monthly",
+   "ingestion_lag_days": 0,
+   "weekends_excluded": true,
+   "calls_per_working_day": 8.8,
+   "leads_contacted": 2915,
+   "duplicate_rows_suppressed": 0,
+   "all_products": {
+    "n": 2915,
+    "sla_compliance": 0.0161,
+    "dead_on_arrival": 0.9619,
+    "median_days_to_contact": 137.0,
+    "p90_days_to_contact": 312.6,
+    "post_contact_disbursement": 0.2906,
+    "post_contact_disbursement_in_time": 0.4255
+   },
+   "one_day_products": {
+    "n": 786,
+    "sla_compliance": 0.0013,
+    "dead_on_arrival": 0.9924,
+    "median_days_to_contact": 137.5,
+    "p90_days_to_contact": 326.5,
+    "post_contact_disbursement": 0.2913,
+    "post_contact_disbursement_in_time": 1.0
+   },
+   "longer_windows": {
+    "n": 2129,
+    "sla_compliance": 0.0216,
+    "dead_on_arrival": 0.9507,
+    "median_days_to_contact": 137.0,
+    "p90_days_to_contact": 307.0,
+    "post_contact_disbursement": 0.2903,
+    "post_contact_disbursement_in_time": 0.413
+   },
+   "newly_abandoned": {
+    "n": 468,
+    "sla_compliance": 0.1004,
+    "dead_on_arrival": 0.7628,
+    "median_days_to_contact": 25.0,
+    "p90_days_to_contact": 40.0,
+    "post_contact_disbursement": 0.3291,
+    "post_contact_disbursement_in_time": 0.4255
+   },
+   "newly_abandoned_one_day": {
+    "n": 149,
+    "sla_compliance": 0.0067,
+    "dead_on_arrival": 0.9597,
+    "median_days_to_contact": 26.0,
+    "p90_days_to_contact": 44.0,
+    "post_contact_disbursement": 0.3423,
+    "post_contact_disbursement_in_time": 1.0
+   }
+  },
+  {
+   "regime": "monthly",
+   "ingestion_lag_days": 0,
+   "weekends_excluded": true,
+   "calls_per_working_day": 4.4,
+   "leads_contacted": 2915,
+   "duplicate_rows_suppressed": 0,
+   "all_products": {
+    "n": 2915,
+    "sla_compliance": 0.0072,
+    "dead_on_arrival": 0.9619,
+    "median_days_to_contact": 242.0,
+    "p90_days_to_contact": 452.0,
+    "post_contact_disbursement": 0.2906,
+    "post_contact_disbursement_in_time": 0.4286
+   },
+   "one_day_products": {
+    "n": 786,
+    "sla_compliance": 0.0013,
+    "dead_on_arrival": 0.9924,
+    "median_days_to_contact": 242.5,
+    "p90_days_to_contact": 451.0,
+    "post_contact_disbursement": 0.2913,
+    "post_contact_disbursement_in_time": 1.0
+   },
+   "longer_windows": {
+    "n": 2129,
+    "sla_compliance": 0.0094,
+    "dead_on_arrival": 0.9507,
+    "median_days_to_contact": 242.0,
+    "p90_days_to_contact": 452.2,
+    "post_contact_disbursement": 0.2903,
+    "post_contact_disbursement_in_time": 0.4
+   },
+   "newly_abandoned": {
+    "n": 468,
+    "sla_compliance": 0.0449,
+    "dead_on_arrival": 0.7628,
+    "median_days_to_contact": 94.0,
+    "p90_days_to_contact": 224.3,
+    "post_contact_disbursement": 0.3291,
+    "post_contact_disbursement_in_time": 0.4286
+   },
+   "newly_abandoned_one_day": {
+    "n": 149,
+    "sla_compliance": 0.0067,
+    "dead_on_arrival": 0.9597,
+    "median_days_to_contact": 97.0,
+    "p90_days_to_contact": 238.2,
+    "post_contact_disbursement": 0.3423,
+    "post_contact_disbursement_in_time": 1.0
+   }
+  },
+  {
+   "regime": "monthly",
+   "ingestion_lag_days": 1,
+   "weekends_excluded": false,
+   "calls_per_working_day": 8.8,
+   "leads_contacted": 2915,
+   "duplicate_rows_suppressed": 0,
+   "all_products": {
+    "n": 2915,
+    "sla_compliance": 0.0144,
+    "dead_on_arrival": 0.966,
+    "median_days_to_contact": 135.0,
+    "p90_days_to_contact": 310.0,
+    "post_contact_disbursement": 0.2906,
+    "post_contact_disbursement_in_time": 0.3571
+   },
+   "one_day_products": {
+    "n": 786,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 0.9975,
+    "median_days_to_contact": 133.5,
+    "p90_days_to_contact": 323.0,
+    "post_contact_disbursement": 0.2913,
+    "post_contact_disbursement_in_time": null
+   },
+   "longer_windows": {
+    "n": 2129,
+    "sla_compliance": 0.0197,
+    "dead_on_arrival": 0.9544,
+    "median_days_to_contact": 135.0,
+    "p90_days_to_contact": 305.0,
+    "post_contact_disbursement": 0.2903,
+    "post_contact_disbursement_in_time": 0.3571
+   },
+   "newly_abandoned": {
+    "n": 468,
+    "sla_compliance": 0.0897,
+    "dead_on_arrival": 0.7885,
+    "median_days_to_contact": 23.0,
+    "p90_days_to_contact": 36.3,
+    "post_contact_disbursement": 0.3291,
+    "post_contact_disbursement_in_time": 0.3571
+   },
+   "newly_abandoned_one_day": {
+    "n": 149,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 0.9866,
+    "median_days_to_contact": 23.0,
+    "p90_days_to_contact": 39.0,
+    "post_contact_disbursement": 0.3423,
+    "post_contact_disbursement_in_time": null
+   }
+  },
+  {
+   "regime": "monthly",
+   "ingestion_lag_days": 1,
+   "weekends_excluded": false,
+   "calls_per_working_day": 4.4,
+   "leads_contacted": 2915,
+   "duplicate_rows_suppressed": 0,
+   "all_products": {
+    "n": 2915,
+    "sla_compliance": 0.0075,
+    "dead_on_arrival": 0.966,
+    "median_days_to_contact": 155.0,
+    "p90_days_to_contact": 332.0,
+    "post_contact_disbursement": 0.2906,
+    "post_contact_disbursement_in_time": 0.4091
+   },
+   "one_day_products": {
+    "n": 786,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 0.9975,
+    "median_days_to_contact": 154.0,
+    "p90_days_to_contact": 346.5,
+    "post_contact_disbursement": 0.2913,
+    "post_contact_disbursement_in_time": null
+   },
+   "longer_windows": {
+    "n": 2129,
+    "sla_compliance": 0.0103,
+    "dead_on_arrival": 0.9544,
+    "median_days_to_contact": 156.0,
+    "p90_days_to_contact": 329.0,
+    "post_contact_disbursement": 0.2903,
+    "post_contact_disbursement_in_time": 0.4091
+   },
+   "newly_abandoned": {
+    "n": 468,
+    "sla_compliance": 0.047,
+    "dead_on_arrival": 0.7885,
+    "median_days_to_contact": 36.5,
+    "p90_days_to_contact": 70.0,
+    "post_contact_disbursement": 0.3291,
+    "post_contact_disbursement_in_time": 0.4091
+   },
+   "newly_abandoned_one_day": {
+    "n": 149,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 0.9866,
+    "median_days_to_contact": 38.0,
+    "p90_days_to_contact": 71.4,
+    "post_contact_disbursement": 0.3423,
+    "post_contact_disbursement_in_time": null
+   }
+  },
+  {
+   "regime": "monthly",
+   "ingestion_lag_days": 1,
+   "weekends_excluded": true,
+   "calls_per_working_day": 8.8,
+   "leads_contacted": 2915,
+   "duplicate_rows_suppressed": 0,
+   "all_products": {
+    "n": 2915,
+    "sla_compliance": 0.013,
+    "dead_on_arrival": 0.966,
+    "median_days_to_contact": 139.0,
+    "p90_days_to_contact": 313.6,
+    "post_contact_disbursement": 0.2906,
+    "post_contact_disbursement_in_time": 0.3947
+   },
+   "one_day_products": {
+    "n": 786,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 0.9975,
+    "median_days_to_contact": 138.5,
+    "p90_days_to_contact": 327.0,
+    "post_contact_disbursement": 0.2913,
+    "post_contact_disbursement_in_time": null
+   },
+   "longer_windows": {
+    "n": 2129,
+    "sla_compliance": 0.0178,
+    "dead_on_arrival": 0.9544,
+    "median_days_to_contact": 139.0,
+    "p90_days_to_contact": 308.0,
+    "post_contact_disbursement": 0.2903,
+    "post_contact_disbursement_in_time": 0.3947
+   },
+   "newly_abandoned": {
+    "n": 468,
+    "sla_compliance": 0.0812,
+    "dead_on_arrival": 0.7885,
+    "median_days_to_contact": 25.0,
+    "p90_days_to_contact": 41.0,
+    "post_contact_disbursement": 0.3291,
+    "post_contact_disbursement_in_time": 0.3947
+   },
+   "newly_abandoned_one_day": {
+    "n": 149,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 0.9866,
+    "median_days_to_contact": 27.0,
+    "p90_days_to_contact": 45.0,
+    "post_contact_disbursement": 0.3423,
+    "post_contact_disbursement_in_time": null
+   }
+  },
+  {
+   "regime": "monthly",
+   "ingestion_lag_days": 1,
+   "weekends_excluded": true,
+   "calls_per_working_day": 4.4,
+   "leads_contacted": 2915,
+   "duplicate_rows_suppressed": 0,
+   "all_products": {
+    "n": 2915,
+    "sla_compliance": 0.0062,
+    "dead_on_arrival": 0.966,
+    "median_days_to_contact": 244.0,
+    "p90_days_to_contact": 453.0,
+    "post_contact_disbursement": 0.2906,
+    "post_contact_disbursement_in_time": 0.4444
+   },
+   "one_day_products": {
+    "n": 786,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 0.9975,
+    "median_days_to_contact": 243.5,
+    "p90_days_to_contact": 452.0,
+    "post_contact_disbursement": 0.2913,
+    "post_contact_disbursement_in_time": null
+   },
+   "longer_windows": {
+    "n": 2129,
+    "sla_compliance": 0.0085,
+    "dead_on_arrival": 0.9544,
+    "median_days_to_contact": 244.0,
+    "p90_days_to_contact": 453.2,
+    "post_contact_disbursement": 0.2903,
+    "post_contact_disbursement_in_time": 0.4444
+   },
+   "newly_abandoned": {
+    "n": 468,
+    "sla_compliance": 0.0385,
+    "dead_on_arrival": 0.7885,
+    "median_days_to_contact": 95.0,
+    "p90_days_to_contact": 226.0,
+    "post_contact_disbursement": 0.3291,
+    "post_contact_disbursement_in_time": 0.4444
+   },
+   "newly_abandoned_one_day": {
+    "n": 149,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 0.9866,
+    "median_days_to_contact": 98.0,
+    "p90_days_to_contact": 241.0,
+    "post_contact_disbursement": 0.3423,
+    "post_contact_disbursement_in_time": null
+   }
+  },
+  {
+   "regime": "monthly",
+   "ingestion_lag_days": 3,
+   "weekends_excluded": false,
+   "calls_per_working_day": 8.8,
+   "leads_contacted": 2915,
+   "duplicate_rows_suppressed": 0,
+   "all_products": {
+    "n": 2915,
+    "sla_compliance": 0.0113,
+    "dead_on_arrival": 0.9739,
+    "median_days_to_contact": 137.0,
+    "p90_days_to_contact": 312.0,
+    "post_contact_disbursement": 0.2906,
+    "post_contact_disbursement_in_time": 0.4242
+   },
+   "one_day_products": {
+    "n": 786,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 1.0,
+    "median_days_to_contact": 135.5,
+    "p90_days_to_contact": 325.0,
+    "post_contact_disbursement": 0.2913,
+    "post_contact_disbursement_in_time": null
+   },
+   "longer_windows": {
+    "n": 2129,
+    "sla_compliance": 0.0155,
+    "dead_on_arrival": 0.9643,
+    "median_days_to_contact": 137.0,
+    "p90_days_to_contact": 307.0,
+    "post_contact_disbursement": 0.2903,
+    "post_contact_disbursement_in_time": 0.4242
+   },
+   "newly_abandoned": {
+    "n": 468,
+    "sla_compliance": 0.0705,
+    "dead_on_arrival": 0.8376,
+    "median_days_to_contact": 25.0,
+    "p90_days_to_contact": 38.3,
+    "post_contact_disbursement": 0.3291,
+    "post_contact_disbursement_in_time": 0.4242
+   },
+   "newly_abandoned_one_day": {
+    "n": 149,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 1.0,
+    "median_days_to_contact": 25.0,
+    "p90_days_to_contact": 41.0,
+    "post_contact_disbursement": 0.3423,
+    "post_contact_disbursement_in_time": null
+   }
+  },
+  {
+   "regime": "monthly",
+   "ingestion_lag_days": 3,
+   "weekends_excluded": false,
+   "calls_per_working_day": 4.4,
+   "leads_contacted": 2915,
+   "duplicate_rows_suppressed": 0,
+   "all_products": {
+    "n": 2915,
+    "sla_compliance": 0.0058,
+    "dead_on_arrival": 0.9739,
+    "median_days_to_contact": 157.0,
+    "p90_days_to_contact": 334.0,
+    "post_contact_disbursement": 0.2906,
+    "post_contact_disbursement_in_time": 0.4706
+   },
+   "one_day_products": {
+    "n": 786,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 1.0,
+    "median_days_to_contact": 156.0,
+    "p90_days_to_contact": 348.5,
+    "post_contact_disbursement": 0.2913,
+    "post_contact_disbursement_in_time": null
+   },
+   "longer_windows": {
+    "n": 2129,
+    "sla_compliance": 0.008,
+    "dead_on_arrival": 0.9643,
+    "median_days_to_contact": 158.0,
+    "p90_days_to_contact": 331.0,
+    "post_contact_disbursement": 0.2903,
+    "post_contact_disbursement_in_time": 0.4706
+   },
+   "newly_abandoned": {
+    "n": 468,
+    "sla_compliance": 0.0363,
+    "dead_on_arrival": 0.8376,
+    "median_days_to_contact": 38.5,
+    "p90_days_to_contact": 72.0,
+    "post_contact_disbursement": 0.3291,
+    "post_contact_disbursement_in_time": 0.4706
+   },
+   "newly_abandoned_one_day": {
+    "n": 149,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 1.0,
+    "median_days_to_contact": 40.0,
+    "p90_days_to_contact": 73.4,
+    "post_contact_disbursement": 0.3423,
+    "post_contact_disbursement_in_time": null
+   }
+  },
+  {
+   "regime": "monthly",
+   "ingestion_lag_days": 3,
+   "weekends_excluded": true,
+   "calls_per_working_day": 8.8,
+   "leads_contacted": 2915,
+   "duplicate_rows_suppressed": 0,
+   "all_products": {
+    "n": 2915,
+    "sla_compliance": 0.0099,
+    "dead_on_arrival": 0.9739,
+    "median_days_to_contact": 140.0,
+    "p90_days_to_contact": 315.0,
+    "post_contact_disbursement": 0.2906,
+    "post_contact_disbursement_in_time": 0.4483
+   },
+   "one_day_products": {
+    "n": 786,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 1.0,
+    "median_days_to_contact": 140.5,
+    "p90_days_to_contact": 328.5,
+    "post_contact_disbursement": 0.2913,
+    "post_contact_disbursement_in_time": null
+   },
+   "longer_windows": {
+    "n": 2129,
+    "sla_compliance": 0.0136,
+    "dead_on_arrival": 0.9643,
+    "median_days_to_contact": 140.0,
+    "p90_days_to_contact": 310.0,
+    "post_contact_disbursement": 0.2903,
+    "post_contact_disbursement_in_time": 0.4483
+   },
+   "newly_abandoned": {
+    "n": 468,
+    "sla_compliance": 0.062,
+    "dead_on_arrival": 0.8376,
+    "median_days_to_contact": 27.0,
+    "p90_days_to_contact": 43.0,
+    "post_contact_disbursement": 0.3291,
+    "post_contact_disbursement_in_time": 0.4483
+   },
+   "newly_abandoned_one_day": {
+    "n": 149,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 1.0,
+    "median_days_to_contact": 29.0,
+    "p90_days_to_contact": 47.0,
+    "post_contact_disbursement": 0.3423,
+    "post_contact_disbursement_in_time": null
+   }
+  },
+  {
+   "regime": "monthly",
+   "ingestion_lag_days": 3,
+   "weekends_excluded": true,
+   "calls_per_working_day": 4.4,
+   "leads_contacted": 2915,
+   "duplicate_rows_suppressed": 0,
+   "all_products": {
+    "n": 2915,
+    "sla_compliance": 0.0041,
+    "dead_on_arrival": 0.9739,
+    "median_days_to_contact": 247.0,
+    "p90_days_to_contact": 455.0,
+    "post_contact_disbursement": 0.2906,
+    "post_contact_disbursement_in_time": 0.4167
+   },
+   "one_day_products": {
+    "n": 786,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 1.0,
+    "median_days_to_contact": 246.5,
+    "p90_days_to_contact": 454.0,
+    "post_contact_disbursement": 0.2913,
+    "post_contact_disbursement_in_time": null
+   },
+   "longer_windows": {
+    "n": 2129,
+    "sla_compliance": 0.0056,
+    "dead_on_arrival": 0.9643,
+    "median_days_to_contact": 247.0,
+    "p90_days_to_contact": 455.2,
+    "post_contact_disbursement": 0.2903,
+    "post_contact_disbursement_in_time": 0.4167
+   },
+   "newly_abandoned": {
+    "n": 468,
+    "sla_compliance": 0.0256,
+    "dead_on_arrival": 0.8376,
+    "median_days_to_contact": 98.0,
+    "p90_days_to_contact": 228.0,
+    "post_contact_disbursement": 0.3291,
+    "post_contact_disbursement_in_time": 0.4167
+   },
+   "newly_abandoned_one_day": {
+    "n": 149,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 1.0,
+    "median_days_to_contact": 102.0,
+    "p90_days_to_contact": 243.0,
+    "post_contact_disbursement": 0.3423,
+    "post_contact_disbursement_in_time": null
+   }
+  },
+  {
+   "regime": "event",
+   "ingestion_lag_days": 0,
+   "weekends_excluded": false,
+   "calls_per_working_day": 8.8,
+   "leads_contacted": 718,
+   "duplicate_rows_suppressed": 2197,
+   "all_products": {
+    "n": 718,
+    "sla_compliance": 0.9513,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 0.0,
+    "p90_days_to_contact": 1.0,
+    "post_contact_disbursement": 0.273,
+    "post_contact_disbursement_in_time": 0.2782
+   },
+   "one_day_products": {
+    "n": 232,
+    "sla_compliance": 0.8966,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 0.0,
+    "p90_days_to_contact": 1.9,
+    "post_contact_disbursement": 0.2974,
+    "post_contact_disbursement_in_time": 0.3077
+   },
+   "longer_windows": {
+    "n": 486,
+    "sla_compliance": 0.9774,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 0.0,
+    "p90_days_to_contact": 1.0,
+    "post_contact_disbursement": 0.2613,
+    "post_contact_disbursement_in_time": 0.2653
+   },
+   "newly_abandoned": {
+    "n": 358,
+    "sla_compliance": 0.9777,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 0.0,
+    "p90_days_to_contact": 1.0,
+    "post_contact_disbursement": 0.3101,
+    "post_contact_disbursement_in_time": 0.3143
+   },
+   "newly_abandoned_one_day": {
+    "n": 119,
+    "sla_compliance": 0.958,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 0.0,
+    "p90_days_to_contact": 0.0,
+    "post_contact_disbursement": 0.3445,
+    "post_contact_disbursement_in_time": 0.3509
+   }
+  },
+  {
+   "regime": "event",
+   "ingestion_lag_days": 0,
+   "weekends_excluded": false,
+   "calls_per_working_day": 4.4,
+   "leads_contacted": 718,
+   "duplicate_rows_suppressed": 2197,
+   "all_products": {
+    "n": 718,
+    "sla_compliance": 0.1602,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 30.0,
+    "p90_days_to_contact": 38.0,
+    "post_contact_disbursement": 0.273,
+    "post_contact_disbursement_in_time": 0.2435
+   },
+   "one_day_products": {
+    "n": 232,
+    "sla_compliance": 0.1121,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 31.0,
+    "p90_days_to_contact": 39.0,
+    "post_contact_disbursement": 0.2974,
+    "post_contact_disbursement_in_time": 0.2308
+   },
+   "longer_windows": {
+    "n": 486,
+    "sla_compliance": 0.1831,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 30.0,
+    "p90_days_to_contact": 38.0,
+    "post_contact_disbursement": 0.2613,
+    "post_contact_disbursement_in_time": 0.2472
+   },
+   "newly_abandoned": {
+    "n": 358,
+    "sla_compliance": 0.2151,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 30.0,
+    "p90_days_to_contact": 39.0,
+    "post_contact_disbursement": 0.3101,
+    "post_contact_disbursement_in_time": 0.2208
+   },
+   "newly_abandoned_one_day": {
+    "n": 119,
+    "sla_compliance": 0.1513,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 32.0,
+    "p90_days_to_contact": 40.0,
+    "post_contact_disbursement": 0.3445,
+    "post_contact_disbursement_in_time": 0.2222
+   }
+  },
+  {
+   "regime": "event",
+   "ingestion_lag_days": 0,
+   "weekends_excluded": true,
+   "calls_per_working_day": 8.8,
+   "leads_contacted": 718,
+   "duplicate_rows_suppressed": 2197,
+   "all_products": {
+    "n": 718,
+    "sla_compliance": 0.8134,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 1.0,
+    "p90_days_to_contact": 6.0,
+    "post_contact_disbursement": 0.273,
+    "post_contact_disbursement_in_time": 0.2808
+   },
+   "one_day_products": {
+    "n": 232,
+    "sla_compliance": 0.5776,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 1.0,
+    "p90_days_to_contact": 8.0,
+    "post_contact_disbursement": 0.2974,
+    "post_contact_disbursement_in_time": 0.3134
+   },
+   "longer_windows": {
+    "n": 486,
+    "sla_compliance": 0.9259,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 1.0,
+    "p90_days_to_contact": 6.0,
+    "post_contact_disbursement": 0.2613,
+    "post_contact_disbursement_in_time": 0.2711
+   },
+   "newly_abandoned": {
+    "n": 358,
+    "sla_compliance": 0.8492,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 1.0,
+    "p90_days_to_contact": 4.0,
+    "post_contact_disbursement": 0.3101,
+    "post_contact_disbursement_in_time": 0.3191
+   },
+   "newly_abandoned_one_day": {
+    "n": 119,
+    "sla_compliance": 0.6303,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 1.0,
+    "p90_days_to_contact": 4.0,
+    "post_contact_disbursement": 0.3445,
+    "post_contact_disbursement_in_time": 0.3733
+   }
+  },
+  {
+   "regime": "event",
+   "ingestion_lag_days": 0,
+   "weekends_excluded": true,
+   "calls_per_working_day": 4.4,
+   "leads_contacted": 718,
+   "duplicate_rows_suppressed": 2197,
+   "all_products": {
+    "n": 718,
+    "sla_compliance": 0.0125,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 168.0,
+    "p90_days_to_contact": 231.0,
+    "post_contact_disbursement": 0.273,
+    "post_contact_disbursement_in_time": 0.0
+   },
+   "one_day_products": {
+    "n": 232,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 165.0,
+    "p90_days_to_contact": 231.0,
+    "post_contact_disbursement": 0.2974,
+    "post_contact_disbursement_in_time": null
+   },
+   "longer_windows": {
+    "n": 486,
+    "sla_compliance": 0.0185,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 172.5,
+    "p90_days_to_contact": 231.0,
+    "post_contact_disbursement": 0.2613,
+    "post_contact_disbursement_in_time": 0.0
+   },
+   "newly_abandoned": {
+    "n": 358,
+    "sla_compliance": 0.0168,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 181.0,
+    "p90_days_to_contact": 232.0,
+    "post_contact_disbursement": 0.3101,
+    "post_contact_disbursement_in_time": 0.0
+   },
+   "newly_abandoned_one_day": {
+    "n": 119,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 181.0,
+    "p90_days_to_contact": 232.0,
+    "post_contact_disbursement": 0.3445,
+    "post_contact_disbursement_in_time": null
+   }
+  },
+  {
+   "regime": "event",
+   "ingestion_lag_days": 1,
+   "weekends_excluded": false,
+   "calls_per_working_day": 8.8,
+   "leads_contacted": 718,
+   "duplicate_rows_suppressed": 2197,
+   "all_products": {
+    "n": 718,
+    "sla_compliance": 0.9345,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 1.0,
+    "p90_days_to_contact": 2.0,
+    "post_contact_disbursement": 0.273,
+    "post_contact_disbursement_in_time": 0.2787
+   },
+   "one_day_products": {
+    "n": 232,
+    "sla_compliance": 0.8578,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 1.0,
+    "p90_days_to_contact": 2.9,
+    "post_contact_disbursement": 0.2974,
+    "post_contact_disbursement_in_time": 0.3065
+   },
+   "longer_windows": {
+    "n": 486,
+    "sla_compliance": 0.9712,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 1.0,
+    "p90_days_to_contact": 2.0,
+    "post_contact_disbursement": 0.2613,
+    "post_contact_disbursement_in_time": 0.2669
+   },
+   "newly_abandoned": {
+    "n": 358,
+    "sla_compliance": 0.9637,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 1.0,
+    "p90_days_to_contact": 2.0,
+    "post_contact_disbursement": 0.3101,
+    "post_contact_disbursement_in_time": 0.313
+   },
+   "newly_abandoned_one_day": {
+    "n": 119,
+    "sla_compliance": 0.9328,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 1.0,
+    "p90_days_to_contact": 1.0,
+    "post_contact_disbursement": 0.3445,
+    "post_contact_disbursement_in_time": 0.3423
+   }
+  },
+  {
+   "regime": "event",
+   "ingestion_lag_days": 1,
+   "weekends_excluded": false,
+   "calls_per_working_day": 4.4,
+   "leads_contacted": 718,
+   "duplicate_rows_suppressed": 2197,
+   "all_products": {
+    "n": 718,
+    "sla_compliance": 0.1588,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 30.0,
+    "p90_days_to_contact": 38.0,
+    "post_contact_disbursement": 0.273,
+    "post_contact_disbursement_in_time": 0.2456
+   },
+   "one_day_products": {
+    "n": 232,
+    "sla_compliance": 0.1121,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 31.0,
+    "p90_days_to_contact": 39.0,
+    "post_contact_disbursement": 0.2974,
+    "post_contact_disbursement_in_time": 0.2308
+   },
+   "longer_windows": {
+    "n": 486,
+    "sla_compliance": 0.1811,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 30.0,
+    "p90_days_to_contact": 38.0,
+    "post_contact_disbursement": 0.2613,
+    "post_contact_disbursement_in_time": 0.25
+   },
+   "newly_abandoned": {
+    "n": 358,
+    "sla_compliance": 0.2123,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 30.0,
+    "p90_days_to_contact": 39.0,
+    "post_contact_disbursement": 0.3101,
+    "post_contact_disbursement_in_time": 0.2237
+   },
+   "newly_abandoned_one_day": {
+    "n": 119,
+    "sla_compliance": 0.1513,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 32.0,
+    "p90_days_to_contact": 40.0,
+    "post_contact_disbursement": 0.3445,
+    "post_contact_disbursement_in_time": 0.2222
+   }
+  },
+  {
+   "regime": "event",
+   "ingestion_lag_days": 1,
+   "weekends_excluded": true,
+   "calls_per_working_day": 8.8,
+   "leads_contacted": 718,
+   "duplicate_rows_suppressed": 2197,
+   "all_products": {
+    "n": 718,
+    "sla_compliance": 0.7521,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 2.0,
+    "p90_days_to_contact": 7.0,
+    "post_contact_disbursement": 0.273,
+    "post_contact_disbursement_in_time": 0.2833
+   },
+   "one_day_products": {
+    "n": 232,
+    "sla_compliance": 0.4224,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 2.0,
+    "p90_days_to_contact": 9.0,
+    "post_contact_disbursement": 0.2974,
+    "post_contact_disbursement_in_time": 0.3163
+   },
+   "longer_windows": {
+    "n": 486,
+    "sla_compliance": 0.9095,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 2.0,
+    "p90_days_to_contact": 6.5,
+    "post_contact_disbursement": 0.2613,
+    "post_contact_disbursement_in_time": 0.276
+   },
+   "newly_abandoned": {
+    "n": 358,
+    "sla_compliance": 0.7905,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 2.0,
+    "p90_days_to_contact": 5.0,
+    "post_contact_disbursement": 0.3101,
+    "post_contact_disbursement_in_time": 0.318
+   },
+   "newly_abandoned_one_day": {
+    "n": 119,
+    "sla_compliance": 0.4622,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 2.0,
+    "p90_days_to_contact": 5.0,
+    "post_contact_disbursement": 0.3445,
+    "post_contact_disbursement_in_time": 0.3818
+   }
+  },
+  {
+   "regime": "event",
+   "ingestion_lag_days": 1,
+   "weekends_excluded": true,
+   "calls_per_working_day": 4.4,
+   "leads_contacted": 718,
+   "duplicate_rows_suppressed": 2197,
+   "all_products": {
+    "n": 718,
+    "sla_compliance": 0.0111,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 168.0,
+    "p90_days_to_contact": 232.0,
+    "post_contact_disbursement": 0.273,
+    "post_contact_disbursement_in_time": 0.0
+   },
+   "one_day_products": {
+    "n": 232,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 166.5,
+    "p90_days_to_contact": 231.0,
+    "post_contact_disbursement": 0.2974,
+    "post_contact_disbursement_in_time": null
+   },
+   "longer_windows": {
+    "n": 486,
+    "sla_compliance": 0.0165,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 172.0,
+    "p90_days_to_contact": 232.0,
+    "post_contact_disbursement": 0.2613,
+    "post_contact_disbursement_in_time": 0.0
+   },
+   "newly_abandoned": {
+    "n": 358,
+    "sla_compliance": 0.014,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 181.0,
+    "p90_days_to_contact": 232.0,
+    "post_contact_disbursement": 0.3101,
+    "post_contact_disbursement_in_time": 0.0
+   },
+   "newly_abandoned_one_day": {
+    "n": 119,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 181.0,
+    "p90_days_to_contact": 232.0,
+    "post_contact_disbursement": 0.3445,
+    "post_contact_disbursement_in_time": null
+   }
+  },
+  {
+   "regime": "event",
+   "ingestion_lag_days": 3,
+   "weekends_excluded": false,
+   "calls_per_working_day": 8.8,
+   "leads_contacted": 718,
+   "duplicate_rows_suppressed": 2197,
+   "all_products": {
+    "n": 718,
+    "sla_compliance": 0.649,
+    "dead_on_arrival": 0.3231,
+    "median_days_to_contact": 3.0,
+    "p90_days_to_contact": 4.0,
+    "post_contact_disbursement": 0.273,
+    "post_contact_disbursement_in_time": 0.2661
+   },
+   "one_day_products": {
+    "n": 232,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 1.0,
+    "median_days_to_contact": 3.0,
+    "p90_days_to_contact": 4.0,
+    "post_contact_disbursement": 0.2974,
+    "post_contact_disbursement_in_time": null
+   },
+   "longer_windows": {
+    "n": 486,
+    "sla_compliance": 0.9588,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 3.0,
+    "p90_days_to_contact": 4.0,
+    "post_contact_disbursement": 0.2613,
+    "post_contact_disbursement_in_time": 0.2661
+   },
+   "newly_abandoned": {
+    "n": 358,
+    "sla_compliance": 0.648,
+    "dead_on_arrival": 0.3324,
+    "median_days_to_contact": 3.0,
+    "p90_days_to_contact": 4.0,
+    "post_contact_disbursement": 0.3101,
+    "post_contact_disbursement_in_time": 0.3017
+   },
+   "newly_abandoned_one_day": {
+    "n": 119,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 1.0,
+    "median_days_to_contact": 3.0,
+    "p90_days_to_contact": 3.0,
+    "post_contact_disbursement": 0.3445,
+    "post_contact_disbursement_in_time": null
+   }
+  },
+  {
+   "regime": "event",
+   "ingestion_lag_days": 3,
+   "weekends_excluded": false,
+   "calls_per_working_day": 4.4,
+   "leads_contacted": 718,
+   "duplicate_rows_suppressed": 2197,
+   "all_products": {
+    "n": 718,
+    "sla_compliance": 0.1226,
+    "dead_on_arrival": 0.3231,
+    "median_days_to_contact": 30.0,
+    "p90_days_to_contact": 38.0,
+    "post_contact_disbursement": 0.273,
+    "post_contact_disbursement_in_time": 0.25
+   },
+   "one_day_products": {
+    "n": 232,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 1.0,
+    "median_days_to_contact": 31.0,
+    "p90_days_to_contact": 39.0,
+    "post_contact_disbursement": 0.2974,
+    "post_contact_disbursement_in_time": null
+   },
+   "longer_windows": {
+    "n": 486,
+    "sla_compliance": 0.1811,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 30.0,
+    "p90_days_to_contact": 38.0,
+    "post_contact_disbursement": 0.2613,
+    "post_contact_disbursement_in_time": 0.25
+   },
+   "newly_abandoned": {
+    "n": 358,
+    "sla_compliance": 0.162,
+    "dead_on_arrival": 0.3324,
+    "median_days_to_contact": 30.0,
+    "p90_days_to_contact": 39.0,
+    "post_contact_disbursement": 0.3101,
+    "post_contact_disbursement_in_time": 0.2241
+   },
+   "newly_abandoned_one_day": {
+    "n": 119,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 1.0,
+    "median_days_to_contact": 32.0,
+    "p90_days_to_contact": 40.0,
+    "post_contact_disbursement": 0.3445,
+    "post_contact_disbursement_in_time": null
+   }
+  },
+  {
+   "regime": "event",
+   "ingestion_lag_days": 3,
+   "weekends_excluded": true,
+   "calls_per_working_day": 8.8,
+   "leads_contacted": 718,
+   "duplicate_rows_suppressed": 2197,
+   "all_products": {
+    "n": 718,
+    "sla_compliance": 0.5585,
+    "dead_on_arrival": 0.3231,
+    "median_days_to_contact": 4.0,
+    "p90_days_to_contact": 8.0,
+    "post_contact_disbursement": 0.273,
+    "post_contact_disbursement_in_time": 0.2594
+   },
+   "one_day_products": {
+    "n": 232,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 1.0,
+    "median_days_to_contact": 4.0,
+    "p90_days_to_contact": 10.0,
+    "post_contact_disbursement": 0.2974,
+    "post_contact_disbursement_in_time": null
+   },
+   "longer_windows": {
+    "n": 486,
+    "sla_compliance": 0.8251,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 4.0,
+    "p90_days_to_contact": 8.0,
+    "post_contact_disbursement": 0.2613,
+    "post_contact_disbursement_in_time": 0.2594
+   },
+   "newly_abandoned": {
+    "n": 358,
+    "sla_compliance": 0.5838,
+    "dead_on_arrival": 0.3324,
+    "median_days_to_contact": 3.5,
+    "p90_days_to_contact": 7.0,
+    "post_contact_disbursement": 0.3101,
+    "post_contact_disbursement_in_time": 0.2919
+   },
+   "newly_abandoned_one_day": {
+    "n": 119,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 1.0,
+    "median_days_to_contact": 4.0,
+    "p90_days_to_contact": 7.0,
+    "post_contact_disbursement": 0.3445,
+    "post_contact_disbursement_in_time": null
+   }
+  },
+  {
+   "regime": "event",
+   "ingestion_lag_days": 3,
+   "weekends_excluded": true,
+   "calls_per_working_day": 4.4,
+   "leads_contacted": 718,
+   "duplicate_rows_suppressed": 2197,
+   "all_products": {
+    "n": 718,
+    "sla_compliance": 0.0111,
+    "dead_on_arrival": 0.3231,
+    "median_days_to_contact": 168.0,
+    "p90_days_to_contact": 232.0,
+    "post_contact_disbursement": 0.273,
+    "post_contact_disbursement_in_time": 0.0
+   },
+   "one_day_products": {
+    "n": 232,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 1.0,
+    "median_days_to_contact": 165.0,
+    "p90_days_to_contact": 231.0,
+    "post_contact_disbursement": 0.2974,
+    "post_contact_disbursement_in_time": null
+   },
+   "longer_windows": {
+    "n": 486,
+    "sla_compliance": 0.0165,
+    "dead_on_arrival": 0.0,
+    "median_days_to_contact": 171.5,
+    "p90_days_to_contact": 232.0,
+    "post_contact_disbursement": 0.2613,
+    "post_contact_disbursement_in_time": 0.0
+   },
+   "newly_abandoned": {
+    "n": 358,
+    "sla_compliance": 0.014,
+    "dead_on_arrival": 0.3324,
+    "median_days_to_contact": 181.0,
+    "p90_days_to_contact": 233.0,
+    "post_contact_disbursement": 0.3101,
+    "post_contact_disbursement_in_time": 0.0
+   },
+   "newly_abandoned_one_day": {
+    "n": 119,
+    "sla_compliance": 0.0,
+    "dead_on_arrival": 1.0,
+    "median_days_to_contact": 181.0,
+    "p90_days_to_contact": 232.2,
+    "post_contact_disbursement": 0.3445,
+    "post_contact_disbursement_in_time": null
+   }
+  }
+ ],
+ "headline": {
+  "comparison": "newly abandoned one-day products (personal, gold), 1-day ingestion lag, weekends excluded, capacity 1.0",
+  "monthly_sla": 0.0,
+  "event_sla": 0.4622,
+  "monthly_dead_on_arrival": 0.9866,
+  "event_dead_on_arrival": 0.0,
+  "monthly_median_days": 27.0,
+  "event_median_days": 2.0,
+  "all_products_monthly_sla": 0.013,
+  "all_products_event_sla": 0.7521
+ },
+ "separation": {
+  "contact_sla_compliance": "share of selected leads an RM reaches on or before contact_by (= abandonment + the product's window). SIMULATED dialling; nothing in the pipeline observes a real call.",
+  "post_contact_disbursement": "share of the same leads whose label is 1, i.e. that disburse inside the product's window AFTER contact. Measured from the generator's potential outcome.",
+  "why_separate": "They are different quantities and SK-04 is neither of them. SK-04 is conversion timing among converters and must never be quoted as an SLA result.",
+  "unmodelled": "The generator's label has NO decay after contact_by: a customer contacted on day 40 converts as often as one contacted on day 1. So post_contact_disbursement barely moves between regimes here, and the conversion value of better SLA compliance is NOT measurable from this simulation. Only a pilot with real contact-time-to-outcome data can price it."
+ },
+ "runtime_s": 20.6
+}

@@ -42,7 +42,78 @@ import numpy as np
 from validation.criteria import Criterion, Result, RunnerContext
 from validation.runners import _shared as sh
 
-INPUTS: tuple[str, ...] = ("data/model_metrics.json",)
+INPUTS: tuple[str, ...] = ("data/model_metrics.json",
+                           "data/experiments/event_triggered.json")
+
+#: `src/experiments/event_triggered.py`'s output. Optional, and never allowed to
+#: change SK-04's graded value: SK-04 is conversion timing among converters and
+#: stays exactly that. What this adds is the thing SK-04 is NOT — contact-SLA
+#: compliance — reported beside it so the two can never be read as one number.
+_EVENT_REL = "data/experiments/event_triggered.json"
+
+
+def _event_note(ctx: RunnerContext) -> str:
+    """Contact-SLA compliance, reported (never graded) beside SK-04.
+
+    Registering a band for it would be inventing a pre-registration after the
+    fact. Leaving it out entirely is how the 90.1% came to be described as an
+    operational SLA result in the first place. So it is reported, in full, with
+    its simulation clearly labelled as one.
+    """
+    import json
+
+    path = ctx.repo_root / _EVENT_REL
+    if not path.is_file():
+        return ("CONTACT-SLA COMPLIANCE: not measured in this run. SK-04 is NOT an SLA "
+                f"result. `python3 src/experiments/event_triggered.py` writes {_EVENT_REL}, "
+                "which simulates the dialling and reports SLA compliance and post-contact "
+                "disbursement as two separate quantities.")
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return f"CONTACT-SLA COMPLIANCE: {_EVENT_REL} is unreadable ({exc})."
+
+    # `calls_per_working_day_at_capacity_1` is rounded to 2dp and the cells to 1dp,
+    # so these comparisons are on a tolerance, not on equality: an exact test
+    # silently matched the full-capacity cell as if it were the overloaded one.
+    full = float(doc.get("calls_per_working_day_at_capacity_1") or 0.0)
+
+    def cell(regime, lag, key="newly_abandoned_one_day", capacity=1.0):
+        want = full * capacity
+        for c in doc.get("cells", []):
+            if (c["regime"] == regime and c["ingestion_lag_days"] == lag
+                    and c["weekends_excluded"]
+                    and abs(c["calls_per_working_day"] - want) <= 0.2):
+                return c.get(key, {})
+        return {}
+
+    m0, m1 = cell("monthly", 0), cell("monthly", 1)
+    e0, e1, e3 = cell("event", 0), cell("event", 1), cell("event", 3)
+    over = cell("event", 1, "newly_abandoned", capacity=0.5)
+    post = e1.get("post_contact_disbursement")
+
+    return (
+        f"CONTACT-SLA COMPLIANCE (reported, never graded; `{_EVENT_REL}`). SK-04 does not "
+        f"measure this and must not be quoted as if it did. Simulated dialling over the "
+        f"delivered queue on one shared calendar, weekends excluded, capacity sized to "
+        f"clear the busiest month. For NEWLY ABANDONED ONE-DAY products (personal, gold): "
+        f"today's monthly batch reaches {m0.get('sla_compliance')} of them in time at "
+        f"same-day ingestion and {m1.get('sla_compliance')} with an overnight lag, because "
+        f"{m1.get('dead_on_arrival')} of those leads have a window that shut before the "
+        f"batch produced them (median {m1.get('median_days_to_contact')} days from "
+        f"abandonment to call). Scoring on the abandonment EVENT instead takes that to "
+        f"{e0.get('sla_compliance')} at same-day ingestion and {e1.get('sla_compliance')} "
+        f"with an overnight lag; a three-day lag returns it to {e3.get('sla_compliance')} "
+        f"because three days is longer than a one-day window. Under a halved calling "
+        f"capacity the event regime falls to {over.get('sla_compliance')} with a p90 of "
+        f"{over.get('p90_days_to_contact')} days, so capacity dominates the trigger once "
+        f"the queue is overloaded. POST-CONTACT DISBURSEMENT is reported separately at "
+        f"{post} and is deliberately NOT derived from the SLA: the generator's label has no "
+        f"decay after contact_by, so this simulation cannot price what late contact costs "
+        f"in conversions. Only a pilot with real contact-time-to-outcome data can.")
+
+
+
 
 
 #: `metrics.uncertainty.sample` keys, by the `metrics.*` block a criterion reads.
@@ -124,9 +195,17 @@ def run(criteria: list[Criterion], ctx: RunnerContext) -> list[Result]:
     else:
         results.append(Result("SK-03", status="pending", detail="metrics.precision_at incomplete"))
 
-    # -- SK-04: window respect rate ------------------------------------------ #
-    results.append(_band_result("SK-04", m, "window_respect_rate", "window_respect_rate",
-                                 crit_by_id))
+    # -- SK-04: conversion timing among converters --------------------------- #
+    # The graded value is unchanged. What is added is the measurement SK-04 is
+    # NOT: contact-SLA compliance, reported beside it so nobody can read one as
+    # the other again.
+    sk04 = _band_result("SK-04", m, "window_respect_rate", "window_respect_rate", crit_by_id,
+                        detail_prefix="SK-04 measures CONVERSION TIMING AMONG CONVERTERS — "
+                                      "of the selected rows that disbursed, the share that "
+                                      "disbursed inside the offered product's window. It is "
+                                      "NOT contact-SLA compliance. ")
+    sk04.detail = f"{sk04.detail or ''} {_event_note(ctx)}".strip()
+    results.append(sk04)
 
     # -- SK-05: window-shopper detector AUC ----------------------------------- #
     shopper = m.get("shopper") or {}

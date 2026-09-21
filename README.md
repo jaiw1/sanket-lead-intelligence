@@ -184,6 +184,18 @@ book (60,000 customers × 30 months, 6 products)
   monthly snapshot reached that customer. **Which clock should drive urgency is an open
   question for the mentors**; abandonment is the assumption this build documents and
   implements end to end.
+- **Contact-SLA compliance, measured separately from everything else.** SK-04 is about
+  conversion timing; whether an RM actually called in time was measured nowhere until
+  `src/experiments/event_triggered.py` simulated the dialling — ingestion lag, working
+  days, finite calls per day. For newly abandoned one-day products (personal, gold) the
+  monthly batch reaches **0.0%** of them in time with an overnight ingestion lag, because
+  98.7% have a window that shut before the batch produced them. Scoring on the
+  abandonment event takes that to **63%** at same-day ingestion and **46%** overnight; a
+  three-day lag puts it back to zero. Halving calling capacity collapses it to 1.4%
+  whatever the trigger. What the simulation cannot say is what any of that is worth in
+  conversions — the generator has no urgency decay after `contact_by` — so post-contact
+  disbursement is reported beside SLA compliance, never derived from it. Both are
+  reported, never-graded exhibits under SK-04 in `validation/report/REPORT.md`.
 - **Suppression.** Eight reasons, evaluated in priority order, first match wins:
   `deceased` · `no_marketing_consent` · `dnd` · `account_dormant` ·
   `application_in_flight` · `recent_decline` · `recent_contact` (7-day cool-off) ·
@@ -435,6 +447,7 @@ python3 src/score_and_pack.py --seeds 7 --quick     # 1 seed, skips OOT/permutat
 # and the validation report read if present and report as not-run if absent
 python3 src/experiments/generator_variation.py      # 8 regenerated worlds (~8 min)
 python3 src/experiments/fairness_probe.py           # SK-23's cause and its remedies (~2 min)
+python3 src/experiments/event_triggered.py          # contact-SLA compliance, by regime (~1 min)
 # (optional) python3 src/make_radar.py              # appendix Business Radar exhibit; needs the
                                                       # source financial dataset, not in this repo
 

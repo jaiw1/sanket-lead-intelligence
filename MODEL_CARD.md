@@ -134,8 +134,54 @@ uses abandonment, and agrees with the backend.
 windows) scored off a *monthly* snapshot, the window has almost always shut before the
 lead is produced. That is a real property of scoring one-day opportunities on a monthly
 clock, not a rendering bug, and the cockpit shows those leads as closed rather than
-inventing urgency. The fix is event-triggered scoring for the short-window products,
-which is designed and not built.
+inventing urgency.
+
+### Contact-SLA compliance, and whether event triggering would fix it
+
+SK-04 does not measure whether an RM called in time, and nothing else in the pipeline
+did either. `src/experiments/event_triggered.py` measures it, by simulating the dialling
+over the delivered queue on one shared calendar: an ingestion lag, working days only, and
+a finite number of calls per day sized to clear the busiest month. For **newly abandoned
+one-day products** (personal, gold), weekends excluded, capacity 1.0:
+
+| regime | ingestion lag | contact-SLA compliance | window already shut when the lead appeared | median days, abandonment → call |
+|---|---|---|---|---|
+| monthly batch (today) | same-day | 0.7% | 96.0% | 26 |
+| monthly batch (today) | overnight | **0.0%** | 98.7% | 27 |
+| monthly batch (today) | 3 days | 0.0% | 100% | 29 |
+| **event-triggered** | same-day | **63.0%** | 0% | 1 |
+| **event-triggered** | overnight | **46.2%** | 0% | 2 |
+| event-triggered | 3 days | 0.0% | 100% | 4 |
+
+Three readings:
+
+1. **The monthly batch cannot serve a one-day product at all.** Not "serves it badly" —
+   0.0% with an overnight ingestion lag, because by the time the lead exists its window
+   has shut for 98.7% of them. Every `personal` and `gold` lead in today's cockpit is a
+   lead whose stated deadline has already passed.
+2. **Event triggering fixes it, and the ingestion lag is the whole game.** Same-day
+   ingestion gets 63%; an overnight batch costs 17 points; a three-day lag returns the
+   number to zero, because three days is longer than a one-day window. Any pilot that
+   proposes event triggering and then runs the feed nightly has built the monthly system
+   again with extra steps.
+3. **Capacity dominates the trigger once the queue is overloaded.** Halve the calls per
+   day and event-triggered SLA compliance collapses to 1.4% with a p90 of 232 days from
+   abandonment to contact. Triggering earlier does nothing if nobody is free to dial.
+
+**What this cannot tell you.** Post-contact disbursement is reported beside SLA
+compliance (34.5% on the contacted set) and is deliberately **not** derived from it. The
+generator's label is a potential outcome under contact with **no decay after
+`contact_by`** — a customer contacted on day 40 converts exactly as often as one
+contacted on day 1 — so the conversion value of better SLA compliance is not measurable
+from this simulation, and anyone reading an uplift out of the table above is reading
+something that was not modelled. Pricing it needs real contact-time-to-outcome data,
+which is exactly what a pilot produces. Both quantities are reported in
+`validation/report/REPORT.md` under SK-04, as **reported, never-graded** exhibits: adding
+a band for either after seeing the numbers would be inventing a pre-registration.
+
+Event-triggered scoring is therefore **designed and measured, and not built**: it is a
+pipeline change (a stream trigger on the abandonment event, and a feed that is not
+nightly), not a model change.
 
 **Which clock *should* drive urgency is an open question for the mentors.** Abandonment
 is the assumption documented and implemented here, end to end — label, export, backend

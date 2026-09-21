@@ -4,9 +4,9 @@
   "registered_at": "2026-09-16T10:47:14+05:30",
   "registered_by": "RR Squad",
   "provenance": {
-    "generated_at": "2026-09-21T16:41:08+05:30",
+    "generated_at": "2026-09-21T17:01:58+05:30",
     "python": "3.12.4",
-    "git_commit": "234c0f16e58be7d72c7f2d4c146edab87cd70576",
+    "git_commit": "109e5e2b97f517cbbb7fb6cac18473dc4db41681",
     "git_dirty": true,
     "criteria_registered_at": "2026-09-16T10:47:14+05:30",
     "criteria_first_committed_at": "2026-09-16T11:06:09+05:30"
@@ -159,7 +159,7 @@
         ],
         "n": 908,
         "status": "pass",
-        "detail": "Interval is the 5-SEED SPREAD (2.5-97.5 percentile across the registered seeds, criteria.yaml confidence.cross_seed) — training-seed variability, NOT a confidence interval around the packed seed; 5-seed mean 0.8813; the packed seed's own value (0.9009) lies outside this spread, which is expected of a 5-point percentile interval and is not a defect | packed seed (0.9009) passes this band; the 5-seed mean (0.8813) fails it — reported, not hidden.",
+        "detail": "SK-04 measures CONVERSION TIMING AMONG CONVERTERS — of the selected rows that disbursed, the share that disbursed inside the offered product's window. It is NOT contact-SLA compliance. Interval is the 5-SEED SPREAD (2.5-97.5 percentile across the registered seeds, criteria.yaml confidence.cross_seed) — training-seed variability, NOT a confidence interval around the packed seed; 5-seed mean 0.8813; the packed seed's own value (0.9009) lies outside this spread, which is expected of a 5-point percentile interval and is not a defect | packed seed (0.9009) passes this band; the 5-seed mean (0.8813) fails it — reported, not hidden. CONTACT-SLA COMPLIANCE (reported, never graded; `data/experiments/event_triggered.json`). SK-04 does not measure this and must not be quoted as if it did. Simulated dialling over the delivered queue on one shared calendar, weekends excluded, capacity sized to clear the busiest month. For NEWLY ABANDONED ONE-DAY products (personal, gold): today's monthly batch reaches 0.0067 of them in time at same-day ingestion and 0.0 with an overnight lag, because 0.9866 of those leads have a window that shut before the batch produced them (median 27.0 days from abandonment to call). Scoring on the abandonment EVENT instead takes that to 0.6303 at same-day ingestion and 0.4622 with an overnight lag; a three-day lag returns it to 0.0 because three days is longer than a one-day window. Under a halved calling capacity the event regime falls to 0.014 with a p90 of 232.0 days, so capacity dominates the trigger once the queue is overloaded. POST-CONTACT DISBURSEMENT is reported separately at 0.3445 and is deliberately NOT derived from the SLA: the generator's label has no decay after contact_by, so this simulation cannot price what late contact costs in conversions. Only a pilot with real contact-time-to-outcome data can.",
         "breakdown": [],
         "figures": [
           "window_respect.png"
