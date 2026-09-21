@@ -39,9 +39,11 @@ Two bands are worth knowing before you read the report:
   contact budget is registered at **25–35%** (`SK-02`), and the baseline it is
   quoted against is registered separately at **8–10%** (`SK-01`). A synthetic
   book that yielded 60% precision would *fail*, because no bank reviewer would
-  believe it. The claim that goes in the deck — "9 → 30 disbursements per 100 RM
-  calls" — is emitted from the same run as the evidence (`SK-06`), so the number
-  and its proof cannot drift apart.
+  believe it. The claim that goes in the deck is emitted from the same run as the
+  evidence (`SK-06`) rather than typed, so the number and its proof cannot drift
+  apart — it currently reads **"9 → 29 disbursements per 100 RM calls"**, and it
+  is measured on exactly the list the RM queue delivers (`src/model/policy.py`;
+  see `MODEL_CARD.md` §8), not on a different ranking.
 - **Top-1 product accuracy is registered with no target** (`SK-14`,
   `severity: report`). Setting one would push the model back toward the single
   next-best-product behaviour the menu of four exists to replace.

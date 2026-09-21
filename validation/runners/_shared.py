@@ -29,27 +29,41 @@ runner sets `value`/`ci`/`n`/`breakdown` and leaves `status` alone, so it is
 `criteria.yaml` — that decides pass/fail, never the model's own
 `metrics.bands[...]["verdict"]`. That field is deliberately never read here.
 
-Confidence intervals, honestly
--------------------------------
+Intervals, honestly — and NOT all of them are confidence intervals
+------------------------------------------------------------------
 `criteria.yaml confidence.method` calls for a percentile bootstrap resampled at
 `cust_id`. That requires the raw (cust_id, product, y, score) rows behind each
 metric, and the one script run does not persist those (only the aggregates in
 `data/model_metrics.json`) — writing them out would mean editing
-`src/score_and_pack.py`, which this lane may not touch. Two intervals are used
-instead, in order of preference, and every `Result.detail` says which one:
+`src/score_and_pack.py`, which this lane may not touch. Two *different kinds* of
+interval are used instead, and they are not interchangeable. Every
+`Result.detail` says which one the row carries:
 
-1. **Cross-seed percentile spread** (`metrics.seeds.spread[...]`) — the 2.5th to
-   97.5th percentile of the metric's value across the five *registered* seeds
+1. **5-seed spread** (`metrics.seeds.spread[...]`) — the 2.5th to 97.5th
+   percentile of the metric's value across the five *registered* seeds
    [7, 8, 9, 10, 11], i.e. `criteria.yaml confidence.cross_seed`'s own method,
    already computed by `model.metrics.spread`. Available for the headline
    precision/baseline numbers, macro AUC, the six per-product AUCs, menu-of-4,
-   window respect and overall ECE. This is not a weaker substitute for a
-   group-bootstrap — it is wider, because it carries training variance the
-   bootstrap would not.
-2. **The single (packed) seed's Wilson / Hanley-McNeil interval** — for
-   whatever `metrics.seeds.spread` does not cover (per-product ECE, the
-   window-shopper AUC, top-1 accuracy, the by-cut cells). Row-level, so
-   narrower than a group bootstrap would be; documented as such.
+   window respect and overall ECE.
+
+   **This is not a 95% confidence interval and must never be rendered as one.**
+   It is a dispersion of five point estimates from five different training
+   splits. Its estimand is training-seed variability, not sampling error around
+   the packed seed's number — so the packed seed's value can and does fall
+   outside it (it is one of the five, and with five values the 2.5-97.5
+   percentile interpolates well inside the min and max). Labelling it "95% CI"
+   beside a seed-7 point estimate, which this file did until 2026-09-21, put
+   estimates outside their own displayed interval and invited the reading that
+   the number was unstable at the 95% level. Where the two disagree,
+   `seed_mean_note` says so in words.
+2. **The packed seed's Wilson / Hanley-McNeil 95% interval** — a genuine
+   confidence interval around the displayed value, used for whatever
+   `metrics.seeds.spread` does not cover (per-product ECE, the window-shopper
+   AUC, top-1 accuracy, the by-cut cells). Row-level, so narrower than a
+   customer-clustered bootstrap would be; documented as such.
+
+A customer-clustered bootstrap remains the right answer for sampling
+uncertainty and is deliberately **not** faked here out of the five seeds.
 
 Every criterion is graded on the **packed seed's point value** (seed 7 — "the
 value already used in today's pipelines", `criteria.yaml seeds.policy`), which
@@ -133,10 +147,15 @@ def missing_metrics_results(crits: list[Criterion]) -> list[Result]:
 # ---------------------------------------------------------------------------
 # CI resolution: cross-seed spread first, single-seed Wilson/Hanley second
 # ---------------------------------------------------------------------------
-def spread_ci(m: dict, spread_key: str) -> tuple[tuple[float, float] | None, str | None]:
-    """`(ci, detail_fragment)` from `metrics.seeds.spread[spread_key]`, or
-    `(None, None)` if that key was not computed (fewer than 2 seeds, or this
-    metric is not one of the ones `score_and_pack.py` spreads across seeds)."""
+def spread_ci(m: dict, spread_key: str, value: float | None = None
+              ) -> tuple[tuple[float, float] | None, str | None]:
+    """`(interval, detail_fragment)` from `metrics.seeds.spread[spread_key]`.
+
+    The interval returned is a **5-seed spread, not a confidence interval** —
+    see the module docstring. The fragment says so in every row that carries
+    one, and, when the packed seed's own value falls outside the spread, says
+    that too rather than leaving a reader to notice it.
+    """
     sp = (m.get("seeds") or {}).get("spread") or {}
     row = sp.get(spread_key)
     if not row or row.get("n", 0) < 2:
@@ -144,11 +163,17 @@ def spread_ci(m: dict, spread_key: str) -> tuple[tuple[float, float] | None, str
     lo, hi = row.get("pct_low"), row.get("pct_high")
     if lo is None or hi is None:
         return None, None
-    frag = (f"95% CI is the cross-seed 2.5-97.5 percentile spread over "
-            f"{row['n']} registered seeds (criteria.yaml confidence.cross_seed), "
-            f"mean {row.get('mean'):.4f}" if isinstance(row.get("mean"), float)
-            else f"95% CI is the cross-seed percentile spread over {row['n']} seeds")
-    return (round(float(lo), 4), round(float(hi), 4)), frag
+    lo, hi = round(float(lo), 4), round(float(hi), 4)
+    mean = row.get("mean")
+    frag = (f"Interval is the {row['n']}-SEED SPREAD (2.5-97.5 percentile across the "
+            f"registered seeds, criteria.yaml confidence.cross_seed) — training-seed "
+            f"variability, NOT a confidence interval around the packed seed")
+    if isinstance(mean, float):
+        frag += f"; {row['n']}-seed mean {mean:.4f}"
+    if value is not None and (value < lo or value > hi):
+        frag += (f"; the packed seed's own value ({value:.4f}) lies outside this spread, "
+                 f"which is expected of a 5-point percentile interval and is not a defect")
+    return (lo, hi), frag
 
 
 def wilson_ci(block: dict | None) -> tuple[float, float] | None:

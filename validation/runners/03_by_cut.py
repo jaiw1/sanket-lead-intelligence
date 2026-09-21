@@ -87,7 +87,7 @@ def _sk08(m: dict) -> Result:
     cells = []
     for prod, row in per_product.items():
         auc_ci = row.get("auc_ci") or {}
-        spread_ci, _ = sh.spread_ci(m, f"auc_{prod}")
+        spread_ci, _ = sh.spread_ci(m, f"auc_{prod}", row.get("auc"))
         ci = spread_ci or sh.wilson_ci(auc_ci)
         cells.append(dict(level=prod, value=row.get("auc"), ci=ci,
                           n=auc_ci.get("n"), n_pos=row.get("n_pos_test")))
@@ -95,14 +95,16 @@ def _sk08(m: dict) -> Result:
     return Result("SK-08", value=worst["value"], ci=worst["ci"], n=worst["n"],
                  breakdown=cells,
                  detail=f"binding product: {worst['level']} (n_pos={worst['n_pos']}); "
-                        "CI is the cross-seed spread where available, else Hanley-McNeil")
+                        "the interval is the 5-SEED SPREAD where available (training-seed "
+                        "variability, not a confidence interval), else the packed "
+                        "seed's Hanley-McNeil 95% CI")
 
 
 def _sk09(m: dict) -> Result:
     macro = m.get("macro_auc")
     if macro is None:
         return Result("SK-09", status="pending", detail="metrics.macro_auc not present")
-    ci, frag = sh.spread_ci(m, "macro_auc")
+    ci, frag = sh.spread_ci(m, "macro_auc", round(float(macro), 4))
     per_product = m.get("per_product_auc") or {}
     n = None
     if per_product:

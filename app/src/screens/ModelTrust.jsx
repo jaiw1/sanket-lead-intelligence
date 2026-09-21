@@ -88,9 +88,12 @@ export default function ModelTrust() {
             <ScanEye size={18} className="text-signal-amber" aria-hidden="true" /> Model and trust
           </h2>
           <p className="mt-0.5 max-w-3xl text-xs leading-relaxed text-txt-lo">
-            One model across all six products. Everything below is measured on held-out customers, with
-            confidence intervals where the sample is small enough to need them — which, in this build, is
-            most of them.
+            One model across all six products. Everything below is measured on held-out customers, on the
+            list the calling policy would actually deliver — the same ranking, suppression and truncation
+            the queue uses — with 95% confidence intervals around the packed seed's own numbers. The
+            &ldquo;5-seed mean&rdquo; rows in the criteria table are a different thing: a spread across five
+            training seeds, which measures training variability, not sampling error, and is never shown as
+            a confidence interval.
           </p>
         </header>
 
@@ -121,9 +124,9 @@ export default function ModelTrust() {
               />
               <Stat
                 icon={ClipboardCheck}
-                label="Window respect"
+                label="Conversion timing (SK-04)"
                 value={metrics.windowRespect?.value == null ? '—' : pct(metrics.windowRespect.value, 1)}
-                hint={ciText(metrics.windowRespect) || 'ranked inside the product window'}
+                hint={`of the leads that disbursed, the share that disbursed inside the offered product's window${ciText(metrics.windowRespect) ? ` · ${ciText(metrics.windowRespect)}` : ''}`}
               />
             </div>
 
@@ -187,7 +190,7 @@ function PerProductAuc({ metrics, source, detail }) {
             columns={[
               { key: 'label', label: 'Product' },
               { key: 'aucRounded', label: 'AUC', format: (v) => (v == null ? 'not measured' : v) },
-              { key: 'ci', label: '95% CI', format: (v) => (v?.lo == null ? 'not measured' : `${v.lo.toFixed(2)}–${v.hi.toFixed(2)}`) },
+              { key: 'ci', label: '95% CI (Hanley–McNeil)', format: (v) => (v?.lo == null ? 'not measured' : `${v.lo.toFixed(2)}–${v.hi.toFixed(2)}`) },
               { key: 'nPos', label: 'Positives in test', format: (v) => (v == null ? 'not reported' : v) },
             ]}
           >
@@ -630,7 +633,7 @@ function ValidationTable({ metrics, live, packError, packLoading, acceptance }) 
                       <tr className="border-t border-ink-600/20 bg-ink-900/40">
                         <th scope="row" className="px-3 py-1.5 pl-7 text-left font-mono text-[10px] font-normal text-txt-lo">↳ 5-seed mean</th>
                         <td className="px-3 py-1.5 text-[11px] text-txt-lo">
-                          {r.agrees_across_seeds === false ? 'disagrees across seeds — disclosed, not smoothed over' : 'mean across the seeds actually run'}
+                          {r.agrees_across_seeds === false ? 'disagrees across seeds — disclosed, not smoothed over' : 'mean across the seeds actually run'} (training-seed spread, not a confidence interval)
                         </td>
                         <td className="px-3 py-1.5 text-right tabular-nums text-[11px] text-txt-hi">
                           {formatObserved(r.seed_mean, r.verdict_on_seed_mean)}

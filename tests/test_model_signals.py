@@ -196,12 +196,28 @@ def test_the_windows_are_the_pre_registered_ones() -> None:
 
 def test_every_menu_entry_carries_its_own_window_and_a_contact_by_date(
         packed: SimpleNamespace) -> None:
+    """SM-7: `contact_by` runs from ABANDONMENT, not from the scoring snapshot.
+
+    The label is "disbursed inside the product's window after contact" and the
+    platform backend expires a lead at `journeys.abandon_ts + window`; the pack
+    used to compute `snapshot + window`, so the two disagreed by however long
+    the customer had been sitting in the drop-off pool. A `contact_by` earlier
+    than `scored_at` is therefore expected and correct — it means the window had
+    already closed by the time the monthly snapshot reached this customer.
+    """
+    seen_closed = False
     for lead in packed.out["leads"]:
+        abandoned = pd.Timestamp(lead["abandoned_at"])
+        scored = pd.Timestamp(lead["scored_at"])
+        assert (scored - abandoned).days == lead["days_since_abandon"]
         for entry in lead["product_menu"]:
             assert entry["window_days"] == WINDOW_DAYS[entry["product"]]
-            gap = (pd.Timestamp(entry["contact_by"])
-                   - pd.Timestamp(packed.out["meta"]["ref_month"])).days
+            gap = (pd.Timestamp(entry["contact_by"]) - abandoned).days
             assert gap == entry["window_days"], entry
+        if pd.Timestamp(lead["contact_by"]) < scored:
+            seen_closed = True
+    assert seen_closed, ("no lead's window had closed by the snapshot — the fixture no "
+                         "longer exercises the case the old formula hid")
 
 
 def test_the_lead_window_is_the_offered_product_s_window(packed: SimpleNamespace) -> None:

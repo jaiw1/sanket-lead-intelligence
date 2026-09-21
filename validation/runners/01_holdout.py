@@ -55,11 +55,11 @@ def _band_result(crit_id: str, m: dict, block_key: str, spread_key: str | None,
     n = block.get("n")
     ci, frag = (None, None)
     if spread_key:
-        ci, frag = sh.spread_ci(m, spread_key)
+        ci, frag = sh.spread_ci(m, spread_key, value)
     if ci is None:
         ci = sh.wilson_ci(block)
-        frag = (f"95% CI is the packed seed's {block.get('method', 'wilson')} interval "
-                f"(row-level; no cross-seed spread computed for this metric)")
+        frag = (f"Interval is the packed seed's own 95% {block.get('method', 'wilson')} "
+                f"confidence interval (row-level; no cross-seed spread for this metric)")
     detail = f"{detail_prefix}{frag or ''}".strip()
     note = None
     if spread_key:
@@ -97,7 +97,7 @@ def run(criteria: list[Criterion], ctx: RunnerContext) -> list[Result]:
         cells = []
         for budget_pct, block, spread_key in (("5pct", b5, "precision_at_5pct"),
                                               ("20pct", b20, "precision_at_20pct")):
-            ci, _ = sh.spread_ci(m, spread_key)
+            ci, _ = sh.spread_ci(m, spread_key, round(float(block["value"]), 4))
             if ci is None:
                 ci = sh.wilson_ci(block)
             cells.append(dict(level=f"precision_at_{budget_pct}",
@@ -105,7 +105,7 @@ def run(criteria: list[Criterion], ctx: RunnerContext) -> list[Result]:
         results.append(Result("SK-03",
                               value={c["level"]: c["value"] for c in cells},
                               breakdown=cells,
-                              detail="side budgets either side of the 10% operating point"))
+                              detail="side budgets either side of the 10% operating point; the interval on each cell is the 5-seed spread where one exists, not a confidence interval"))
     else:
         results.append(Result("SK-03", status="pending", detail="metrics.precision_at incomplete"))
 

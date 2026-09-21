@@ -40,6 +40,7 @@ from . import emi as EMI
 from . import export as EXP
 from . import frame as F
 from . import metrics as M
+from . import policy as PO
 from . import roster as RO
 from .train import (
     Split,
@@ -79,11 +80,26 @@ def evaluate_seed(base: pd.DataFrame, stacked: pd.DataFrame, cfg: ModelConfig,
     y = hb["t_label"].to_numpy().astype(int)
 
     p_top = Ph.max(axis=1)
-    p_any = 1.0 - np.prod(1.0 - Ph, axis=1)
-    order = np.argsort(-p_top, kind="stable")
+    # SM-7: the six product labels partition the disbursement outcome, so the
+    # any-product probability is their SUM, not the independent-event union
+    # `1 - prod(1 - p)`.  One definition, `policy.any_product_probability`.
+    p_any = PO.any_product_probability(Ph)
+
+    # SM-7: precision is measured on the list the policy would actually deliver
+    # — suppression, eligibility, the queue's own ranking, its truncation and
+    # its tie-break — not on a bare argsort of the probabilities.  One function,
+    # `model.policy`, decides that here and in `build_queue`.
+    elig_h = hb["eligible_for_contact"].to_numpy() == 1
+    cid, semi = hb["cust_id"].to_numpy(), hb["safe_emi"].to_numpy()
+    scores = PO.score_pool(cid, semi, Ph, elig_h)
+    alt_ranking = (PO.RANKING_BLEND if scores.ranking == PO.RANKING_PROBABILITY
+                   else PO.RANKING_PROBABILITY)
+    alt = PO.score_pool(cid, semi, Ph, elig_h, ranking=alt_ranking)
+    order = PO.rank_order(scores)
 
     baseline = float(y.mean())
-    at = {b: M.precision_at(y, p_top, b) for b in (0.05, cfg.budget, 0.20)}
+    at = {b: PO.precision_at(y, scores, b) for b in (0.05, cfg.budget, 0.20)}
+    at_alt = {b: PO.precision_at(y, alt, b) for b in (0.05, cfg.budget, 0.20)}
     pp = M.per_product(Ph, hb, cfg.budget)
     macro = float(np.mean([v["auc"] for v in pp.values()]))
     mm = M.menu_metrics(Ph, hb, cfg.menu_k)
@@ -93,7 +109,9 @@ def evaluate_seed(base: pd.DataFrame, stacked: pd.DataFrame, cfg: ModelConfig,
         seed=seed,
         n_holdout_rows=int(len(y)), n_holdout_customers=int(hb.cust_id.nunique()),
         baseline=baseline,
-        precision=at, row_auc=float(roc_auc_score(y, p_top)),
+        precision=at, ranking=scores.ranking,
+        precision_alt_ranking=at_alt, alt_ranking=alt.ranking,
+        row_auc=float(roc_auc_score(y, p_top)),
         row_auc_rank_by_sum=float(roc_auc_score(y, Ph.sum(axis=1))),
         precision_at_budget_rank_by_sum=float(
             M.precision_at(y, Ph.sum(axis=1), cfg.budget)["precision"]),
@@ -106,7 +124,8 @@ def evaluate_seed(base: pd.DataFrame, stacked: pd.DataFrame, cfg: ModelConfig,
         return out
 
     out["_objects"] = dict(split=sp, ranker=rk, P=P, held=h, hb=hb, Ph=Ph,
-                           y=y, p_top=p_top, p_any=p_any, order=order)
+                           y=y, p_top=p_top, p_any=p_any, order=order,
+                           scores=scores, alt_scores=alt)
     return out
 
 
@@ -175,15 +194,21 @@ LADDER_FEATURES = ("credits_med_6m", "credits_cv_6m", "bal_avg", "minbal_ratio",
 
 
 def baseline_ladder(base: pd.DataFrame, cfg: ModelConfig, sp: Split,
-                    p_top: np.ndarray, h: np.ndarray) -> list[dict]:
-    """SK-25.  Four rungs, one budget, so the gain has a context and not just a size."""
+                    scores: PO.PolicyScores, h: np.ndarray) -> list[dict]:
+    """SK-25.  Four rungs, one budget, so the gain has a context and not just a size.
+
+    The SANKET rung is the **delivered** policy (``model.policy``), not a bare
+    argsort of the probabilities: the top rung of the ladder has to be the list
+    the bank would actually call, or the ladder is comparing the shipped product
+    against three alternatives it never competes with.
+    """
     hb = base[h]
     y = hb["t_label"].to_numpy().astype(int)
     rows = [dict(rung="random contact", score=None),
             dict(rung="balance-ranked (what a branch does today)",
                  score=hb["bal_avg"].to_numpy(dtype=float)),
             dict(rung="logistic scorecard", score=None),
-            dict(rung="SANKET (one LightGBM, six products)", score=p_top)]
+            dict(rung="SANKET (one LightGBM, six products)", score="policy")]
 
     tr = sp.mask(base["cust_id"], "fit") & (base["eligible_for_contact"].to_numpy() == 1)
     cols = [c for c in LADDER_FEATURES if c in base.columns]
@@ -204,7 +229,8 @@ def baseline_ladder(base: pd.DataFrame, cfg: ModelConfig, sp: Split,
             out.append(dict(rung=r["rung"], precision=float(y.mean()),
                             ci_low=lo, ci_high=hi, n=k))
         else:
-            a = M.precision_at(y, np.asarray(r["score"], dtype=float), cfg.budget)
+            a = (PO.precision_at(y, scores, cfg.budget) if isinstance(r["score"], str)
+                 else M.precision_at(y, np.asarray(r["score"], dtype=float), cfg.budget))
             out.append(dict(rung=r["rung"], precision=a["precision"],
                             ci_low=a["ci_low"], ci_high=a["ci_high"], n=a["k"]))
     return out
@@ -292,39 +318,63 @@ def build_queue(base: pd.DataFrame, P: np.ndarray, rk, shopper_score: np.ndarray
     snap_rows = base.iloc[idx].copy().reset_index(drop=True)
     Ps = P[idx]
     elig = snap_rows["eligible_for_contact"].to_numpy() == 1
+    # SM-7: three clocks, named apart and never conflated again.  `scored_at` is
+    # the instant the model ranked the pool — the snapshot's first instant, the
+    # instant every feature is computed as at.  `abandoned_at` is when the
+    # customer walked away from the application, and it is the URGENCY clock.
+    # `contact_by` is `abandoned_at + the product's decision window`, which is
+    # what the platform backend independently computes from `journeys.abandon_ts`
+    # (`app/services/sanket.py::window_due_at`); before this it was computed off
+    # `scored_at` here and the two disagreed.  See MODEL_CARD §4.
+    scored_at = pd.Timestamp(snap_rows["date"].iloc[0])
 
-    p_top = Ps.max(axis=1)
     menu_i = np.argsort(-Ps, axis=1, kind="stable")[:, : cfg.menu_k]
 
+    # SM-7: one policy object, the same one `evaluate_seed` measures on.  It
+    # owns suppression, eligibility, the ranking, the truncation and the
+    # tie-break; nothing below is allowed to re-derive any of them.
+    scores = PO.score_pool(snap_rows["cust_id"].to_numpy(),
+                           snap_rows["safe_emi"].to_numpy(), Ps, elig)
+    p_top = scores.p_top
+
     snap_rows["p_top"] = p_top
-    snap_rows["p_any"] = 1.0 - np.prod(1.0 - Ps, axis=1)
-    snap_rows["nbp"] = [PRODUCTS[int(i)] for i in menu_i[:, 0]]
+    # SM-7: mutually exclusive labels — the any-product probability is the sum.
+    snap_rows["p_any"] = PO.any_product_probability(Ps)
+    snap_rows["nbp"] = list(scores.nbp)
     snap_rows["shopper_score"] = shopper_score[idx]
     snap_rows["uplift"] = uplift[idx]
     snap_rows["uplift_pct"] = pd.Series(uplift[idx]).rank(pct=True).to_numpy()
 
-    snap_rows["intent"] = np.where(elig, pd.Series(p_top).rank(pct=True).to_numpy(), 0.0)
+    snap_rows["intent"] = scores.intent
     # SM-5: the retained-income check against a bank-rate EMI, not a flat
     # assumed constant — `EMI.REFERENCE_EMI` replaces `TYPICAL_EMI` here.
-    cap = (snap_rows["safe_emi"].to_numpy(dtype=float)
-           / np.array([EMI.REFERENCE_EMI[p] for p in snap_rows["nbp"]], dtype=float))
-    snap_rows["capacity"] = np.clip(cap, 0, 2) / 2
-    snap_rows["blend"] = 0.65 * snap_rows["intent"] + 0.35 * snap_rows["capacity"]
+    snap_rows["capacity"] = scores.capacity
+    snap_rows["blend"] = scores.blend
+    #: What the queue is actually ordered on — `model.policy.DEFAULT_RANKING`.
+    snap_rows["rank_score"] = scores.rank_score
 
-    # tiers are cut at the pre-registered contact budget, so `hot` IS the month's
-    # calling list rather than a decorative label.
-    n_e = int(elig.sum())
-    rank = pd.Series(np.where(elig, -p_top, np.inf)).rank(method="first").to_numpy()
-    tier = np.where(~elig, "held", np.where(rank <= cfg.budget * n_e, "hot",
-                                            np.where(rank <= 0.25 * n_e, "warm", "cold")))
+    # tiers are cut at the pre-registered contact budget ON THE QUEUE'S OWN
+    # RANKING, so `hot` IS the month's calling list rather than a second opinion
+    # computed from a different score (which is what it used to be).
+    n_e = scores.n_eligible
+    tier = PO.tiers(scores, cfg.budget)
     snap_rows["tier"] = tier
 
-    queue = snap_rows[elig].sort_values("blend", ascending=False)
-    take = queue.head(cfg.queue_size)
-    gig = queue[(queue.segment.astype(str) == "gig")]
-    if len(gig) and gig.index[0] not in take.index:
-        take = pd.concat([take, gig.head(1)])
-    gig_id = str(gig.iloc[0]["cust_id"]) if len(gig) else str(take.iloc[0]["cust_id"])
+    order = PO.rank_order(scores)
+    take_pos = [int(p) for p in order[: cfg.queue_size]]
+    seg = snap_rows["segment"].astype(str).to_numpy()
+    gig_order = [int(p) for p in order if seg[int(p)] == "gig"]
+    # The gig exhibit needs a face in the export.  If the policy already queued
+    # one, that is the case; if it did not, the best-ranked gig row rides along
+    # as ONE extra row past the budget, keeping the rank the policy gave it, so
+    # the exclusion is visible rather than argued about.  The delivered queue is
+    # still `take_pos[:cfg.queue_size]` and the parity test checks exactly that.
+    if gig_order and gig_order[0] not in take_pos:
+        take_pos.append(gig_order[0])
+    gig_id = str(snap_rows.iloc[gig_order[0]]["cust_id"]) if gig_order \
+        else str(snap_rows.iloc[take_pos[0]]["cust_id"])
+    queue_rank = {int(p): i + 1 for i, p in enumerate(order)}
+    take = snap_rows.iloc[take_pos]
     excluded = snap_rows[~elig]
     samp = excluded.sample(min(cfg.excluded_sample, len(excluded)), random_state=7) \
         if len(excluded) else excluded
@@ -342,10 +392,12 @@ def build_queue(base: pd.DataFrame, P: np.ndarray, rk, shopper_score: np.ndarray
     leads = []
     for pos in take.index:
         leads.append(_lead(snap_rows.loc[pos], pos_of[pos], Ps[pos], menu_i[pos], C, feats,
-                           n_snap, hist, snap_rows.loc[pos, "date"], rm_map, queued=True))
+                           n_snap, hist, snap_rows.loc[pos, "date"], rm_map, queued=True,
+                           queue_rank=queue_rank.get(int(pos)), scored_at=scored_at))
     for pos in samp.index:
         leads.append(_lead(snap_rows.loc[pos], pos_of[pos], Ps[pos], menu_i[pos], C, feats,
-                           n_snap, hist, snap_rows.loc[pos, "date"], rm_map, queued=False))
+                           n_snap, hist, snap_rows.loc[pos, "date"], rm_map, queued=False,
+                           queue_rank=None, scored_at=scored_at))
 
     reasons = (snap_rows.loc[~elig, "t_suppression_reason"].value_counts().to_dict())
     suppression = dict(
@@ -360,13 +412,35 @@ def build_queue(base: pd.DataFrame, P: np.ndarray, rk, shopper_score: np.ndarray
         no_consent=int((snap_rows["t_suppression_reason"] == "no_marketing_consent").sum()),
         suppressed=suppression["suppressed_count"],
     )
+    # SM-7: what the policy selected, stated in one place, so the number the
+    # evaluator quotes and the list an RM receives can be checked against each
+    # other (`tests/test_model_policy.py` does exactly that).
+    delivered = dict(
+        ranking=scores.ranking,
+        weights=(dict(intent=PO.INTENT_WEIGHT, capacity=PO.CAPACITY_WEIGHT)
+                 if scores.ranking == PO.RANKING_BLEND else None),
+        eligible_pool=n_e,
+        budget=cfg.budget,
+        budget_k=PO.budget_k(n_e, cfg.budget),
+        queue_size=int(cfg.queue_size),
+        exported=len(take_pos),
+        equivalent_budget=round(min(cfg.queue_size, n_e) / n_e, 4) if n_e else None,
+        top_ids=[str(snap_rows.iloc[int(p)]["cust_id"]) for p in order[: cfg.queue_size]],
+        tie_break="cust_id ascending",
+        note="The cockpit exports the first `queue_size` rows of the ranked list the "
+             "contact budget buys; `hot` is that budget's whole slice. Both come from "
+             "`model.policy`, which is also what `evaluate_seed` measures precision on.",
+    )
     return leads, counts, dict(suppression=suppression, gig_case_id=gig_id,
                                n_pool=int(len(snap_rows)), n_contactable=n_e,
-                               snap_rows=snap_rows, P=Ps, elig=elig)
+                               snap_rows=snap_rows, P=Ps, elig=elig,
+                               scores=scores, order=order, delivered=delivered,
+                               scored_at=scored_at)
 
 
 def _lead(r, pos: int, probs: np.ndarray, menu_idx: np.ndarray, C: np.ndarray,
-          feats: list[str], n_snap: int, hist, date: str, rm_map: dict, queued: bool) -> dict:
+          feats: list[str], n_snap: int, hist, date: str, rm_map: dict, queued: bool,
+          queue_rank: int | None = None, scored_at: pd.Timestamp | None = None) -> dict:
     top = PRODUCTS[int(menu_idx[0])]
     ctop = _contrib_map(C, feats, int(menu_idx[0]) * n_snap + pos)
     rs = txt.reasons_for(r, ctop) or ["Composite behavioural signal across credits, balances and browsing"]
@@ -378,7 +452,14 @@ def _lead(r, pos: int, probs: np.ndarray, menu_idx: np.ndarray, C: np.ndarray,
     lang = "hi" if (int(str(r.cust_id).split("-")[1]) % 5) < 2 else "en"
     opener, why, obj_q, obj_a = (txt.PITCH_HI if lang == "hi" else txt.PITCH_EN)[top]
 
-    as_at = pd.Timestamp(date)
+    as_at = pd.Timestamp(date) if scored_at is None else pd.Timestamp(scored_at)
+    # SM-7: the urgency clock is ABANDONMENT, not the scoring snapshot.  The
+    # label is "disbursed inside the product's window after contact", the
+    # platform backend expires a lead at `abandon_ts + window`, and this is the
+    # field both of those read.  A `contact_by` already in the past is the
+    # truthful answer for a customer who walked away months ago — the cockpit
+    # renders it as a closed window rather than inventing fresh urgency.
+    abandoned_at = as_at - pd.Timedelta(days=int(r.days_since_abandon))
     menu = []
     for j in menu_idx:
         p = PRODUCTS[int(j)]
@@ -387,7 +468,7 @@ def _lead(r, pos: int, probs: np.ndarray, menu_idx: np.ndarray, C: np.ndarray,
         menu.append(dict(
             product=p, label=PRODUCT_LABEL[p], p=round(float(probs[int(j)]), 4),
             reason=txt.menu_reason(r, p, cj, PRODUCT_LABEL, w), window_days=w,
-            contact_by=(as_at + pd.Timedelta(days=w)).strftime("%Y-%m-%d"),
+            contact_by=(abandoned_at + pd.Timedelta(days=w)).strftime("%Y-%m-%d"),
             # SM-5: `emi` is now the real number — the bank-rate EMI on this
             # product's reference ticket (API 433 sandbox rate, standard
             # amortisation formula).  `indicative_emi` is no longer a second
@@ -428,10 +509,22 @@ def _lead(r, pos: int, probs: np.ndarray, menu_idx: np.ndarray, C: np.ndarray,
         product=top, product_menu=menu, tier=str(r.tier) if queued else "cold",
         lang=lang, uplift_tag=utag, uplift_pct=round(float(r.uplift_pct), 2),
         intent=round(float(r.intent), 3), capacity=round(float(r.capacity), 3),
-        score=round(float(r.blend), 3), probability=round(float(probs[int(menu_idx[0])]), 4),
+        # `score` is the queue's ORDERING key (`model.policy.DEFAULT_RANKING`),
+        # carried at six decimals so sorting on it reproduces the delivered
+        # order.  `blend` stays beside it as the displayed secondary signal.
+        score=round(float(r.rank_score), 6), blend=round(float(r.blend), 3),
+        queue_rank=(int(queue_rank) if queue_rank is not None else None),
+        probability=round(float(probs[int(menu_idx[0])]), 4),
         p_any=round(float(r.p_any), 4),
         shopper_score=round(float(r.shopper_score), 3),
-        window_days=w_top, contact_by=(as_at + pd.Timedelta(days=w_top)).strftime("%Y-%m-%d"),
+        window_days=w_top,
+        # The three clocks, explicit: when they walked away, when we ranked
+        # them, by when an RM must call, and how long after contact the label
+        # is allowed to resolve.
+        abandoned_at=abandoned_at.strftime("%Y-%m-%d"),
+        scored_at=as_at.strftime("%Y-%m-%d"),
+        contact_by=(abandoned_at + pd.Timedelta(days=w_top)).strftime("%Y-%m-%d"),
+        outcome_horizon_days=int(w_top),
         dropoff_stage=str(r.dropoff_stage_reached), dropoff_product=str(r.dropoff_product),
         days_since_abandon=int(r.days_since_abandon),
         contacts_30d=int(r.contacts_30d), last_contact_days=(
@@ -499,6 +592,7 @@ def run(cfg: ModelConfig, out_json: Path | None = None,
     o = main["_objects"]
     sp, rk, P, h, hb, Ph, y = (o["split"], o["ranker"], o["P"], o["held"], o["hb"], o["Ph"], o["y"])
     p_top, p_any = o["p_top"], o["p_any"]
+    scores_main, alt_main = o["scores"], o["alt_scores"]
 
     # ---- auxiliaries -------------------------------------------------------- #
     rng = np.random.default_rng(cfg.seed)
@@ -526,7 +620,7 @@ def run(cfg: ModelConfig, out_json: Path | None = None,
     oot = out_of_time(base, stacked, cfg, sp, main["precision"][cfg.budget]["precision"]) \
         if not cfg.quick else dict(status="skipped_quick")
     perm = permuted_label_auc(stacked, base, cfg, sp) if not cfg.quick else float("nan")
-    ladder = baseline_ladder(base, cfg, sp, p_top, h) if not cfg.quick else []
+    ladder = baseline_ladder(base, cfg, sp, scores_main, h) if not cfg.quick else []
     early = hb["month"].to_numpy() < snap - cfg.oot_months + 1
     stability = float(M.psi(p_top[early], p_top[~early])) if early.any() and (~early).any() else float("nan")
     calib = M.reliability(p_any, y)
@@ -555,10 +649,11 @@ def run(cfg: ModelConfig, out_json: Path | None = None,
     sup, n_pool = extra["suppression"], extra["n_contactable"]
     snap_rows, Psnap, elig_snap = extra["snap_rows"], extra["P"], extra["elig"]
 
-    k_budget = max(1, int(round(int(elig_snap.sum()) * cfg.budget)))
-    p_snap = Psnap.max(axis=1)
+    # SK-23 is measured on the rows the POLICY would call at the budget, not on a
+    # separate argsort — a fairness reading of a list nobody receives is not a
+    # fairness reading.
     sel = np.zeros(len(snap_rows), dtype=bool)
-    sel[np.argsort(np.where(elig_snap, -p_snap, np.inf), kind="stable")[:k_budget]] = True
+    sel[PO.select(extra["scores"], budget=cfg.budget)] = True
     fairness = M.fairness_table(snap_rows[elig_snap], sel[elig_snap])
     income = M.income_accuracy(hb[hb["month"] == snap] if (hb["month"] == snap).any() else hb)
 
@@ -570,18 +665,63 @@ def run(cfg: ModelConfig, out_json: Path | None = None,
     prec = round(main["precision"][cfg.budget]["precision"], 4)
     curve = []
     for b in BUDGETS:
-        a = M.precision_at(y, p_top, b)
+        a = PO.precision_at(y, scores_main, b)
         curve.append(dict(budget=round(b, 2), precision=round(a["precision"], 4),
                           lift=round(a["precision"] / baseline, 1) if baseline else None,
                           ci_low=round(a["ci_low"], 4), ci_high=round(a["ci_high"], 4),
                           contacts=int(n_pool * b),
                           expected_conversions=int(round(n_pool * b * a["precision"]))))
 
+    # ---- the delivered list, measured ---------------------------------------- #
+    # The cockpit exports the first `queue_size` rows of the ranked list. That is
+    # a tighter budget than the registered 10%, so its precision is quoted at its
+    # OWN budget, measured on the held-out split like everything else — never by
+    # reading labels off the in-sample snapshot rows the cockpit happens to show.
+    delivered = dict(extra["delivered"])
+    eq_budget = delivered.get("equivalent_budget")
+    if eq_budget:
+        a = PO.precision_at(y, scores_main, eq_budget)
+        delivered["precision_at_queue_size"] = M.measured(
+            round(a["precision"], 4), round(a["ci_low"], 4), round(a["ci_high"], 4), a["k"])
+        delivered["headline_at_queue_size"] = M.headline(baseline, a["precision"])
+
+    # ---- ranking comparison (review §4) -------------------------------------- #
+    # Both candidate rankings, same rows, same budget, every run. The default is
+    # `model.policy.DEFAULT_RANKING` and this block is the evidence for it.
+    ranking_comparison = dict(
+        default=scores_main.ranking, compared_with=alt_main.ranking,
+        budget=cfg.budget,
+        blend_weights=dict(intent=PO.INTENT_WEIGHT, capacity=PO.CAPACITY_WEIGHT),
+        packed_seed={
+            scores_main.ranking: {str(int(b * 100)): round(
+                main["precision"][b]["precision"], 4) for b in (0.05, cfg.budget, 0.20)},
+            alt_main.ranking: {str(int(b * 100)): round(
+                main["precision_alt_ranking"][b]["precision"], 4)
+                for b in (0.05, cfg.budget, 0.20)},
+        },
+        seed_mean={
+            scores_main.ranking: round(float(np.mean(
+                [s_["precision"][cfg.budget]["precision"] for s_ in per_seed])), 4),
+            alt_main.ranking: round(float(np.mean(
+                [s_["precision_alt_ranking"][cfg.budget]["precision"] for s_ in per_seed])), 4),
+        },
+        decision="Rank on the calibrated product probability. The pre-agreed rule was to "
+                 "keep the 0.65 intent / 0.35 capacity blend only if its held-out "
+                 "precision@10% came within 2 percentage points of probability-only "
+                 "ranking; it does not. Capacity survives as a displayed secondary "
+                 "signal (`capacity`, `blend`), not as a ranking input.",
+    )
+    ranking_comparison["gap_pp"] = round(100.0 * (
+        ranking_comparison["packed_seed"][scores_main.ranking][str(int(cfg.budget * 100))]
+        - ranking_comparison["packed_seed"][alt_main.ranking][str(int(cfg.budget * 100))]), 2)
+
     spread = dict(
         baseline=M.spread([s_["baseline"] for s_ in per_seed]),
         precision_at_budget=M.spread([s_["precision"][cfg.budget]["precision"] for s_ in per_seed]),
         precision_at_5pct=M.spread([s_["precision"][0.05]["precision"] for s_ in per_seed]),
         precision_at_20pct=M.spread([s_["precision"][0.20]["precision"] for s_ in per_seed]),
+        precision_at_budget_alt_ranking=M.spread(
+            [s_["precision_alt_ranking"][cfg.budget]["precision"] for s_ in per_seed]),
         macro_auc=M.spread([s_["macro_auc"] for s_ in per_seed]),
         menu_of_4_hit_rate=M.spread([s_["menu"]["menu_of_4_hit_rate"] for s_ in per_seed]),
         window_respect_rate=M.spread([s_["windows"]["window_respect_rate"] for s_ in per_seed]),
@@ -672,9 +812,12 @@ def run(cfg: ModelConfig, out_json: Path | None = None,
                             baseline_per_100=round(baseline * 100),
                             precision_per_100=round(prec * 100),
                             population="drop-off population, eligible for contact",
+                            ranking=scores_main.ranking,
                             note="Both numbers are disbursement rates over the same population "
                                  "and the same 100 calls: one contacts at random, the other "
-                                 "contacts the model's top 10%."),
+                                 "contacts the model's top 10% selected by exactly the policy "
+                                 "that builds the delivered queue (model.policy: suppression, "
+                                 "eligibility, ranking, truncation, tie-break)."),
         per_product={p: dict(v, label=PRODUCT_LABEL[p]) for p, v in main["per_product"].items()},
         blended=dict(baseline=baseline, auc_macro=round(main["macro_auc"], 3),
                      row_auc=round(main["row_auc"], 4), prec_curve=curve,
@@ -687,6 +830,7 @@ def run(cfg: ModelConfig, out_json: Path | None = None,
         excluded_features=txt.EXCLUDED_FEATURES,
         menu=main["menu"], windows=dict(main["windows"], per_product_days=dict(WINDOW_DAYS)),
         suppression=sup,
+        delivered_queue=delivered, ranking_comparison=ranking_comparison,
         shopper=dict(auc=round(s_auc, 4), ci=[round(s_lo, 4), round(s_hi, 4)],
                      n=int(len(hb)), target="generator latent window_shopper flag",
                      production_note="in production the target is the observable proxy "
@@ -737,6 +881,21 @@ def run(cfg: ModelConfig, out_json: Path | None = None,
                    label="label_disbursed_in_window (disbursement of the offered product inside "
                          "its decision window, after an RM contact)",
                    split="customer-grouped 52.5 / 17.5 / 30 fit / calibrate / hold out"),
+        policy=dict(
+            module="model.policy", ranking=scores_main.ranking,
+            steps=["suppression", "eligibility", "ranking", "truncation", "tie-break"],
+            tie_break="cust_id ascending",
+            budget=cfg.budget, queue_size=int(cfg.queue_size),
+            secondary_signals=["intent", "capacity", "blend"],
+            note="The same function selects the list precision is measured on and the list "
+                 "the cockpit and the platform export receive."),
+        clocks=dict(
+            abandoned_at="when the customer abandoned the application — the URGENCY clock",
+            scored_at="the snapshot instant the model ranked the pool at",
+            contact_by="abandoned_at + the offered product's decision window",
+            outcome_horizon_days="days after CONTACT inside which a disbursement counts",
+            unresolved="Which clock should drive urgency is a question for the mentors; the "
+                       "assumption documented and implemented here is abandonment."),
         generated_from="synthetic liability book (60,000 customers x 30 months) with an "
                        "application-journey layer; the drop-off population is scored",
         generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),

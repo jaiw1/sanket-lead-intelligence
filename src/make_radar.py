@@ -1,10 +1,32 @@
 """
 Business Radar  ->  app/public/radar_data.json
 
-Proof-on-real-data module: scores REAL Indian businesses (public annual financial
-filings living OUTSIDE this repo) as business-banking prospects — growing income,
-comfortable interest cover, unused borrowing headroom — then BACKTESTS the ranking:
-did top-ranked businesses actually raise borrowings the following year?
+An ILLUSTRATIVE, HAND-WEIGHTED financial-ratio exhibit. Not a validation of
+anything.
+
+What it is: a four-term score (income growth 40, interest cover 25, unused
+borrowing headroom 25, positive net worth 10) over REAL Indian businesses'
+published annual filings (which live OUTSIDE this repo), with a backtest asking
+whether top-ranked companies raised total borrowings the following year.
+
+What it is NOT, and the reasons are structural rather than cosmetic:
+
+1. **It is not SANKET's model.** SANKET is a LightGBM over a retail drop-off
+   population predicting disbursement inside a product window after an RM call.
+   This is four ratios with weights somebody chose. They share no code, no
+   features, no label and no population. A good number here says nothing about
+   the retail queue, and a bad one would not impeach it.
+2. **The backtest is not point-in-time.** `load_default_history` excludes every
+   company with ANY default event in its whole recorded history *before* the
+   historical years are scored, and `pctl` ranks each ratio across all
+   company-years pooled together. Both use information that did not exist at the
+   dates being scored. The lift is therefore optimistic by an amount this script
+   does not measure. Rebuilding it as-of each date (expanding-window, with
+   company-clustered uncertainty) is the fix, and has not been done.
+3. **"Raised borrowings" is not an IDBI disbursement.** The outcome is an
+   increase in total borrowings from any lender on the next filing. Nobody
+   called these companies; there is no treatment here, so there is no causal
+   claim available either.
 
 Ships only derived aggregates + anonymised exemplars. No names, no raw rows.
 """
@@ -37,7 +59,13 @@ def num(x):
 
 
 def load_default_history():
-    """Companies with ANY default event on record — excluded from the prospect pool."""
+    """Companies with ANY default event on record — excluded from the prospect pool.
+
+    NOT POINT-IN-TIME, and deliberately left that way pending a rebuild: this
+    reads the entire rating history, including events after the years the
+    backtest scores, so a 2018 row is filtered using a 2023 default. See the
+    module docstring.
+    """
     rows = list(csv.reader(open(f"{DIR}/msme_ratings_movement.csv", encoding="utf-8-sig")))
     hi = next(i for i, r in enumerate(rows) if r and r[0] == "Company Name")
     H = {h: i for i, h in enumerate(rows[hi])}
@@ -107,6 +135,9 @@ def main():
     print(f"company-years: {len(df):,}")
 
     # transparent radar score: growth (40) + interest-cover comfort (25) + headroom (25) + health (10)
+    # The weights are chosen, not fitted. The percentile transform below ranks
+    # every company-year against every other one INCLUDING LATER YEARS, which is
+    # the second way this exhibit uses information a 2018 analyst did not have.
     def pctl(s):
         return s.rank(pct=True).fillna(0.5)
     df["score"] = (0.40 * pctl(df.income_cagr)
@@ -169,6 +200,18 @@ def main():
             desc="Sector-level aggregates and anonymised exemplars from real Indian companies' annual financial statements "
                  "and published credit-rating histories; companies with any default history are screened out before ranking. "
                  "Only derived aggregates ship with this app — never raw company data.",
+            illustrative=True,
+            caveat="ILLUSTRATIVE EXHIBIT, NOT A VALIDATION. This is a hand-weighted "
+                   "financial-ratio score, not SANKET's trained drop-off model, and the two "
+                   "share no code, features, label or population. The backtest is NOT "
+                   "point-in-time: companies with any default anywhere in their recorded "
+                   "history are excluded before the historical years are scored, and the "
+                   "percentile ranks are pooled across all years, so both selection and "
+                   "normalisation use information that did not exist at the dates being "
+                   "scored. The lift below is optimistic by an unmeasured amount. "
+                   "\u201cRaised borrowings\u201d means total borrowings from any lender rose on "
+                   "the next filing \u2014 it is not evidence of an IDBI disbursement, and nobody "
+                   "called these companies, so no RM call caused anything here.",
         ),
         sectors=sectors_out,
         prospects=prospects,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  DISPOSITIONS, PITCH_EN, PITCH_HI, PRODUCTS, SORT_KEYS, TIER, WINDOW_DAYS,
+  DISPOSITIONS, NEGATIVE_SIGNAL, PITCH_EN, PITCH_HI, PRODUCTS, SORT_KEYS, TIER, WINDOW_DAYS,
   dispositionLabel, fallbackPitch, inr, inrExact, num, pct, productLabel, productShort,
   suppressionLabel,
 } from './fmt'
@@ -127,5 +127,43 @@ describe('fmt — suppression', () => {
     // An unknown reason is shown, de-underscored — never swallowed.
     expect(suppressionLabel('some_new_rule')).toBe('some new rule')
     expect(suppressionLabel(null)).toBe('Suppressed')
+  })
+
+  it('names both vocabularies — the pack’s and the export contract’s', () => {
+    // The static pack carries the model's own codes; the API carries the
+    // contract's. Both reach this screen and both must render as words.
+    expect(suppressionLabel('account_dormant')).toBe('Account dormant')
+    expect(suppressionLabel('dormant')).toBe('Account dormant')
+    expect(suppressionLabel('recent_contact')).toMatch(/last 7 days/)
+    expect(suppressionLabel('contact_fatigue')).toMatch(/too often/)
+    expect(suppressionLabel('application_in_flight')).toMatch(/in flight/)
+    expect(suppressionLabel('existing_application_open')).toMatch(/in flight/)
+  })
+
+  it('does not tell an RM to re-KYC a customer who has died', () => {
+    // `deceased` and `account_dormant` were both exported as `kyc_expired`
+    // until 2026-09-21. All three are now distinct, and so are their labels.
+    const dead = suppressionLabel('deceased')
+    const dormant = suppressionLabel('dormant')
+    const kyc = suppressionLabel('kyc_expired')
+    expect(dead).toMatch(/Bereavement/)
+    expect(kyc).toMatch(/KYC/)
+    expect(dead).not.toBe(kyc)
+    expect(dormant).not.toBe(kyc)
+  })
+})
+
+describe('fmt — negative signals', () => {
+  it('renders every signal the export contract can carry', () => {
+    const CONTRACT = ['blank_field_ratio', 'refused_income', 'fee_balk', 'doc_refusal',
+      'multi_product_revisits', 'contact_fatigue', 'vague_answers']
+    for (const signal of CONTRACT) {
+      expect(NEGATIVE_SIGNAL[signal], signal).toBeTruthy()
+    }
+  })
+
+  it('does not show contact fatigue as a vague answer', () => {
+    expect(NEGATIVE_SIGNAL.contact_fatigue).not.toBe(NEGATIVE_SIGNAL.vague_answers)
+    expect(NEGATIVE_SIGNAL.contact_fatigue).toMatch(/fatigue/i)
   })
 })

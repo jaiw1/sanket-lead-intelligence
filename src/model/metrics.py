@@ -181,13 +181,21 @@ def menu_metrics(P: np.ndarray, base: pd.DataFrame, k: int) -> dict:
 
 
 def window_respect(P: np.ndarray, base: pd.DataFrame, order: np.ndarray, k: int) -> dict:
-    """SK-04, as registered.
+    """SK-04 — **conversion timing among converters**.  Not a contact SLA.
 
     Of the held-out rows inside the contact budget that *did* disburse, the share
     whose disbursement landed inside the window of the product **the model
     offered**.  Offering a one-day product to someone who took a fortnight to
-    close counts against the model even though the disbursement was real — which
-    is the point: the queue's SLA is a promise about timing.
+    close counts against the model even though the disbursement was real: the
+    reading is "when we say one day, do the conversions actually arrive in one
+    day".
+
+    What it is **not**: it says nothing about whether an RM made contact before
+    the lead's ``contact_by`` expired.  Nothing in this pipeline observes an RM
+    dialling, so contact-SLA compliance is not measured here or anywhere else in
+    this repo.  ``order`` is the delivered policy's calling order
+    (``model.policy.rank_order``), so the rows counted are the ones the queue
+    would really have contained.
     """
     sel = order[:k]
     days = base["t_days_to_disbursement"].to_numpy(dtype=float)[sel]

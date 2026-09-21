@@ -2,11 +2,14 @@
 
 *An entry for **IDBI Innovate 2026 · Track 2 (Prospect Assist AI)**.*
 
-**🟠 Interim demo (pre-sandbox):** **https://sanket-leads.vercel.app** — no login, no
-backend behind this particular static build. This is a development demo, not the
-submission deployment: the bank-sandbox deployment (EC2 behind nginx, the real
-backend, real auth) is in progress this week and is not live as of this writing
-(2026-09-17). Do not read this link as "the deployment."
+**Deployed:** SANKET runs on IDBI's own sandbox server at **`https://172.16.8.60/sanket/`**
+(nginx, the real backend, real auth). That is a **private** address inside the bank's
+AWS sandbox VPC — there is no public IP, and it is reached over an SSM port forward, so
+the link will not open from an ordinary browser.
+
+**🟠 Public demo build:** **https://sanket-leads.vercel.app** — the same front end as a
+static bundle, no login and no backend behind it. Useful for looking at the screens
+when you cannot reach the sandbox; it is not the deployment.
 
 ## What SANKET is
 
@@ -63,6 +66,38 @@ drawn from — which no real model can — reaches precision@10% ≈ 0.32. The m
 those latents only through noisy observables and lands below that, at 0.29. Detail:
 `DATA_CARD.md` §12.3.
 
+**The number describes the list an RM actually receives.** Until 2026-09-21 it did
+not: precision was measured by ranking held-out rows on the top product's probability,
+while the delivered queue was ranked on `0.65 × intent-percentile + 0.35 × capacity`
+and then truncated — so the headline priced a list nobody was handed. One function,
+`src/model/policy.py`, now performs the whole selection (suppression → eligibility →
+ranking → truncation → tie-break on customer id) and **both** the evaluator and the
+packer call it; `tests/test_model_policy.py` compares the exported queue's customer ids
+against the evaluator's, in order.
+
+Reconciling the two forced a choice of ranking, and it was made by measurement against
+a rule fixed in advance — keep the capacity blend only if it came within 2 percentage
+points of probability-only ranking at the 10% budget:
+
+| ranking | precision@10%, seed 7 | 5-seed mean |
+|---|---|---|
+| calibrated product probability | **29.06%** | 28.11% |
+| 0.65 intent + 0.35 capacity (the old queue order) | 21.92% | 20.52% |
+
+The blend costs **7.1 percentage points**, three and a half times the tolerance, so the
+queue now ranks on probability and `capacity` survives as a displayed signal an RM can
+read rather than a ranking input. `Hot` is cut on that same ranking, which it was not
+before: of the 320 leads the old cockpit queue delivered, only 147 were in its own `hot`
+tier. Both rankings are re-measured every run into `data/model_metrics.json` →
+`metrics.ranking_comparison`.
+
+The cockpit exports the first **320** rows of that ranked list rather than the whole
+553 the 10% budget buys — a tighter budget (5.8%), whose held-out precision is
+**33.1%** (95% CI 30.9–35.4%), reported separately as
+`metrics.delivered_queue.precision_at_queue_size`. The 29 is the number for a 10%
+calling budget; 33 is the number for the 320 rows the demo ships. Neither is measured on
+a different selection rule from the other.
+
 The whole-population baseline ladder (`data/model_metrics.json` →
 `metrics.baseline_ladder`; SK-25, reported not gated):
 
@@ -108,8 +143,16 @@ book (60,000 customers × 30 months, 6 products)
   read `MODEL_CARD.md` §8 "The menu of four" before quoting the top-1 number alone;
   the drop-off anchor (offer them what they abandoned) already gets top-1 right 70.5%
   of the time with no model at all.
-- **Windows.** Each offered product carries its own decision window and a
-  `contact_by` date computed from it (SK-04, `window_respect_rate`).
+- **Windows, and which clock they run on.** Each offered product carries its own
+  decision window. `contact_by` = **abandonment timestamp + that window** — the same
+  rule the platform backend applies to `journeys.abandon_ts`, and not, as it was until
+  2026-09-21, the scoring snapshot plus the window. Every lead now states all three
+  instants separately: `abandoned_at`, `scored_at`, `contact_by`, plus
+  `outcome_horizon_days` (days **after contact** inside which a disbursement counts).
+  A `contact_by` in the past is a correct answer and means the window shut before the
+  monthly snapshot reached that customer. **Which clock should drive urgency is an open
+  question for the mentors**; abandonment is the assumption this build documents and
+  implements end to end.
 - **Suppression.** Eight reasons, evaluated in priority order, first match wins:
   `deceased` · `no_marketing_consent` · `dnd` · `account_dormant` ·
   `application_in_flight` · `recent_decline` · `recent_contact` (7-day cool-off) ·
@@ -242,8 +285,8 @@ that layer and so predates having a denominator to name. **No band's threshold m
 Full text of the amendment, verbatim, is in `validation/report/REPORT.md`'s
 "Pre-registration" section and at the foot of `validation/criteria.yaml`.
 
-**Current report** (`validation/report/REPORT.md`, generated 2026-09-17T00:07:26+05:30
-from commit `4263d8e2d1a4`; all 25 criteria graded — none pending at time of writing):
+**Current report** (`validation/report/REPORT.md`, generated 2026-09-21T15:25:52+05:30
+from commit `b4d5c1c8d697`; all 25 criteria graded — none pending at time of writing):
 **16 pass · 0 gating fail · 9 reported (no target) · 2 of those reported criteria carry
 a disclosed failing value.**
 
@@ -252,7 +295,7 @@ a disclosed failing value.**
 | SK-01 | random-contact disbursement rate | ∈ [8, 10]% | 9.48% | pass |
 | SK-02 | precision@10% budget | ∈ [25, 35]% | 29.06% | pass |
 | SK-03 | precision @5% / @20% | reported | 35.8% / 23.0% | reported |
-| SK-04 | window respect rate | ≥ 90% | 90.1% (packed seed) | **pass on the packed seed, FAIL on the 5-seed mean (88.1%)** — see below |
+| SK-04 | conversion timing among converters | ≥ 90% | 90.1% (packed seed) | **pass on the packed seed, FAIL on the 5-seed mean (88.1%)** — see below |
 | SK-05 | window-shopper detector AUC | ≥ 70% | 84.7% | pass |
 | SK-06 | headline uplift | reported | "9 → 29 per 100" | reported |
 | SK-07 | out-of-time degradation | ≤ 5.0 pp | −0.80 pp (improves) | pass |
@@ -277,7 +320,16 @@ a disclosed failing value.**
 
 **The two honest fails, both disclosed rather than tuned away:**
 
-- **SK-04, window respect — passes on the packed seed, fails on the 5-seed mean.**
+- **SK-04, conversion timing among converters — passes on the packed seed, fails on
+  the 5-seed mean.** First, what it measures, because the earlier wording here was
+  wrong: of the held-out leads inside the contact budget that **did** disburse, the
+  share whose disbursement landed inside the window of the product the model offered.
+  It is a statement about how fast conversions arrive. It is **not** contact-SLA
+  compliance — it does not measure whether an RM called before `contact_by`, and
+  nothing in this pipeline observes an RM dialling at all, so contact-SLA compliance is
+  unmeasured everywhere in this repo. The criterion's own description in
+  `validation/criteria.yaml` was corrected on 2026-09-21 (a dated amendment; the
+  threshold did not move).
   90.1% on the seed the app ships (n=908) clears the ≥90% floor; the mean across 5
   registered seeds is 88.1% (range 86.9–90.1%), which does not. The mechanism: the
   model's top-1 recommendation is usually the product the customer abandoned, and when
@@ -290,12 +342,15 @@ a disclosed failing value.**
   group cells checked (occupation segment × 3, city tier × 3, age band × 3, income
   band × 5), 12 pass; gig workers (0.69) and the lowest income band (0.79) do not.
   Severity is `report`, not `fail`, in `criteria.yaml` on purpose — it is a *reported*
-  measurement, never a gate a run can pass by tuning. The visible cause: the
-  behavioural income estimate is accurate for only 76.4% of gig workers within ±15%
-  (vs 95.2% overall), which depresses their capacity score and their rank. Two
-  mitigations are designed, not yet load-bearing: capacity uses the behavioural
-  *median* rather than a payslip, and production is meant to add segment-aware calling
-  quotas. `MODEL_CARD.md` §8.
+  measurement, never a gate a run can pass by tuning. **What it is not caused by:
+  capacity.** SK-23 has always been measured on the probability-ranked selection, and
+  the ratio is unchanged at 0.69 now that capacity has been removed from the queue's
+  ranking entirely — so the capacity blend was never the mechanism, whatever the
+  earlier wording here implied. The standing hypothesis is the behavioural income
+  estimate, accurate for only 76.4% of gig workers within ±15% (vs 95.2% overall),
+  reaching the model through the income-derived features; that is a hypothesis this
+  README should not state as a finding until it is tested feature by feature.
+  Segment-aware calling quotas remain designed, not built. `MODEL_CARD.md` §8.
 
 `MODEL_CARD.md` §9 carries the same table generated a few hours earlier
 (2026-09-16), before validation runners 08–12 (ablation, stress, seeds, fairness,
@@ -337,8 +392,8 @@ python3 src/make_book.py                          # 60,000 customers x 30 months
 python3 src/make_journeys.py                       # journeys, campaigns, labels (drop-off population)
 python3 src/score_and_pack.py                       # 5 seeds, full exhibits (~11 min)
 python3 src/score_and_pack.py --seeds 7 --quick     # 1 seed, skips OOT/permutation/ladder (~3 min)
-# (optional) python3 src/make_radar.py              # real-data Business Radar; needs the source
-                                                      # financial dataset, not in this repo
+# (optional) python3 src/make_radar.py              # appendix Business Radar exhibit; needs the
+                                                      # source financial dataset, not in this repo
 
 # 2) run the app
 cd app && npm install && npm run dev                # http://localhost:5191
@@ -352,6 +407,38 @@ cd app && npm test                                  # frontend unit tests (vites
 `app/public/sanket_data.json` and `data/model_metrics.json` are both regenerable
 outputs of step 1 and are gitignored, not committed — regenerate them, don't expect
 them checked in.
+
+## Appendix — the Business Radar exhibit
+
+The app carries one screen, **Business radar**, that is not part of SANKET. It scores
+real Indian companies' published annual filings as business-banking prospects and
+backtests whether the top-ranked ones raised borrowings the following year (`2.0×` the
+rest, top decile vs the other nine). It is included because the retail book is
+synthetic and it is worth showing that the team can work with real filings.
+
+It proves nothing about SANKET, and three specific things about it are worth stating
+plainly rather than leaving for a reader to find:
+
+1. **It is a different model.** Four hand-chosen weights over four financial ratios
+   (income growth 40, interest cover 25, borrowing headroom 25, positive net worth 10).
+   SANKET is a trained LightGBM over a retail drop-off population predicting
+   disbursement inside a product window after an RM call. They share no code, no
+   features, no label and no population.
+2. **The backtest is not point-in-time, so the `2.0×` is an upper bound.** Companies
+   with any default anywhere in their recorded history are excluded *before* the
+   historical years are scored (`src/make_radar.py`, `load_default_history`), and each
+   ratio's percentile rank is taken across all company-years pooled together
+   (`pctl`). Both use information that did not exist at the dates being scored. Doing
+   it properly means recomputing eligibility and the percentile transforms as of each
+   historical date, with an expanding-window backtest and company-clustered
+   uncertainty. That has not been done, and until it is, the number belongs in an
+   appendix.
+3. **"Raised borrowings" is not an IDBI disbursement.** The outcome is an increase in
+   total borrowings from *any* lender on the next filing. Nobody called these
+   companies — there is no treatment and therefore no causal claim available.
+
+Only derived aggregates and anonymised exemplars ship with the app; no company names
+and no raw rows.
 
 ## What we did not build, and why
 
@@ -423,7 +510,9 @@ No AI-generated content is attributed anywhere in this repository or its commit 
 
 ---
 
-> Hackathon prototype. The demo runs on a synthetic liability book engineered to
-> mentor-stated baselines; the bank-sandbox deployment and any real customer data
-> connect only after shortlisting, and — as of this writing — no live sandbox pull has
-> ever populated this book.
+> Hackathon prototype. The model runs on a synthetic liability book engineered to
+> mentor-stated baselines. It is deployed and running on the bank's sandbox server
+> (private address `172.16.8.60`, reached over an SSM port forward), where it reads the
+> sandbox's own APIs — which serve mock records, not real customer data. No live pull
+> has ever populated this book, and real customer data connects only after
+> shortlisting.

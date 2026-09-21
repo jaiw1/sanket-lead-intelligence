@@ -51,7 +51,7 @@ def run(criteria: list[Criterion], ctx: RunnerContext) -> list[Result]:
     if ece is None:
         results.append(Result("SK-11", status="pending", detail="metrics.ece not present"))
     else:
-        ci, frag = sh.spread_ci(m, "ece_overall")
+        ci, frag = sh.spread_ci(m, "ece_overall", round(float(ece), 5))
         calib = m.get("calibration") or []
         n = sum(b.get("n", 0) for b in calib) or None
         results.append(Result("SK-11", value=round(float(ece), 5), ci=ci, n=n,

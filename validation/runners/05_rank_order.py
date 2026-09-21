@@ -54,11 +54,12 @@ def run(criteria: list[Criterion], ctx: RunnerContext) -> list[Result]:
     if menu.get("menu_of_4_hit_rate") is None:
         results.append(Result("SK-13", status="pending", detail="metrics.menu not present"))
     else:
-        ci, frag = sh.spread_ci(m, "menu_of_4_hit_rate")
+        ci, frag = sh.spread_ci(m, "menu_of_4_hit_rate",
+                                round(float(menu["menu_of_4_hit_rate"]), 4))
         if ci is None:
             raw_ci = menu.get("menu_of_4_hit_rate_ci")
             ci = tuple(round(x, 4) for x in raw_ci) if raw_ci else None
-            frag = "packed-seed Wilson CI (no cross-seed spread computed)"
+            frag = "Interval is the packed seed's own 95% Wilson confidence interval"
         results.append(Result(
             "SK-13", value=round(float(menu["menu_of_4_hit_rate"]), 4), ci=ci,
             n=menu.get("n_positives"), detail=frag))

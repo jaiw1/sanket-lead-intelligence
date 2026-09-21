@@ -143,7 +143,7 @@ def render_markdown(doc: CriteriaDoc, results: list[Result], out_dir: Path, stri
         L.append("")
         L.append("## Failures")
         L.append("")
-        L.append("| Criterion | Metric | Band | Observed | 95% CI | n | Detail |")
+        L.append("| Criterion | Metric | Band | Observed | Interval | n | Detail |")
         L.append("|---|---|---|---|---|---|---|")
         for r in failures:
             cr = doc.get(r.criterion_id)
@@ -165,6 +165,18 @@ def render_markdown(doc: CriteriaDoc, results: list[Result], out_dir: Path, stri
     # -- everything, by runner --------------------------------------------
     L.append("")
     L.append("## All criteria")
+    L.append("")
+    L.append("**About the `Interval` column.** It is not always a confidence interval, "
+             "and the `Detail` column on every row says which of the two it is. Where a "
+             "metric has a cross-seed spread it is the **5-seed spread** — the 2.5-97.5 "
+             "percentile of the metric across the registered seeds [7, 8, 9, 10, 11], a "
+             "measure of *training-seed variability*, not of sampling error around the "
+             "`Observed` value. `Observed` is always the packed seed (seed 7) and can fall "
+             "outside that spread; that is a property of a five-point percentile interval, "
+             "not a defect. Every other row carries the packed seed's own 95% Wilson or "
+             "Hanley-McNeil confidence interval. A customer-clustered bootstrap, which is "
+             "what `criteria.yaml confidence.method` actually asks for, is not computed by "
+             "this pack and is not approximated out of the five seeds.")
     for runner in RUNNERS:
         crits = doc.by_runner(runner)
         if not crits:
@@ -172,7 +184,7 @@ def render_markdown(doc: CriteriaDoc, results: list[Result], out_dir: Path, stri
         L.append("")
         L.append(f"### {runner}")
         L.append("")
-        L.append("| ID | Metric | Scope | Band | Observed | 95% CI | n | Severity | Status |")
+        L.append("| ID | Metric | Scope | Band | Observed | Interval | n | Severity | Status |")
         L.append("|---|---|---|---|---|---|---|---|---|")
         for cr in crits:
             r = by_id.get(cr.id) or Result(cr.id, status="pending")
@@ -188,7 +200,7 @@ def render_markdown(doc: CriteriaDoc, results: list[Result], out_dir: Path, stri
                 L.append(f"<details><summary>{cr.id} — per-cell breakdown "
                          f"({len(r.breakdown)} cells)</summary>")
                 L.append("")
-                L.append("| Cell | Observed | 95% CI | n | Status |")
+                L.append("| Cell | Observed | Interval | n | Status |")
                 L.append("|---|---|---|---|---|")
                 for cell in r.breakdown:
                     L.append(f"| {cell.get('level')} | {_fmt(cell.get('value'))} | "

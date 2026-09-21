@@ -116,14 +116,19 @@ export const STAGE_LABEL = {
 /** The four window-shopper signals the mentors named, plus the ones the generator emits. */
 export const NEGATIVE_SIGNAL = {
   vague_answer_count: 'Vague answers',
+  vague_answers: 'Vague answers',
   blank_field_ratio: 'Left fields blank',
   refused_income: 'Would not share income',
   fee_balk: 'Balked at the ₹1,000 fee',
   doc_refusal: 'Refused to upload documents',
   multi_product_revisits: 'Shopped several products',
-  contact_fatigue: 'Contacted recently',
+  contact_fatigue: 'Contacted repeatedly — campaign fatigue',
 }
 
+// Both vocabularies, kept apart on purpose: the static pack carries the model's own
+// reason codes (`account_dormant`, `recent_contact`), the API carries the export
+// contract's (`dormant`, `contact_fatigue`). `deceased` and `dormant` used to reach
+// this screen as `kyc_expired`, which told an RM to go and re-KYC someone who had died.
 export const SUPPRESSION_REASON = {
   none: 'Not suppressed',
   deceased: 'Bereavement on record',
@@ -131,10 +136,15 @@ export const SUPPRESSION_REASON = {
   dnd: 'On the DND registry',
   dnd_registry: 'On the DND registry',
   account_dormant: 'Account dormant',
+  dormant: 'Account dormant',
+  kyc_expired: 'KYC has expired',
   application_in_flight: 'Application already in flight',
+  existing_application_open: 'Application already in flight',
   recent_decline: 'Declined recently',
   recent_contact: 'Called in the last 7 days',
   contact_fatigue: 'Called too often recently',
+  window_closed: 'Contact window has closed',
+  negative_uplift: 'Calling would do harm',
   already_holds_product: 'Already holds this product',
   not_in_population: 'Not in the drop-off population',
 }

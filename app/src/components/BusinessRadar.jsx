@@ -15,16 +15,17 @@ export default function BusinessRadar({ radar }) {
 
   return (
     <div className="space-y-5">
-      <section className="bg-signal-teal/5 border border-signal-teal/30 rounded-xl p-5">
-        <div className="flex items-center gap-2 text-signal-teal mb-2">
-          <BadgeCheck size={18} /><h2 className="font-bold text-lg">Business Radar — proven on real businesses</h2>
+      <section className="bg-signal-amber/5 border border-signal-amber/30 rounded-xl p-5">
+        <div className="flex items-center gap-2 text-signal-amber mb-2">
+          <BadgeCheck size={18} /><h2 className="font-bold text-lg">Business Radar — an illustrative exhibit on real filings</h2>
         </div>
         <p className="text-sm text-txt-mid leading-relaxed max-w-4xl">
-          The retail queue runs on a synthetic book (by design, until sandbox access). To prove the prospecting engine works on
-          reality, we ran the same signal-scoring approach over <b>{radar.meta.n_companies_str} real Indian businesses'</b> annual
-          financials: growing income, comfortable interest cover and unused borrowing headroom mark a business that is
-          <b> ready for working capital</b> — the business-banking version of a hot lead.
+          A hand-weighted financial-ratio screen over <b>{radar.meta.n_companies_str} real Indian businesses'</b> annual
+          financials: growing income, comfortable interest cover and unused borrowing headroom mark a business that may be
+          <b> ready for working capital</b>. It is <b>not</b> SANKET's model and does not validate it — different features,
+          different label, different population.
         </p>
+        <p className="text-xs text-signal-amber/90 mt-2 leading-relaxed max-w-4xl">{radar.meta.caveat}</p>
         <p className="text-xs text-txt-lo mt-2">{radar.meta.desc}</p>
       </section>
 
@@ -41,8 +42,8 @@ export default function BusinessRadar({ radar }) {
         </div>
         <div className="bg-ink-700 border border-line rounded-xl p-4">
           <div className="text-2xl font-bold text-signal-amber">{radar.backtest.top_multiple.toFixed(1)}×</div>
-          <div className="text-sm font-semibold mt-0.5">Backtest lift</div>
-          <div className="text-xs text-txt-lo">top-decile prospects actually borrowed next year at this multiple of the rest</div>
+          <div className="text-sm font-semibold mt-0.5">Backtest lift (optimistic)</div>
+          <div className="text-xs text-txt-lo">top-decile companies raised borrowings from some lender next year at this multiple of the rest — not point-in-time, so read it as an upper bound</div>
         </div>
         <div className="bg-ink-700 border border-line rounded-xl p-4">
           <div className="text-2xl font-bold text-txt-hi">{radar.meta.years}</div>
@@ -71,8 +72,8 @@ export default function BusinessRadar({ radar }) {
         </section>
 
         <section className="bg-ink-700 border border-line rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-1"><TrendingUp size={15} className="text-signal-amber" /><h3 className="font-bold text-sm">Did the radar actually predict borrowing?</h3></div>
-          <p className="text-xs text-txt-lo mt-1 mb-4">Backtest on real filings: businesses the radar ranked highest went on to raise borrowings the following year far more often.</p>
+          <div className="flex items-center gap-2 mb-1"><TrendingUp size={15} className="text-signal-amber" /><h3 className="font-bold text-sm">Did the radar rank borrowing correctly, after the fact?</h3></div>
+          <p className="text-xs text-txt-lo mt-1 mb-4">Backtest on real filings: businesses the radar ranked highest went on to raise borrowings the following year more often. The ranking was computed with later years in view, so this is a retrospective ordering, not a forecast anyone could have made at the time.</p>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={radar.backtest.deciles} margin={{ top: 18, right: 8, left: -16, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#232B4D" />
@@ -127,7 +128,7 @@ export default function BusinessRadar({ radar }) {
 
       <p className="text-[11px] text-txt-lo">
         Sector-level aggregates and anonymised exemplars from real Indian companies' published annual financials and credit-rating histories; only derived aggregates ship with this app.
-        Distressed or default-history businesses are screened out before ranking.
+        Distressed or default-history businesses are screened out before ranking — using each company's whole recorded history, including events after the years being scored, which is why the backtest above is an upper bound rather than a measurement.
       </p>
     </div>
   )

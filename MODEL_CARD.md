@@ -25,7 +25,7 @@ Three things were wrong with that, and the mentors named all three.
 |---|---|---|
 | three models, one per product | **one** model, `product` as a categorical over a stacked (customer, month, product) frame | a per-product model cannot share what it learns about "this customer is ready to borrow", and has nothing to say about the three products it never saw |
 | scored the whole liability book | scores the **drop-off population** only | a customer who never applied is a lead-generation problem, and lead generation is out of scope |
-| baseline = random call to *anyone* ≈ 1% | baseline = random call to a **drop-off** ≈ 9% | the old denominator flattered the model by roughly 3×. The claim is now `9 → 30 disbursements per 100 RM calls`, built from the two measured numbers and never typed |
+| baseline = random call to *anyone* ≈ 1% | baseline = random call to a **drop-off** ≈ 9% | the old denominator flattered the model by roughly 3×. The claim is now `9 → 29 disbursements per 100 RM calls`, built from the two measured numbers and never typed |
 | conversion = an event on the book | conversion = **disbursement inside the product's decision window, after an RM contact** | mentor mandate. personal 1d · gold 1d · auto 3d · education 7d · home 14d · lap 14d |
 | three products | **six** | home, loan-against-property, gold, auto, education, personal |
 
@@ -94,6 +94,52 @@ to reproduce the observed self-return rate, and both layers read the same latent
 
 The six `label_product_<p>` columns partition the row label (exactly one can be 1), so
 `P(row) = Σ_p P(product p)` and the stacked model learns all six at once.
+
+### Any-product probability
+
+Because the labels are mutually exclusive, the probability that a lead disburses
+*something* is the **sum** of the six, not `1 − ∏(1 − p)`. Until 2026-09-21 both the
+evaluator and the packer used the independence formula, which is the union of six
+events that *can* co-occur — they cannot — and read low for exactly the customers the
+queue ranks highest. `model.policy.any_product_probability` is now the one definition,
+and `p_any` in the export is that sum.
+
+**It is clipped at 1, and the clip is a disclosure, not a fix.** The six isotonic
+calibrators are fitted independently, one per product; nothing constrains their outputs
+to sum to at most one. A sum above one is a coherence failure of the calibration, and
+clipping hides its size rather than repairing it. A genuinely coherent treatment would
+model the seven-way outcome (six products plus no disbursement) jointly, or calibrate
+`P(any)` separately against the row label and rescale the six to match. Neither is
+built. On the shipped run the overall ECE against the row label is 0.0074, so the sums
+are not badly incoherent in practice — but "not badly" is an observation about one run,
+not a property of the method.
+
+### Three clocks, and which one drives urgency
+
+| field | what it is | example |
+|---|---|---|
+| `abandoned_at` | when the customer walked away from the application | 2026-07-04 |
+| `scored_at` | the snapshot instant the model ranked the pool; every feature is as at this moment | 2026-09-01 |
+| `contact_by` | `abandoned_at` + the offered product's window — the deadline for an RM to call | 2026-07-05 |
+| `outcome_horizon_days` | days **after contact** inside which a disbursement counts | 1 |
+
+`contact_by` and `outcome_horizon_days` are the same number of days measured from two
+different events, which is exactly why they are two fields. Until 2026-09-21 the export
+computed `contact_by` as `scored_at + window` while the platform backend computed
+`abandon_ts + window`; the two disagreed by however long the customer had been sitting
+in the drop-off pool, which for a one-day product is most of its life. The export now
+uses abandonment, and agrees with the backend.
+
+**A `contact_by` in the past is correct output.** For `personal` and `gold` (one-day
+windows) scored off a *monthly* snapshot, the window has almost always shut before the
+lead is produced. That is a real property of scoring one-day opportunities on a monthly
+clock, not a rendering bug, and the cockpit shows those leads as closed rather than
+inventing urgency. The fix is event-triggered scoring for the short-window products,
+which is designed and not built.
+
+**Which clock *should* drive urgency is an open question for the mentors.** Abandonment
+is the assumption documented and implemented here, end to end — label, export, backend
+and screen. It is recorded as an assumption, not settled.
 
 **The honest caveat, stated once and loudly:** *the counterfactual is generated, not validated.*
 Nothing in this repo proves that an RM call is worth 8–10%; that is what the mentors stated and
@@ -230,21 +276,66 @@ Held-out 30% of customers, default seed 7, unless a spread is quoted. Source of 
 
 ### The headline
 
-> **9 → 30 disbursements per 100 RM calls** *(seed 7 reads 9 → 29; the five-seed mean is
-> 9.1 → 28.1)*
+> **9 → 29 disbursements per 100 RM calls** *(seed 7; the five-seed mean is 9.1 → 28.1)*
 
-| | value | 95% CI | across 5 seeds |
+| | value | 95% CI (packed seed) | 5-seed spread |
 |---|---|---|---|
 | random-contact disbursement (the 9) | **9.48%** | 8.46 – 10.59% | mean 9.10%, 8.93 – 9.48% |
-| precision @ 10% budget (the 30) | **29.06%** | 27.44 – 30.73% | mean 28.11%, 27.47 – 29.06% |
+| precision @ 10% budget (the 29) | **29.06%** | 27.44 – 30.73% | mean 28.11%, 27.47 – 29.06% |
 | precision @ 5% | 35.80% | 33.38 – 38.30% | mean 32.64% |
 | precision @ 20% | 23.01% | 21.95 – 24.11% | mean 21.96% |
 | lift over random contact @10% | **3.1×** | | |
+
+The "95% CI" column is a Wilson interval around the packed seed's own number. The
+"5-seed spread" column is a different estimand — the dispersion of five point estimates
+from five training splits — and is never a confidence interval around anything. They
+are kept in separate columns for that reason; see §9.
 
 **Both numbers price the same hundred calls**, over the same population: one caller picks at
 random, the other takes the model's top decile. That is the whole of the claim. The retired
 `1% → 36%, 28× lift` compared a top-2% slice of the *whole liability book* against a random
 call to *anyone on the book* — a denominator no RM ever dials.
+
+### The delivered queue, and why it ranks on probability
+
+**The number above describes the list an RM receives.** Until 2026-09-21 it did not.
+`evaluate_seed` measured precision by ranking held-out rows on `max(product
+probabilities)`; the queue `build_queue` handed to the cockpit and the platform was
+ranked on `0.65 × intent-percentile + 0.35 × capacity`, then truncated to 320 rows, and
+the `hot`/`warm`/`cold` tiers were cut on a *third* ordering. Of the 320 leads the old
+queue delivered, 147 were in its own `hot` tier.
+
+`src/model/policy.py` now owns the whole selection — suppression → eligibility →
+ranking → truncation → tie-break (customer id ascending) — and both the evaluator and
+the packer call it. `tests/test_model_policy.py` compares the exported queue's customer
+ids against the evaluator's, in order, so the two cannot drift apart again silently.
+
+Unifying them forced a choice of ranking. It was made against a rule fixed before the
+measurement: keep the blend only if its held-out precision@10% came within 2 percentage
+points of probability-only ranking.
+
+| ranking | precision@5% | **precision@10%** | precision@20% | 5-seed mean @10% |
+|---|---|---|---|---|
+| calibrated product probability | 35.80% | **29.06%** | 23.01% | 28.11% |
+| 0.65 intent + 0.35 capacity | 23.59% | **21.92%** | 20.70% | 20.52% |
+
+The blend costs **7.14 percentage points** — three and a half times the tolerance — so
+the queue ranks on probability. `capacity` and `blend` are still computed and exported:
+an RM sees whether the customer can comfortably afford the product, it just no longer
+decides who gets called. Both rankings are re-measured every run into
+`metrics.ranking_comparison`, so the decision is re-checkable rather than a one-off.
+
+Why the blend lost so much: `intent` is a *percentile rank* of the probability, which
+throws away the shape of the distribution — the difference between a 0.62 lead and a
+0.31 lead becomes one rank step — and then 35% of the ordering is given to an
+affordability ratio that is close to uncorrelated with whether the customer converts.
+
+**What the cockpit exports is a prefix, and is reported as one.** The 10% budget buys
+553 calls at the snapshot; the cockpit ships the first 320 of them (5.8% of the eligible
+pool). That tighter budget's held-out precision is **33.12%** (95% CI 30.91 – 35.40%),
+carried as `metrics.delivered_queue.precision_at_queue_size` with its own per-100 line,
+"9 → 33". The 29 prices a 10% calling budget; the 33 prices the 320 rows the demo
+ships. Both come from the same ranked list and the same selection function.
 
 ### Ranking
 
@@ -317,7 +408,7 @@ publish the unconstrained number beside it so nobody has to take the constraint 
 |---|---|---|
 | ECE overall | 0.0074 | ≤ 0.03 |
 | ECE worst product (education) | 0.0027 | ≤ 0.03 |
-| window respect @ 10% budget | **0.901** (n = 908) | ≥ 0.90 — **5-seed mean 0.881, below the floor** |
+| conversion timing among converters, @ 10% budget (SK-04) | **0.901** (n = 908) | ≥ 0.90 — **5-seed mean 0.881, below the floor** |
 | out-of-time degradation (months 24–29) | **−0.80 pp** (i.e. it improved) | ≤ 5 pp |
 | PSI, early months vs last six | 0.009 | ≤ 0.10 |
 | permuted-label AUC (full retrain) | 0.506 | ∈ [0.48, 0.52] |
@@ -325,7 +416,17 @@ publish the unconstrained number beside it so nobody has to take the constraint 
 | window-shopper detector AUC | 0.847 (0.842 – 0.853) | ≥ 0.70 |
 | cross-seed precision@10% interval width | 1.46 pp | ≤ 4 pp |
 
-**Window respect is the honest problem.** It clears the 0.90 floor on the packed seed (0.901)
+**SK-04 is the honest problem — and first, what it is.** It measures **conversion timing
+among converters**: of the held-out leads inside the contact budget that *did* disburse,
+the share whose disbursement landed inside the window of the product the model offered.
+It is **not** contact-SLA compliance. It does not measure whether an RM called before
+`contact_by`, and nothing in this pipeline observes an RM dialling — there are no
+contact timestamps in the delivered pack — so contact-SLA compliance is unmeasured here
+and everywhere else in this repo. Any earlier reading of the 90.1% as "contact lands
+inside the window" was wrong; `validation/criteria.yaml` carries a dated amendment
+correcting the criterion's own description, with the threshold untouched.
+
+It clears the 0.90 floor on the packed seed (0.901)
 and misses it on the five-seed mean (0.881, range 0.869 – 0.901). The mechanism is not a bug:
 the model offers the product the customer abandoned, and when the customer comes back for a
 *different* product with a shorter window, the disbursement lands outside the offered
@@ -372,9 +473,18 @@ Four-fifths rule on the *contact* rate at the live 10% budget, over the snapshot
 
 This is the documented gig-worker failure, and it is a **reported** criterion in
 `validation/criteria.yaml` — not a gate — because tuning it away on synthetic data would be
-pretending to have solved it. The mechanism is visible in the income numbers below: the
-behavioural income estimate is materially worse for gig workers, which depresses their capacity
-score, which depresses their rank.
+pretending to have solved it.
+
+**The mechanism is not the capacity blend**, and this card said otherwise until
+2026-09-21. SK-23 has always been measured on the probability-ranked selection, and the
+ratio is unchanged at **0.69** now that capacity has been removed from the queue's
+ranking entirely (§8) — so a term that was never in the measured selection cannot have
+been depressing it. The standing hypothesis is the income numbers below: the behavioural
+income estimate is materially worse for gig workers, and it reaches the model through
+the income-derived features rather than through capacity. That is a hypothesis, stated
+as one. Which features carry the exclusion, whether outcomes at comparable eligibility
+justify any of it, and what a within-segment quota would cost in precision are open
+questions, not findings.
 
 | Income estimation (held-out, snapshot month, n = 1,694) | |
 |---|---|
@@ -398,7 +508,21 @@ Snapshot pool 7,456 customer-months; **1,927 (25.8%) suppressed and never queued
 | deceased | 8 |
 | already holds the product the need points at | 1 |
 
-Queue at the snapshot: 552 hot (the top 10% — the month's calling list), 830 warm, 4,147 cold.
+Each of these reaches the platform under its own name. `deceased` and `account_dormant`
+used to be exported as the contract's `kyc_expired`, which passed schema validation and
+told an RM to go and re-KYC a customer who had died; the contract now carries `deceased`
+and `dormant` as distinct values, and `tests/test_model_export.py` asserts the mapping is
+total over every reason a suppressed row can carry and injective. The negative-signal
+chips got the same treatment: a repeated-contact chip used to arrive as `vague_answers`
+and now arrives as `contact_fatigue`. Two chips still collapse onto `vague_answers` —
+`journey_stated_income_ratio` (stated income above what the account shows) and
+`journey_open_now` (another application already open) — because neither has a contract
+value yet; that is open contract debt, listed here so it is not invisible.
+
+Queue at the snapshot: **553 hot** — the top 10% of the eligible pool on the queue's own
+ranking, i.e. the month's calling list — 829 warm, 4,147 cold. The cockpit exports the
+first 320 of the hot slice. Before 2026-09-21 the tiers were cut on a different ordering
+from the queue, and only 147 of the 320 delivered leads were in the `hot` tier at all.
 
 ### Runtime
 
@@ -424,7 +548,7 @@ is the finding; it is never hidden and never tuned toward.
 | SK-01 | random_contact_disbursement_rate | in [0.08, 0.10] | 0.0948 | **pass** |
 | SK-02 | precision_at_10pct_budget | in [0.25, 0.35] | 0.2906 | **pass** |
 | SK-03 | precision at 5% and 20% | reported | 0.358 / 0.230 | report |
-| SK-04 | window_respect_rate | ≥ 0.90 | 0.9009 | **pass on the packed seed, FAIL on the 5-seed mean (0.881)** |
+| SK-04 | conversion timing among converters (`window_respect_rate`) | ≥ 0.90 | 0.9009 | **pass on the packed seed, FAIL on the 5-seed mean (0.881)** |
 | SK-05 | window_shopper_auc | ≥ 0.70 | 0.847 | **pass** |
 | SK-06 | headline uplift | reported | 9 → 29 per 100 | report |
 | SK-07 | oot degradation (pp) | ≤ 5.0 | −0.80 | **pass** |
@@ -448,8 +572,31 @@ is the finding; it is never hidden and never tuned toward.
 | SK-25 | baseline ladder | reported | 4 rungs | report |
 
 **17 pass · 1 gating band that passes on the packed seed and fails on the seed mean (SK-04) ·
-1 reported failure (SK-23, the gig gap) · 2 not run (SK-19, SK-22 — validation runners 08 and
-10, not this lane's).**
+1 reported failure (SK-23, the gig gap) · 2 not run in this script (SK-19, SK-22 — validation
+runners 08 and 10 emit them; `validation/report/REPORT.md` has their values).**
+
+### What the intervals in this card are, and are not
+
+Two kinds of interval appear here and in `validation/report/REPORT.md`, and they answer
+different questions:
+
+- **95% confidence interval** — Wilson for proportions, Hanley-McNeil for AUCs, computed
+  on the packed seed's own held-out rows. It is sampling uncertainty around the number
+  printed beside it. (The export contract carries the method name verbatim; it used to
+  relabel Hanley-McNeil as DeLong, which is a different method, and no longer does.)
+- **5-seed spread** — the 2.5th to 97.5th percentile of the metric across the registered
+  training seeds [7, 8, 9, 10, 11]. It measures *training-seed variability*. It is **not**
+  a confidence interval and the packed seed's value can fall outside it, because five
+  points interpolate well inside their own min and max. Until 2026-09-21 the validation
+  report labelled these "95% CI" beside seed-7 point estimates, which put several
+  estimates outside their displayed interval; they are now labelled "Interval" with the
+  kind named on every row.
+
+**Neither is a customer-clustered bootstrap**, which is what `criteria.yaml
+confidence.method` actually registers and what sampling uncertainty over a queue
+selection properly requires — the resample has to be at `cust_id` and the queue has to be
+re-selected inside each resample. That is not computed, and it is deliberately not faked
+out of the five seeds.
 
 ---
 
@@ -467,11 +614,13 @@ is the finding; it is never hidden and never tuned toward.
    there is no credit decline, no policy reject, no fraud decline. A model trained here cannot
    tell "changed their mind" from "we said no" (DATA_CARD §11.11).
 5. **No arrears, no delinquency, no repayment behaviour.** §7.
-6. **Gig workers are under-contacted**, and the fairness table says by how much. Irregular gig
-   income reads as instability to a model whose training mass is salaried. Two mitigations are
-   in the design — capacity uses the behavioural *median* rather than a payslip, and production
-   adds segment-aware calling quotas — but the gap is disclosed, not tuned away, because tuning
-   it away on synthetic data would be pretending to have solved it.
+6. **Gig workers are under-contacted**, and the fairness table says by how much (0.69).
+   Irregular gig income reads as instability to a model whose training mass is salaried.
+   The capacity blend is *not* the cause — the ratio is unchanged now that capacity has
+   been removed from the ranking (§8) — so the feature-level mechanism is still an open
+   question rather than a diagnosed one. Segment-aware calling quotas are designed, not
+   built. The gap is disclosed, not tuned away, because tuning it away on synthetic data
+   would be pretending to have solved it.
 7. **EMI figures price one sandbox rate, not a per-product quote.** Every product prices off
    the same 12.75% p.a. figure (`rateInfo.effectiveRate`), because a live API 433 call returns
    a single rate-card reading and there is no per-product rate to be had. What *is* fetched is
@@ -535,6 +684,23 @@ is the finding; it is never hidden and never tuned toward.
     whole product exists because it does not.
 14. **The shopper detector, the uplift pair and the ranker are three fits, not one.** Only the
     ranker is "the model" in the mentors' sense; the other two are exhibits.
+15. **The Business Radar screen is an appendix exhibit and validates nothing here.**
+    `src/make_radar.py` scores real Indian companies' published filings with four
+    hand-chosen weights over four financial ratios. It shares no code, features, label or
+    population with this model. Its backtest is **not point-in-time**: companies with any
+    default anywhere in their recorded history are excluded before the historical years
+    are scored, and the percentile transforms are pooled across all company-years — both
+    use information that did not exist at the dates being scored, so the reported `2.0×`
+    is an upper bound of unmeasured size. Its outcome, "total borrowings rose on the next
+    filing", is not an IDBI disbursement, and nobody called those companies, so nothing
+    there evidences that an RM call causes anything. Rebuilding it as-of each date, with
+    an expanding-window backtest and company-clustered uncertainty, is the fix and has
+    not been done.
+16. **The delivered queue is a prefix of the priced budget.** The headline prices a 10%
+    contact budget (553 calls at the snapshot); the cockpit ships the first 320 of the
+    same ranked list. Both numbers are published (§8) and both come from one selection
+    function, but a reader who takes "29 per 100" to describe the 320 rows on screen is
+    reading the wrong budget — those 320 measure 33.1%.
 
 ---
 
@@ -613,6 +779,19 @@ emi_source}`) · `negative_chips` (`{signal, text, impact, mentor_signal}`) · `
 `rm_branch` (SM-4 — an EIN + name + branch on every **queued** lead, `null` on a suppressed one) ·
 `emi_source` (SM-5 — `"BANK_API_433_sandbox_fixture"` on a normal run, `"TYPICAL_EMI"` only if the
 sandbox rate is ever unavailable)
+
+**Added 2026-09-21 (SM-7):** `abandoned_at` · `scored_at` · `outcome_horizon_days` ·
+`queue_rank` · `blend`. `contact_by` changed meaning — it is now `abandoned_at + window`,
+agreeing with the platform backend, where it used to be `scored_at + window` (§4, "Three
+clocks"). `score` changed meaning too: it is the queue's **ordering key**
+(`model.policy.DEFAULT_RANKING`, currently the calibrated product probability) carried at
+six decimals, so sorting on it descending reproduces the delivered order; the old
+`0.65 × intent + 0.35 × capacity` composite is still exported, as `blend`, as a displayed
+signal. `queue_rank` is the lead's 1-based position in the delivered list, `null` on a
+suppressed lead. The platform contract
+(`rrsquad-platform/contracts/sanket_export.schema.json`) carries all of these, plus the
+new `deceased` / `dormant` suppression reasons and the `contact_fatigue` negative signal
+(§8, "Suppression").
 
 **SM-5's two EMI numbers, disambiguated for L11:** `product_menu[].emi` is the number to say out
 loud — the bank-rate EMI on that product's reference ticket, computed by `src/model/emi.py`'s

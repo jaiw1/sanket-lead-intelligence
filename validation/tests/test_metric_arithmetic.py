@@ -63,8 +63,28 @@ def test_spread_ci_reads_percentile_spread():
                                            "mean": 0.09}}}}
     ci, frag = sh.spread_ci(m, "baseline")
     assert ci == (0.081, 0.099)
-    assert "cross-seed" in frag
-    assert "5" in frag
+    assert "5-SEED SPREAD" in frag
+    assert "NOT a confidence interval" in frag
+
+
+def test_spread_ci_never_calls_itself_a_confidence_interval():
+    """Review §10: a 5-seed percentile spread is training-seed variability, and
+    labelling it "95% CI" beside a seed-7 point estimate put estimates outside
+    their own displayed interval."""
+    m = {"seeds": {"spread": {"baseline": {"n": 5, "pct_low": 0.081, "pct_high": 0.099,
+                                           "mean": 0.09}}}}
+    _, frag = sh.spread_ci(m, "baseline")
+    assert "95% CI" not in frag
+
+
+def test_spread_ci_says_when_the_packed_seed_falls_outside_the_spread():
+    m = {"seeds": {"spread": {"baseline": {"n": 5, "pct_low": 0.081, "pct_high": 0.099,
+                                           "mean": 0.09}}}}
+    _, inside = sh.spread_ci(m, "baseline", 0.090)
+    assert "lies outside" not in inside
+    _, outside = sh.spread_ci(m, "baseline", 0.105)
+    assert "lies outside this spread" in outside
+    assert "0.1050" in outside
 
 
 @pytest.mark.parametrize("spread", [

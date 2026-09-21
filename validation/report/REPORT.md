@@ -6,9 +6,10 @@
 
 These 25 acceptance bands were registered at **2026-09-16T10:47:14+05:30** by RR Squad, before any model result for SANKET existed.
 
-`validation/criteria.yaml` first entered git at **2026-09-16T11:06:09+05:30** — that commit timestamp, not this file, is the evidence. This report was generated at 2026-09-17T02:51:34+05:30 from commit `adcf1d33f5b8`.
+`validation/criteria.yaml` first entered git at **2026-09-16T11:06:09+05:30** — that commit timestamp, not this file, is the evidence. This report was generated at 2026-09-21T15:25:52+05:30 from commit `b4d5c1c8d697`.
 
 **Amendments after registration:**
+- *2026-09-21T00:00:00+05:30* (RR Squad — third-party review response) — DESCRIPTION ONLY. SK-04's threshold (>= 0.90), op, severity, runner, metric key and scope are all unchanged. What changed is the wording: the rationale used to say the criterion existed so "the RM queue's SLA" would not be "fiction", which reads as a claim that SK-04 measures whether a relationship manager made contact before the lead expired. It does not. It measures conversion timing among converters — of the held-out rows inside the contact budget that disbursed, the share that disbursed inside the offered product's window. The note now states that explicitly, and states that contact-SLA compliance is measured nowhere in this pack. Rationale: A third-party review (2026-09-21, §5) found the 90.1% being described as an operational contact-SLA result in the README, the model card and the cockpit. No contact timestamp exists in this pipeline, so that reading is unsupported by anything in the repo. The band itself was never the problem and is deliberately left where it was registered; loosening or retitling a metric because its description was wrong would be the exact move pre-registration exists to prevent.
 - *2026-09-16T00:00:00+05:30* (RR Squad — architect ruling) — SCOPING, NOT THRESHOLDS. No band moves. SK-01 stays [0.08, 0.10], SK-02 stays [0.25, 0.35], SK-18 stays [0.48, 0.52], SK-17 stays 0 — all `fail`, all with their ceilings. What is amended is the SCORING POPULATION SK-01 and SK-02 are computed over, which was under-specified at registration because this file was written before the application-journey layer (plan §B L6 SD-S2) existed and so before there was a drop-off population to name. The same entry re-points runner 07 at the files that layer actually emitted; SK-17 and SK-18 are listed only because that runner answers them, and neither band changes.
 
 ORIGINAL WORDING (registered 2026-09-16T10:47:14+05:30). `label_definition.observation_unit`: "One (cust_id, month) row of the liability book at a snapshot month m. The model scores a consented customer as at m using only information available at or before m." `label_definition.primary.description`: "CONVERSION MEANS DISBURSEMENT, not lead creation and not application start (mentor mandate). 1 if, after being contacted at month m, the customer's application for the offered product reaches the Disburse stage within that product's pre-registered window; 0 otherwise, including applications that start and then abandon." `splits.holdout.scoring_population`: "Held-out, consented customers at the snapshot month. Precision-at-budget is computed on this population; the cockpit queue is built over the whole book but is never a measurement surface." `validation/runners/07_leakage.py` INPUTS: "data/application_journeys.csv  (PLANNED — plan §B L6 SD-S2)".
@@ -17,9 +18,11 @@ NEW WORDING. The scoring unit is a (customer, month) row for customers in the DR
 
 ## All criteria
 
+**About the `Interval` column.** It is not always a confidence interval, and the `Detail` column on every row says which of the two it is. Where a metric has a cross-seed spread it is the **5-seed spread** — the 2.5-97.5 percentile of the metric across the registered seeds [7, 8, 9, 10, 11], a measure of *training-seed variability*, not of sampling error around the `Observed` value. `Observed` is always the packed seed (seed 7) and can fall outside that spread; that is a property of a five-point percentile interval, not a defect. Every other row carries the packed seed's own 95% Wilson or Hanley-McNeil confidence interval. A customer-clustered bootstrap, which is what `criteria.yaml confidence.method` actually asks for, is not computed by this pack and is not approximated out of the five seeds.
+
 ### 01_holdout
 
-| ID | Metric | Scope | Band | Observed | 95% CI | n | Severity | Status |
+| ID | Metric | Scope | Band | Observed | Interval | n | Severity | Status |
 |---|---|---|---|---|---|---|---|---|
 | SK-01 | random_contact_disbursement_rate | overall | ∈ [0.08, 0.1] | 0.0948 | [0.0894, 0.0944] | 29154 | fail | PASS |
 | SK-02 | precision_at_10pct_budget | overall | ∈ [0.25, 0.35] | 0.2906 | [0.275, 0.2896] | 2915 | fail | PASS |
@@ -30,7 +33,7 @@ NEW WORDING. The scoring unit is a (customer, month) row for customers in the DR
 
 <details><summary>SK-03 — per-cell breakdown (2 cells)</summary>
 
-| Cell | Observed | 95% CI | n | Status |
+| Cell | Observed | Interval | n | Status |
 |---|---|---|---|---|
 | precision_at_5pct | 0.358 | [0.3069, 0.3549] | 1458 | reported |
 | precision_at_20pct | 0.2301 | [0.2133, 0.2291] | 5831 | reported |
@@ -39,13 +42,13 @@ NEW WORDING. The scoring unit is a (customer, month) row for customers in the DR
 
 ### 02_oot
 
-| ID | Metric | Scope | Band | Observed | 95% CI | n | Severity | Status |
+| ID | Metric | Scope | Band | Observed | Interval | n | Severity | Status |
 |---|---|---|---|---|---|---|---|---|
 | SK-07 | oot_precision_at_10pct_degradation_pp | overall | ≤ 5.0 | -0.7982 | — | 11017 | fail | PASS |
 
 ### 03_by_cut
 
-| ID | Metric | Scope | Band | Observed | 95% CI | n | Severity | Status |
+| ID | Metric | Scope | Band | Observed | Interval | n | Severity | Status |
 |---|---|---|---|---|---|---|---|---|
 | SK-08 | auc | per_product | ≥ 0.75 | 0.804 | [0.8002, 0.8135] | 29154 | fail | PASS |
 | SK-09 | macro_auc | overall | ≥ 0.78 | 0.8648 | [0.8637, 0.8714] | 29154 | fail | PASS |
@@ -53,7 +56,7 @@ NEW WORDING. The scoring unit is a (customer, month) row for customers in the DR
 
 <details><summary>SK-08 — per-cell breakdown (6 cells)</summary>
 
-| Cell | Observed | 95% CI | n | Status |
+| Cell | Observed | Interval | n | Status |
 |---|---|---|---|---|
 | home | 0.9307 | [0.9263, 0.9419] | 29154 | PASS |
 | lap | 0.8466 | [0.8482, 0.9041] | 29154 | PASS |
@@ -66,7 +69,7 @@ NEW WORDING. The scoring unit is a (customer, month) row for customers in the DR
 
 <details><summary>SK-10 — per-cell breakdown (33 cells)</summary>
 
-| Cell | Observed | 95% CI | n | Status |
+| Cell | Observed | Interval | n | Status |
 |---|---|---|---|---|
 | product:home | AUC 0.9307 · precision@10% 0.1187 | — | 29154 | reported |
 | product:lap | AUC 0.8466 · precision@10% 0.0367 | — | 29154 | reported |
@@ -106,14 +109,14 @@ NEW WORDING. The scoring unit is a (customer, month) row for customers in the DR
 
 ### 04_calibration
 
-| ID | Metric | Scope | Band | Observed | 95% CI | n | Severity | Status |
+| ID | Metric | Scope | Band | Observed | Interval | n | Severity | Status |
 |---|---|---|---|---|---|---|---|---|
-| SK-11 | ece | overall | ≤ 0.03 | 0.0074 | [0.0054, 0.0094] | 29154 | fail | PASS |
+| SK-11 | ece | overall | ≤ 0.03 | 0.0072 | [0.0054, 0.0104] | 29154 | fail | PASS |
 | SK-12 | ece | per_product | ≤ 0.03 | 0.0027 | — | 29154 | fail | PASS |
 
 <details><summary>SK-12 — per-cell breakdown (6 cells)</summary>
 
-| Cell | Observed | 95% CI | n | Status |
+| Cell | Observed | Interval | n | Status |
 |---|---|---|---|---|
 | home | 0.0017 | — | 29154 | PASS |
 | lap | 0.001 | — | 29154 | PASS |
@@ -126,7 +129,7 @@ NEW WORDING. The scoring unit is a (customer, month) row for customers in the DR
 
 ### 05_rank_order
 
-| ID | Metric | Scope | Band | Observed | 95% CI | n | Severity | Status |
+| ID | Metric | Scope | Band | Observed | Interval | n | Severity | Status |
 |---|---|---|---|---|---|---|---|---|
 | SK-13 | menu_of_4_hit_rate | overall | ≥ 0.8 | 0.9649 | [0.9649, 0.9738] | 2764 | fail | PASS |
 | SK-14 | top_1_product_accuracy | overall | reported, no target | 0.7044 | [0.6871, 0.7211] | 2764 | report | reported |
@@ -134,20 +137,20 @@ NEW WORDING. The scoring unit is a (customer, month) row for customers in the DR
 
 ### 06_stability
 
-| ID | Metric | Scope | Band | Observed | 95% CI | n | Severity | Status |
+| ID | Metric | Scope | Band | Observed | Interval | n | Severity | Status |
 |---|---|---|---|---|---|---|---|---|
 | SK-16 | psi_score_distribution | overall | ≤ 0.1 | 0.0088 | — | 29154 | fail | PASS |
 
 ### 07_leakage
 
-| ID | Metric | Scope | Band | Observed | 95% CI | n | Severity | Status |
+| ID | Metric | Scope | Band | Observed | Interval | n | Severity | Status |
 |---|---|---|---|---|---|---|---|---|
 | SK-17 | features_using_post_abandon_information | overall | = 0 | 0 | — | 1075580 | fail | PASS |
 | SK-18 | permuted_label_auc | overall | ∈ [0.48, 0.52] | 0.5062 | — | — | fail | PASS |
 
 <details><summary>SK-17 — per-cell breakdown (2 cells)</summary>
 
-| Cell | Observed | 95% CI | n | Status |
+| Cell | Observed | Interval | n | Status |
 |---|---|---|---|---|
 | forbidden_input_names | 0 | — | 60 | PASS |
 | journey_feature_truncation_diff | 0 | — | 1075580 | PASS |
@@ -156,13 +159,13 @@ NEW WORDING. The scoring unit is a (customer, month) row for customers in the DR
 
 ### 08_ablation
 
-| ID | Metric | Scope | Band | Observed | 95% CI | n | Severity | Status |
+| ID | Metric | Scope | Band | Observed | Interval | n | Severity | Status |
 |---|---|---|---|---|---|---|---|---|
 | SK-19 | precision_at_10pct_drop_by_feature_family | overall | reported, no target | {'income': 1.02, 'balance': -2.03, 'outflow': 0.51, 'debt': -2.79, 'life_event': 0.51, 'profile': -0.25, 'journey': 1.53, 'shopper': 6.86, 'contact': 0.77, 'product': -2.28} | — | — | report | reported |
 
 <details><summary>SK-19 — per-cell breakdown (10 cells)</summary>
 
-| Cell | Observed | 95% CI | n | Status |
+| Cell | Observed | Interval | n | Status |
 |---|---|---|---|---|
 | income | 1.02 | [0.164, 0.2428] | 394 | reported |
 | balance | -2.03 | [0.1921, 0.2751] | 394 | reported |
@@ -179,20 +182,20 @@ NEW WORDING. The scoring unit is a (customer, month) row for customers in the DR
 
 ### 09_seeds
 
-| ID | Metric | Scope | Band | Observed | 95% CI | n | Severity | Status |
+| ID | Metric | Scope | Band | Observed | Interval | n | Severity | Status |
 |---|---|---|---|---|---|---|---|---|
 | SK-20 | n_seeds_run | overall | ≥ 5 | 5 | — | 5 | fail | PASS |
 | SK-21 | cross_seed_precision_at_10pct_ci_width_pp | overall | ≤ 4.0 | 1.4639 | — | 5 | fail | PASS |
 
 ### 10_stress
 
-| ID | Metric | Scope | Band | Observed | 95% CI | n | Severity | Status |
+| ID | Metric | Scope | Band | Observed | Interval | n | Severity | Status |
 |---|---|---|---|---|---|---|---|---|
 | SK-22 | precision_at_10pct_under_stress_scenarios | overall | reported, no target | {'2x_base_rate_reweight_positives': 1.52, 'channel_missing_contact': 0.0} | — | — | report | reported |
 
 <details><summary>SK-22 — per-cell breakdown (2 cells)</summary>
 
-| Cell | Observed | 95% CI | n | Status |
+| Cell | Observed | Interval | n | Status |
 |---|---|---|---|---|
 | 2x_base_rate_reweight_positives | 1.52 | [0.1874, 0.2697] | 394 | reported |
 | channel_missing_contact | 0 | [0.1733, 0.2536] | 394 | reported |
@@ -201,14 +204,14 @@ NEW WORDING. The scoring unit is a (customer, month) row for customers in the DR
 
 ### 11_fairness
 
-| ID | Metric | Scope | Band | Observed | 95% CI | n | Severity | Status |
+| ID | Metric | Scope | Band | Observed | Interval | n | Severity | Status |
 |---|---|---|---|---|---|---|---|---|
 | SK-23 | adverse_impact_ratio | per_cut (protected_proxies) | ≥ 0.8 | 0.69 | — | 815 | report | reported |
 | SK-24 | gig_worker_failure_disclosure | overall | must exist | yes | — | — | report | reported |
 
 <details><summary>SK-23 — per-cell breakdown (14 cells)</summary>
 
-| Cell | Observed | 95% CI | n | Status |
+| Cell | Observed | Interval | n | Status |
 |---|---|---|---|---|
 | Segment:gig | 0.69 | — | 815 | reported |
 | Segment:salaried | 1 | — | 3341 | reported |
@@ -229,13 +232,13 @@ NEW WORDING. The scoring unit is a (customer, month) row for customers in the DR
 
 ### 12_baseline_ladder
 
-| ID | Metric | Scope | Band | Observed | 95% CI | n | Severity | Status |
+| ID | Metric | Scope | Band | Observed | Interval | n | Severity | Status |
 |---|---|---|---|---|---|---|---|---|
 | SK-25 | precision_at_10pct_by_baseline_rung | overall | reported, no target | [{'level': 'random contact', 'value': 0.0948, 'n': 2915, 'ci': [0.084581, 0.105851], 'status': 'report'}, {'level': 'balance-ranked (what a branch does today)', 'value': 0.0995, 'n': 2915, 'ci': [0.089141, 0.110884], 'status': 'report'}, {'level': 'logistic scorecard', 'value': 0.2583, 'n': 2915, 'ci': [0.242755, 0.27452], 'status': 'report'}, {'level': 'SANKET (one LightGBM, six products)', 'value': 0.2906, 'n': 2915, 'ci': [0.274368, 0.307315], 'status': 'report'}] | — | — | report | reported |
 
 <details><summary>SK-25 — per-cell breakdown (4 cells)</summary>
 
-| Cell | Observed | 95% CI | n | Status |
+| Cell | Observed | Interval | n | Status |
 |---|---|---|---|---|
 | random contact | 0.0948 | [0.0846, 0.1059] | 2915 | reported |
 | balance-ranked (what a branch does today) | 0.0995 | [0.0891, 0.1109] | 2915 | reported |
@@ -269,10 +272,12 @@ The shape of the precision curve either side of the operating budget, with CIs. 
 *Note:* REPORTED, NO TARGET — the plan pre-registers a band at 10% only.
 
 **SK-04 — window_respect_rate** (≥ 0.9, severity `fail`)  
-Per-product windows are a mentor mandate: a gold-loan lead is worthless on day three, a home-loan lead is alive for a fortnight. The model's positives must respect that timing or the RM queue's SLA is fiction.  
+Per-product windows are a mentor mandate: a gold-loan lead is worthless on day three, a home-loan lead is alive for a fortnight. If the model pitches a one-day product to people who take a fortnight to close, the window it prints beside the lead does not describe the product it is selling.  
 *Source:* plan §B L9 bands ("window respect ≥ 90% (new)")
   
-*Note:* INTERPRETATION. The plan introduces "window respect" without defining it. We registered it as: of the held-out customers inside the contact budget who do disburse, the share whose disbursement falls within the pre-registered window of the product the model offered them (see label_definition.conversion_windows_days). A conversion that lands outside the offered product's window counts against this criterion even though it is a real disbursement.
+*Note:* WHAT THIS MEASURES: conversion timing among converters. Of the held-out customers inside the contact budget who do disburse, the share whose disbursement falls within the pre-registered window of the product the model offered them (see label_definition.conversion_windows_days). A conversion that lands outside the offered product's window counts against this criterion even though it is a real disbursement.
+WHAT THIS IS NOT: it is NOT contact-SLA compliance. It does not measure whether a relationship manager made contact before the lead's contact_by expired, and it never should be quoted as if it did. Nothing in this pipeline observes an RM dialling — there are no contact timestamps in the delivered pack — so contact-SLA compliance is unmeasured. The earlier phrasing ("the RM queue's SLA") was wrong and is retired.
+INTERPRETATION: the plan introduces "window respect" without defining it; the definition above is this pack's registration of it. The threshold is unchanged from pre-registration.
 
 **SK-05 — window_shopper_auc** (≥ 0.7, severity `fail`)  
 Window-shopper detection is the feature that keeps RM time away from tyre-kickers. Deliberately a modest floor: the generator makes the signal informative but NOT deterministic (§B L6 SD-S3 — some genuine buyers balk at the fee once), so a high AUC here would mean the synthetic data had made the problem too easy.  

@@ -24,8 +24,9 @@ Three things were wrong with it and the mentors said all three:
    whole-book denominator a random call converts ~1%, which made the model look
    28x better than it is.  Against the population an RM actually calls, a random
    call converts ~9% — and the honest claim is
-   **"9 -> 30 disbursements per 100 RM calls"**.  ``1% -> 36%`` and ``28x`` are
-   retired; nothing in this package can emit them.
+   **"9 -> 29 disbursements per 100 RM calls"**.  ``1% -> 36%`` and ``28x`` are
+   retired; nothing in this package can emit them.  The headline is built from
+   the two measured numbers by :func:`model.metrics.headline` and never typed.
 
 Module map
 ----------
@@ -33,6 +34,9 @@ Module map
 ``train``    the LightGBM, its monotone constraints, per-product calibration, the shopper detector
 ``metrics``  every pre-registered SK-* quantity, with confidence intervals
 ``copy``     reason chips, negative window-shopper chips, six-product bilingual pitch material
+``policy``   the ONE calling policy -- suppression, eligibility, ranking, truncation, tie-break --
+             used by both the evaluator and the packer, so the number that is measured and the
+             list that is delivered cannot be different lists
 ``pack``     the ``app/public/sanket_data.json`` export
 
 Nothing in this package reads a column listed in :data:`FORBIDDEN_INPUTS`.

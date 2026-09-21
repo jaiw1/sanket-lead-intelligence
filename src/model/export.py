@@ -45,9 +45,21 @@ _OCCUPATION = {"salaried": "Salaried-Private", "self-employed": "Self-Employed-B
 _CHANNEL = {"branch-walk-in": "branch", "rm-call": "call_centre", "app": "mobile_app",
            "web": "web", "dsa": "dsa"}
 #: ``model.copy.NEGATIVE``'s chip keys -> the schema's short, closed
-#: ``negative_signals[].signal`` enum. The four the mentors named map 1:1;
-#: everything else this repo's chip generator can emit collapses onto the
-#: schema's ``vague_answers`` catch-all rather than inventing a seventh value.
+#: ``negative_signals[].signal`` enum.
+#:
+#: A chip that arrives at an RM under a different name than the one the model
+#: fired is a lie the schema cannot catch, so the rule here is: extend the
+#: contract rather than substitute. ``contact_fatigue`` was added to the
+#: contract on 2026-09-21 for exactly that reason — "contacted five times in
+#: thirty days" used to reach the RM as "vague answers", which is a different
+#: accusation about a different person.
+#:
+#: TWO CHIPS STILL COLLAPSE, knowingly, and are listed here so the loss is not
+#: silent: ``journey_stated_income_ratio`` (stated income above what the account
+#: shows) and ``journey_open_now`` (another application already open) both land
+#: on ``vague_answers``. Neither has a contract value yet; both are named in
+#: MODEL_CARD §10 as open contract debt rather than fixed by inventing enum
+#: values this review did not scope.
 _NEGATIVE_SIGNAL = {
     "journey_blank_field_ratio": "blank_field_ratio",
     "journey_refused_income": "refused_income",
@@ -56,16 +68,23 @@ _NEGATIVE_SIGNAL = {
     "journey_multi_product_revisits": "multi_product_revisits",
     "journey_docs_shortfall": "doc_refusal",
     "journey_stated_income_ratio": "vague_answers",
-    "contacts_30d": "vague_answers",
+    "contacts_30d": "contact_fatigue",
     "journey_open_now": "vague_answers",
 }
 
+#: ``model.SUPPRESSION_REASONS`` -> the contract's ``suppression_reasons`` enum.
+#: Total over every reason a suppressed row can carry (``tests/test_model_export.py``
+#: asserts that), so the ``.get`` default below is unreachable.
+#:
+#: ``deceased`` and ``dormant`` were added to the contract on 2026-09-21. Both
+#: used to be exported as ``kyc_expired``, which told an RM to go and re-KYC a
+#: customer who had died.
 _SUPPRESSION_REASON = {
     "no_marketing_consent": "no_marketing_consent", "dnd": "dnd_registry",
     "recent_contact": "contact_fatigue", "recent_decline": "recent_decline",
     "application_in_flight": "existing_application_open",
     "already_holds_product": "already_holds_product",
-    "account_dormant": "kyc_expired", "deceased": "kyc_expired",
+    "account_dormant": "dormant", "deceased": "deceased",
 }
 
 
@@ -91,13 +110,16 @@ def _cif_id(cust_id: str) -> str:
     return f"9{int(digits[-8:] or 0):08d}"
 
 
-#: The schema's ``confidence_interval.method`` enum is narrower than this
-#: repo's own vocabulary (``model.metrics``'s ``"hanley-mcneil"`` is an AUC
-#: analytic-variance CI, in the same family as DeLong's but not spelled the
-#: same way) — mapped onto the nearest of the four the contract allows rather
-#: than dropped, so a consumer still knows it is an analytic AUC interval, not
-#: a bootstrap or a plain normal approximation.
-_CI_METHOD = {"hanley-mcneil": "delong"}
+#: The method name travels unchanged.
+#:
+#: Until 2026-09-21 this remapped ``"hanley-mcneil"`` onto the contract's
+#: ``"delong"``, on the grounds that they are the same family of analytic AUC
+#: interval. They are not the same method: Hanley-McNeil assumes a distribution
+#: for the score, DeLong is distribution-free on the empirical placement values,
+#: and the intervals differ. A consumer reading ``method`` is reading a claim
+#: about how the number was computed, so ``hanley-mcneil`` is now a value of the
+#: contract's enum and this map exists only to keep the shape of the call site.
+_CI_METHOD: dict[str, str] = {}
 
 
 def _ci(d: dict | None) -> dict:
@@ -430,6 +452,7 @@ def build_leads(leads_internal: list[dict], rm_map: dict,
             menu.append(dict(product=item["product"], prob=round(float(item["p"]), 4),
                              reason=item["reason"], safe_emi=float(item["emi"]),
                              window_days=int(item["window_days"]),
+                             contact_by=item["contact_by"],
                              amortisation_ref=amort_ref_by_product.get(item["product"])))
         suppression_reasons = ([_SUPPRESSION_REASON.get(lead["suppression_reason"], "contact_fatigue")]
                                if suppressed else [])
@@ -444,7 +467,16 @@ def build_leads(leads_internal: list[dict], rm_map: dict,
             id=cust_id, cif_id=_cif_id(cust_id), segment=lead["segment"], age=lead["age"],
             city_tier=lead["city_tier"], tenure_m=lead["tenure_m"], consent=bool(lead["consent"]),
             product=lead["product"], product_menu=menu, tier=lead["tier"], lang=lead["lang"],
+            # `score` is the queue's ordering key (model.policy.DEFAULT_RANKING);
+            # `intent`, `capacity` and `blend` ride along as displayed signals.
             score=lead["score"], intent=lead["intent"], capacity=lead["capacity"],
+            blend=lead["blend"],
+            # The three clocks, each with one meaning (review §5). `contact_by`
+            # is `abandoned_at + window`, which is what the platform backend
+            # computes from `journeys.abandon_ts`; they used to disagree.
+            abandoned_at=lead["abandoned_at"], scored_at=lead["scored_at"],
+            contact_by=lead["contact_by"], window_days=int(lead["window_days"]),
+            outcome_horizon_days=int(lead["outcome_horizon_days"]),
             salary_m=float(lead["salary_m"]), retained_income=float(lead["retained_income"]),
             safe_emi=float(lead["safe_emi"]),
             amortisation_ref=(amort_ref_by_product.get(lead["product"]) if not suppressed else None),
@@ -463,6 +495,8 @@ def build_leads(leads_internal: list[dict], rm_map: dict,
             row["uplift_tag"] = lead["uplift_tag"]
         if lead.get("uplift_pct") is not None:
             row["uplift_pct"] = lead["uplift_pct"]
+        if lead.get("queue_rank") is not None:
+            row["queue_rank"] = int(lead["queue_rank"])
         out.append(row)
     return out
 
