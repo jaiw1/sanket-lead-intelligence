@@ -1,107 +1,136 @@
 # SANKET demo — narration transcript
 
-Recorded via `video-autopilot/sanket-autopilot.mjs` against the real running app (real
-FastAPI backend, real Postgres, real sessions — not a static bundle) on 2026-09-17.
-Every number below is read directly off the screen at the timestamp given; none is
-asserted from memory. **Bold** marks the words the on-screen karaoke caption highlights.
+Recorded via `video-autopilot/sanket-autopilot.mjs` against the **static demo build**:
+`app/` built from `main` with no `VITE_API_BASE`, served by a plain static file server
+that answers every `/api/*` request with an immediate 404 and proxies nothing (see
+`video-autopilot/static-only-server.js`) — no `rrsquad-platform`, no Postgres, no login.
+`src/lib/mode.js::resolveMode()` sees the failed health check and resolves to
+`MODE.STATIC`, the app's own first-class "frozen demo bundle" mode (the same one shipped
+at `https://sanket-leads.vercel.app`): every read comes straight from the committed
+`app/public/sanket_data.json`, and every mutating control (record a call outcome, push to
+CRM) is honestly disabled, hidden, or unavailable, with its own on-screen explanation,
+rather than faked. Recorded 2026-09-21, against `main` (sanket@7c98f14, which by then
+already included the merged `deepening/validation-experiments` branch — checked before
+building; every number below is unchanged by that merge). Every number below is read
+directly off the screen at the timestamp given; none is asserted from memory. **Bold**
+marks the words the on-screen karaoke caption highlights.
 
 The recorded file has no spoken audio (no human narrator was available to this
 autonomous run) — the on-screen caption bar carries this exact text, word-synced, burned
 into the video. A presenter can read this transcript aloud over the video, live, during
 the demo slot.
 
-This is a re-record. The DRISHTi video lane found that this script's burned-in caption
-clock (`window.__kStart`) lives only in the page's own JS context, so it gets wiped by
-every hard navigation (`page.goto` — every sign-in round trip through `/login`, and the
-mid-demo jump back to `/queue`) and the caption bar goes dark for the rest of the take
-after the first one. `resyncKaraoke()` is now ported into this script (called right
-after every such navigation) and re-anchors the clock to the same elapsed time it had
-before the jump, so the caption keeps speaking through both role switches. Confirmed on
-this take at 0:30, 2:00 and 3:30 — the caption is live and on-topic at all three marks,
-including 3:30, which falls after two hard navigations (the manager sign-in at 1:42 and
-the `/queue` jump at 2:10).
+Total run time: **≈2:35** (well inside the 3-minute cap the deck template requires).
 
-Total run time: **3:53** (well inside the 4-minute budget for the 10-minute slot).
+## Why this is a shorter, simpler recording than the 17 Sep take
+
+The bank's numbers changed today, and the deck template now requires a video under 3
+minutes, not 4. The 17 Sep recording drove a real backend (login, two roles, live writes:
+a disposition, a CRM push dry-run → confirm → NOT_SENT) and ran ≈3:53. This take uses the
+app's own **static demo** mode instead — no backend needed at all. Concretely, that means:
+
+- **No sign-in, no role switching.** Static mode has no session; every route is open, and
+  the queue screen treats the viewer as a manager (`manager = isStatic || ...`) so the
+  manager dashboard and lead assignment views are reachable without a role switch.
+- **"Record a call outcome" is shown, not clicked.** The button is visibly disabled, with
+  its own on-screen text: *"Actions need the backend. This page load is the frozen static
+  demo."*
+- **"Push to CRM" and "Consent & AA" are gone, not patched around.** `canPush = !isStatic
+  && roleMatches(role, ['M','A'])` in `LeadDrawer.jsx` — the button does not render at all
+  in static mode, so there is nothing to demo. `Consent.jsx` renders `NotInBuild` outright:
+  *"A consent artefact is platform state, not model output, so the bundled export carries
+  none. This screen needs the backend."* Neither scene from the 17 Sep take is possible
+  here, honestly, so neither is narrated.
+- **"Data sources" is also gone.** `DataSources.jsx` calls `GET /meta/sync` etc.
+  unconditionally, with no static fallback — it would show a live error with no backend.
+  Dropped rather than faked.
+- **The ranking is by product probability only.** The old 65/35 intent-capacity blend is
+  retired; the queue's `SORT BY` control still offers Capacity as a column and a sort key,
+  but the default ranking (and the `score` column) is the product probability — capacity
+  is shown, never what ranks the queue.
+- **Business Radar is not covered.** It exists in this build's nav but is an appendix
+  exhibit, not part of a 3-minute cut, exactly as it was before.
 
 ---
 
-**0:00–0:13 — Sign in (RM)**
-> This is SANKET — IDBI's prospect-assist cockpit. Real FastAPI backend, real Postgres, a
-> real session — not a static demo. I'm signing in as a relationship manager.
+**0:00–0:13 — Queue overview**
+> This is SANKET's **static demo** build — no login, no backend — reading a frozen
+> snapshot of **344** drop-off leads, ranked by product probability. Capacity is shown
+> here, never what ranks the queue.
 
-**0:13–0:31 — Lead queue (RM)**
-> My queue — the leads assigned to me, scoped by the **server** to my own employee id,
-> not the browser. Each row carries its ranked product and how long its contact window
-> stays open.
+**0:13–0:40 — Hero lead: menu of four + negative chips**
+> Lead LB-2006372 — the menu of four, one model ranking all six products, leads with a
+> personal loan at **25.9%**. And the case against the call, shown rather than hidden:
+> this customer **balked at the ₹1,000 fee**, left half the form blank, refused to submit
+> documents.
 
-**0:31–1:01 — Lead LB-2006372: menu of four + negative chips**
-> Every lead opens into a full briefing. The menu of four — one model, ranking all six
-> products — leads with a personal loan at **25.9%**. And the case against the call,
-> shown rather than hidden: this customer **balked at the ₹1,000 processing fee**, left
-> half the form blank, and refused documents.
+**0:40–0:58 — EMI + Hindi pitch**
+> EMI headroom **₹10,100** for that personal loan, priced from the bank's own schedule.
+> And the pitch drafts itself — here in **Hindi** — every line traced back to a chip
+> above.
 
-**1:01–1:28 — EMI (bank sandbox rate) + Hindi pitch**
-> The EMI — **₹10,100** a month, at **12.75%** for **36 months** — priced off the bank's
-> own sandbox rate, API 433, not a guess. And the pitch drafts itself — here in
-> **Hindi** — every line traced back to a chip above.
+**0:58–1:12 — What action: record a call outcome (honestly disabled)**
+> Recording a call outcome is normally one click. This frozen bundle is honest about the
+> limit instead: the control is **disabled** — actions need a backend this build does not
+> have.
 
-**1:28–1:42 — Disposition**
-> Recording what actually happened on the call is one click, from a closed list of eight
-> outcomes — **Connected, interested** — no free text pretending to be one.
+**1:12–1:34 — What the evidence supports: manager dashboard**
+> The manager's view: a random call into this population disburses at **9.5%**; the
+> model's top 10% disburses at **29.1%** — **3.1 times** the random list, measured on
+> held-out customers, not asserted.
 
-**1:42–2:10 — Manager dashboard**
-> Now the manager's view. **Nine to twenty-nine disbursements per hundred RM calls** —
-> the same drop-off population, the same hundred calls, measured on held-out customers.
-> And **24 leads, 7% of the book**, the bank chose to hold back — shown, never silently
-> dropped.
+**1:34–1:52 — Suppressed, shown not dropped**
+> Back on the queue: ticking **include suppressed** adds **24** more leads — **7%** of
+> this bundle — shown, never silently dropped.
 
-**2:10–2:50 — Push to CRM (dry run → confirm → NOT_SENT)**
-> Pushing a lead into the bank's CRM is a manager-only action, and it never happens by
-> accident. Step one — a dry run: the dedupe check against API 456, and the exact
-> payload that would go, before anything moves. This one comes back **unknown — no
-> dedupe check was made**, because Atlas writes are off in this sandbox. Step two
-> confirms it — and it comes back **NOT SENT**, at HTTP 200, not an error, because
-> **we** switched writes off, not the bank. The attempt is still audited.
+**1:52–2:10 — Model & Trust: report card**
+> The model's report card: macro AUC **0.865** across six products, precision at the top
+> ten percent, **29.1%**. **Seventeen pass, one fail.**
 
-**2:50–3:10 — Consent & AA**
-> Every Account Aggregator consent this platform has asked for lives on one real
-> screen — the actual state machine, API 591. This one is **Active**; a fetch is
-> refused unless it is — the product enforcing consent, not just declaring it.
+**2:10–2:28 — SK-04 dual verdict + SK-23 fairness**
+> **SK-04** doubles up — **passes** on the packed seed, **fails** on the five-seed mean,
+> its own row, not folded in. The gig-worker fairness ratio, **0.69** against a 0.80
+> floor, stays on screen too — disclosed, not tuned away.
 
-**3:10–3:34 — Model & Trust**
-> The model's report card. Macro AUC **0.865** across six products, precision at the
-> top ten percent **29.1%**. Pre-registered criteria: **17 pass, 1 fail**. **SK-04**
-> doubles up — **passes** on the packed seed, **fails** on the five-seed mean — its own
-> row, not folded in. The gig-worker fairness ratio, **0.69** against a 0.80 floor,
-> stays on screen too — disclosed, not tuned away.
-
-**3:34–3:46 — Data sources**
-> And where every number comes from: **0 of 24** registered bank APIs called live in
-> this sandbox — every figure here is fixture or simulated, and the product says so on
-> its own dashboard.
-
-**3:46–3:53 — Sign-off**
+**2:28–2:35 — Sign-off**
 > SANKET advises. The relationship manager decides.
 
 ---
 
-## Honesty notes (not spoken, for the record)
+## What `--verify` confirmed on screen (regex-asserted, not just eyeballed)
 
-- **SK-04 is now shown twice on screen, and the narration says so.** The validation
-  table renders a second "↳ 5-seed mean" row directly under SK-04 whenever
-  `bands["SK-04"].verdict_on_seed_mean` disagrees with the packed-seed `verdict` —
-  0.9009 (pass) on the seed the export packs, 0.8813 (fail) on the mean across the 5
-  registered seeds (`n_seeds_run = 5`, SK-20 pass). The tally badge above the table
-  counts this separately too: "17 pass · 1 fail · 1 fail on 5-seed mean · 5
-  report-only". As of this run, `app/public/sanket_data.json` and
-  `sanket/data/model_metrics.json` agree byte-for-byte on `metrics.bands` (checked
-  directly), so this is the pipeline's own committed output, not a patched-in number —
-  see the recaptured `sanket/docs/screenshots/05-model-trust.png`.
-- **Three criteria still ship an object where `ModelTrust.jsx` expects a scalar**
-  (SK-03, SK-06, SK-10), which crashes the app via the top-level ErrorBoundary if
-  rendered raw. The autopilot still patches the `sanket_data.json` response in flight to
-  stringify just those three — same pipeline's own output, not invented numbers — purely
-  so `/trust` renders. Open for L7/L11 to fix at the source (`src/model/pack.py`).
-- **CRM dedupe is honestly "unknown," not "clear."** With `ATLAS_MODE=off` in this
-  sandbox, API 456 is never called, so the dry-run correctly reports "no dedupe check
-  was made" rather than claiming a pass.
+`sanket-autopilot.mjs --verify` asserts these on every relevant scene and fails loudly if
+any is missing:
+
+- Queue: `344`, a `Score` sort column
+- Hero lead: `25.9%`, `₹1,000`, `blank`
+- EMI: `10,100`
+- Manager dashboard: `9.5%`, `29.1%`, `3.1×`
+- Queue with suppressed included: `344` (up from 320 with the checkbox off — the delta is
+  demonstrated live, by toggling the checkbox on camera, not asserted from a static
+  count)
+- Model & Trust: `0.865`, `29.1%`, `17 pass`, `1 fail`, `0.69`
+
+## What `--verify` could not confirm on screen
+
+- **The "24 suppressed / 7%" figure as a single rendered number.** It is demonstrated
+  live instead (the queue's row count changes from 320 to 344 when "include suppressed"
+  is ticked — 24 rows, 7.0% of 344), which is more honest than the alternative: the
+  Manager Dashboard's own "Suppressed" card reads **1,927 — "560% of the book"**, because
+  it divides the full 7,456-row snapshot pool's suppression count by this bundle's
+  344-lead sample — a real display bug in `funnelFromPack` in static mode, not narrated
+  or swept past on camera, and not fixed here (out of scope for a video re-record).
+- **API 473 vs API 433 for the EMI figure.** The product-menu card shows only "EMI
+  headroom ₹10,100" with no rate, tenor, or API number attached in the DOM. A *different*
+  EMI figure lower on the same screen (₹22,500, "comfortable EMI headroom") explicitly
+  states on screen that it is *not* from API 433 or 473, but a scoring-package table
+  constant. The 17 Sep narration's claim of "12.75% for 36 months, API 433" for the
+  ₹10,100 figure was not re-verified as an on-screen fact here and is not repeated.
+- **Business Radar.** Exists in the nav, not opened or narrated — an appendix exhibit,
+  per the L12 brief.
+
+## Superseded
+
+The 17 Sep recording is kept at `docs/demo/sanket-demo-2026-09-17.mp4` (≈3:53, real
+backend, login/role flow, CRM push demo). This file replaces it as the current demo
+video.
