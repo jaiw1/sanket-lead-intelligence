@@ -6,7 +6,10 @@ them a **menu of four products** with a calibrated probability, a reason, a deci
 and a date to call by.
 
 **Status:** research prototype on synthetic data. Nothing here has been fitted to, validated
-on, or deployed against real customers. Every number below is reproducible from this repo with
+on, or scored against real customers. The application itself *is* deployed — it runs on IDBI's
+own sandbox server behind a real login, scored nightly by a batch job that calls the bank's
+sandbox APIs (see `README.md`) — but the book it scores is the synthetic one this card
+describes. Every number below is reproducible from this repo with
 `python3 src/make_book.py && python3 src/make_journeys.py && python3 src/score_and_pack.py`.
 
 **Owner:** RR Squad (Jai Wadhwa, Yuvraj Kundargi) — IDBI Innovate 2026, Prospect Assist AI track.

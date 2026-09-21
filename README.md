@@ -7,6 +7,18 @@
 AWS sandbox VPC — there is no public IP, and it is reached over an SSM port forward, so
 the link will not open from an ordinary browser.
 
+**The nightly job on that box calls the bank itself.** At 02:00 IST the server runs the whole
+pipeline — pull → enrich → generate → score → load → verify → publish. The pull is genuine: the
+box has a route to IDBI's API gateway and the Atlas client on it is configured live as of the
+night of 21–22 September 2026, so the batch queries the bank's sandbox endpoints rather than
+replaying a file. A family whose endpoint does not answer falls back to the committed
+`data/bank/fixture.json` and is badged `FIXTURE`, never silently promoted. Publication is
+fail-closed (see "Architecture"). **Disclosed: that job failed silently every night from 18 to 21
+September 2026** — the batch runs this repo's scripts inside a per-product Python environment
+(`RRSQUAD_SANKET_PYTHON`) that no deploy script had ever created, and the only place the failure
+surfaced was the job's own log. Provisioned and fixed on 21 September; the gate behaved correctly
+throughout, leaving the last good run published.
+
 **🟠 Public demo build:** **https://sanket-leads.vercel.app** — the same front end as a
 static bundle, no login and no backend behind it. Useful for looking at the screens
 when you cannot reach the sandbox; it is not the deployment.
@@ -441,12 +453,18 @@ Atlas tokens live in either repo's git history.
 - **Audit:** an append-only, hash-chained `audit_log` table — `UPDATE`/`DELETE` are
   both `REVOKE`d from the application's database role *and* blocked by a trigger, so
   tampering isn't just discouraged, it's rejected at the database.
-- **Batch gate:** scoring is a batch job, never a live request. Seven stages — pull →
-  enrich → generate → score → load → **verify** → publish. The verify stage runs this
-  repo's own `validation/run.py` and attaches the result to the run record; **a run
-  that fails validation stays `candidate` and the previously-published run is left
-  untouched** — nothing this repo's model produces reaches a bank employee's screen
-  without passing the table above first.
+- **Batch gate:** scoring is a batch job, never a live request, and it runs at 02:00 IST
+  nightly. Seven stages — pull → enrich → generate → score → load → **verify** → publish. The
+  verify stage runs this repo's own `validation/run.py` and attaches the result to the run
+  record; **a run that fails validation stays `candidate` and the previously-published run is
+  left untouched** — nothing this repo's model produces reaches a bank employee's screen without
+  passing the table above first. The gate is **fail-closed**, not fail-open: the verdict is bound
+  to fingerprints of the run, the model artefact, the data and `validation/criteria.yaml`, so a
+  verdict cannot be inherited from another run or graded against a different rulebook, and a
+  criterion allowed to fail has to sit on an accepted list carrying its value, the tolerance it
+  was accepted at and an expiry date. Two further gates sit beside it: a CRM lead push requires a
+  positive API-456 dedupe verdict before it can fire, and consent is re-checked at read time
+  rather than once per run.
 
 Full detail, including the seven-stage batch, the authorisation matrix, and the
 security posture (argon2id, session cookies, CSRF, rate limits, no CORS): that repo's
