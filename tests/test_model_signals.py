@@ -209,7 +209,16 @@ def test_every_menu_entry_carries_its_own_window_and_a_contact_by_date(
     for lead in packed.out["leads"]:
         abandoned = pd.Timestamp(lead["abandoned_at"])
         scored = pd.Timestamp(lead["scored_at"])
-        assert (scored - abandoned).days == lead["days_since_abandon"]
+        # `abandoned_at` is the DATE of the attempt's own `abandon_ts`
+        # (`model.pack.scored_attempts`), not `scored_at` minus the whole-day
+        # feature — that arithmetic rounded the date a day forward on 343 of
+        # 344 leads and disagreed with the `journeys[].abandon_ts` the platform
+        # dates its deadline from. `days_since_abandon` is still the model's
+        # feature: whole days elapsed from a mid-afternoon abandonment to the
+        # month's first instant, so it is the FLOOR of the gap between the two
+        # dates and the two agree to within the part-day walked away in.
+        gap = (scored - abandoned).days
+        assert gap - 1 <= lead["days_since_abandon"] <= gap, lead["id"]
         for entry in lead["product_menu"]:
             assert entry["window_days"] == WINDOW_DAYS[entry["product"]]
             gap = (pd.Timestamp(entry["contact_by"]) - abandoned).days
@@ -224,6 +233,42 @@ def test_the_lead_window_is_the_offered_product_s_window(packed: SimpleNamespace
     for lead in packed.out["leads"]:
         assert lead["window_days"] == WINDOW_DAYS[lead["product"]]
         assert lead["product"] == lead["product_menu"][0]["product"]
+
+
+def test_every_lead_names_the_abandonment_it_revives(
+        packed: SimpleNamespace, journeys: SimpleNamespace) -> None:
+    """`journey_ref` is the attempt the urgency clock is about, by id.
+
+    A lead is not about a customer, it is about one abandoned application: the
+    most recent abandonment visible at `scored_at`, which is the attempt
+    `journeys.labels.build_population` admitted them to the drop-off pool on.
+    Without the id on the lead a consumer can only join on `cust_id`, which
+    lands on the customer's LATEST attempt — a different application, and often
+    one that was never abandoned at all.
+
+    So this checks the id names the right row (same customer, an abandonment,
+    the latest one at or before the snapshot) AND that the row it names is the
+    one the model actually scored: `dropoff_product` and `dropoff_stage` are
+    read off that attempt in the label layer, so they have to agree.
+    """
+    j = journeys.journeys.copy()
+    j["abandoned_at"] = pd.to_datetime(j["abandoned_at"].replace("", None), format="mixed")
+    by_attempt = j.set_index("attempt_id")
+    assert packed.out["leads"]
+    for lead in packed.out["leads"]:
+        ref = lead["journey_ref"]
+        assert ref in by_attempt.index, f"{lead['id']} names attempt {ref!r}, which does not exist"
+        attempt = by_attempt.loc[ref]
+        scored = pd.Timestamp(lead["scored_at"])
+        assert str(attempt.cust_id) == lead["id"], f"{lead['id']} points at another customer"
+        assert pd.notna(attempt.abandoned_at), f"{lead['id']} points at a non-abandoned attempt"
+        assert attempt.abandoned_at.strftime("%Y-%m-%d") == lead["abandoned_at"]
+        mine = j[(j.cust_id.astype(str) == lead["id"]) & j.abandoned_at.notna()
+                 & (j.abandoned_at <= scored)]
+        assert ref == str(mine.sort_values("abandoned_at", kind="stable").iloc[-1].attempt_id), \
+            f"{lead['id']} names an older abandonment than the one it was scored on"
+        assert str(attempt["product"]) == lead["dropoff_product"]
+        assert str(attempt.stage_reached) == lead["dropoff_stage"]
 
 
 # --------------------------------------------------------------------------- #

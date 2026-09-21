@@ -305,9 +305,41 @@ def _contrib_map(C: np.ndarray, feats: list[str], i: int) -> dict[str, float]:
     return {f: float(C[i, j]) for j, f in enumerate(feats)}
 
 
+def scored_attempts(journeys: pd.DataFrame,
+                    as_at: pd.Timestamp) -> dict[str, tuple[str, pd.Timestamp]]:
+    """``cust_id -> (attempt_id, abandon_ts)``: the attempt each lead is about.
+
+    A customer can have several applications behind them.  The one a lead
+    REVIVES is the most recent abandonment visible at ``as_at``, because that is
+    the attempt ``journeys.labels.build_population`` admits them to the drop-off
+    pool on and reads ``dropoff_stage_reached``, ``dropoff_product`` and
+    ``days_since_abandon`` off — the same rule, rebuilt here from the journey
+    table so the attempt can be NAMED (``lead.journey_ref``) instead of left for
+    a consumer to guess at.
+
+    Guessing is the failure this exists to prevent: the platform joins
+    ``sanket_lead.journey_ref`` to ``sanket_journey`` to build the RM drawer's
+    whole ``window`` block, and the obvious substitute — join on ``cust_id`` —
+    lands on the customer's LATEST attempt, which is a different application for
+    all but a handful of leads and was never abandoned at all for 140 of 344.
+    A deadline dated from the wrong application is worse than no deadline.
+    """
+    j = journeys[["cust_id", "attempt_id", "abandoned_at"]].copy()
+    # the generator writes an empty string, not a NaN, for "never abandoned"
+    # (`journeys.build._timestamps`), the same shim `journeys.labels` applies
+    j["abandoned_at"] = pd.to_datetime(j["abandoned_at"].replace("", None), format="mixed")
+    j = j[j["abandoned_at"].notna() & (j["abandoned_at"] <= pd.Timestamp(as_at))]
+    # stable sort + tail(1) == "latest abandonment at or before as_at", ties
+    # broken by row order exactly as `build_population`'s lexsort breaks them.
+    j = j.sort_values(["cust_id", "abandoned_at"], kind="stable")
+    j = j.groupby("cust_id", as_index=False, sort=False).tail(1)
+    return {str(c): (str(a), pd.Timestamp(t))
+            for c, a, t in zip(j["cust_id"], j["attempt_id"], j["abandoned_at"])}
+
+
 def build_queue(base: pd.DataFrame, P: np.ndarray, rk, shopper_score: np.ndarray,
-                uplift: np.ndarray, panel: pd.DataFrame, cfg: ModelConfig,
-                snap: int, rm_map: dict) -> tuple[list[dict], dict, dict]:
+                uplift: np.ndarray, panel: pd.DataFrame, journeys: pd.DataFrame,
+                cfg: ModelConfig, snap: int, rm_map: dict) -> tuple[list[dict], dict, dict]:
     """The cockpit queue at the snapshot month, plus the suppression exhibit.
 
     Suppressed rows are **scored and shown, never queued** — the rule the mentors
@@ -328,6 +360,12 @@ def build_queue(base: pd.DataFrame, P: np.ndarray, rk, shopper_score: np.ndarray
     # (`app/services/sanket.py::window_due_at`); before this it was computed off
     # `scored_at` here and the two disagreed.  See MODEL_CARD §4.
     scored_at = pd.Timestamp(snap_rows["date"].iloc[0])
+    # ...and the abandoned attempt each of those three clocks is about, resolved
+    # once for the whole snapshot.  `abandoned_at` is read off this attempt's own
+    # timestamp rather than back-computed from the whole-day `days_since_abandon`
+    # feature, which rounded the date a day forward on 343 of 344 leads and would
+    # not match the `journeys[].abandon_ts` the platform dates its deadline from.
+    attempt_of = scored_attempts(journeys, scored_at)
 
     menu_i = np.argsort(-Ps, axis=1, kind="stable")[:, : cfg.menu_k]
 
@@ -399,11 +437,12 @@ def build_queue(base: pd.DataFrame, P: np.ndarray, rk, shopper_score: np.ndarray
     for pos in take.index:
         leads.append(_lead(snap_rows.loc[pos], pos_of[pos], Ps[pos], menu_i[pos], C, feats,
                            n_snap, hist, snap_rows.loc[pos, "date"], rm_map, queued=True,
-                           queue_rank=queue_rank.get(int(pos)), scored_at=scored_at))
+                           queue_rank=queue_rank.get(int(pos)), scored_at=scored_at,
+                           attempts=attempt_of))
     for pos in samp.index:
         leads.append(_lead(snap_rows.loc[pos], pos_of[pos], Ps[pos], menu_i[pos], C, feats,
                            n_snap, hist, snap_rows.loc[pos, "date"], rm_map, queued=False,
-                           queue_rank=None, scored_at=scored_at))
+                           queue_rank=None, scored_at=scored_at, attempts=attempt_of))
 
     reasons = (snap_rows.loc[~elig, "t_suppression_reason"].value_counts().to_dict())
     suppression = dict(
@@ -465,7 +504,8 @@ def build_queue(base: pd.DataFrame, P: np.ndarray, rk, shopper_score: np.ndarray
 
 def _lead(r, pos: int, probs: np.ndarray, menu_idx: np.ndarray, C: np.ndarray,
           feats: list[str], n_snap: int, hist, date: str, rm_map: dict, queued: bool,
-          queue_rank: int | None = None, scored_at: pd.Timestamp | None = None) -> dict:
+          queue_rank: int | None = None, scored_at: pd.Timestamp | None = None,
+          attempts: dict[str, tuple[str, pd.Timestamp]] | None = None) -> dict:
     top = PRODUCTS[int(menu_idx[0])]
     ctop = _contrib_map(C, feats, int(menu_idx[0]) * n_snap + pos)
     rs = txt.reasons_for(r, ctop) or ["Composite behavioural signal across credits, balances and browsing"]
@@ -484,7 +524,18 @@ def _lead(r, pos: int, probs: np.ndarray, menu_idx: np.ndarray, C: np.ndarray,
     # field both of those read.  A `contact_by` already in the past is the
     # truthful answer for a customer who walked away months ago — the cockpit
     # renders it as a closed window rather than inventing fresh urgency.
-    abandoned_at = as_at - pd.Timedelta(days=int(r.days_since_abandon))
+    #
+    # It is read off the abandoned attempt itself (`scored_attempts`), whose id
+    # travels with the lead as `journey_ref`, so the date this states and the
+    # `journeys[].abandon_ts` the platform reads are the same instant of the same
+    # application.  Every row here is a drop-off-population row, so an attempt
+    # that cannot be found is a broken frame, not a lead to paper over.
+    attempt = (attempts or {}).get(str(r.cust_id))
+    if attempt is None:
+        raise AssertionError(f"{r.cust_id}: a drop-off lead with no abandoned attempt "
+                             f"at or before {as_at.date()}")
+    journey_ref, abandon_ts = attempt
+    abandoned_at = pd.Timestamp(abandon_ts).normalize()
     menu = []
     for j in menu_idx:
         p = PRODUCTS[int(j)]
@@ -551,6 +602,8 @@ def _lead(r, pos: int, probs: np.ndarray, menu_idx: np.ndarray, C: np.ndarray,
         # is allowed to resolve.
         abandoned_at=abandoned_at.strftime("%Y-%m-%d"),
         scored_at=as_at.strftime("%Y-%m-%d"),
+        # the attempt the three clocks above are about, by id
+        journey_ref=journey_ref,
         contact_by=(abandoned_at + pd.Timedelta(days=w_top)).strftime("%Y-%m-%d"),
         outcome_horizon_days=int(w_top),
         dropoff_stage=str(r.dropoff_stage_reached), dropoff_product=str(r.dropoff_product),
@@ -695,7 +748,7 @@ def run(cfg: ModelConfig, out_json: Path | None = None,
 
     # ---- queue -------------------------------------------------------------- #
     leads, counts, extra = build_queue(base, P, rk, shopper_all, u_all,
-                                       tables["panel"], cfg, snap, rm_map)
+                                       tables["panel"], tables["journeys"], cfg, snap, rm_map)
     sup, n_pool = extra["suppression"], extra["n_contactable"]
     snap_rows, Psnap, elig_snap = extra["snap_rows"], extra["P"], extra["elig"]
 

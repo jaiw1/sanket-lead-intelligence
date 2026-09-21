@@ -340,20 +340,27 @@ def _stages_for(events: pd.DataFrame) -> list[dict]:
 def build_journeys(journeys_df: pd.DataFrame, events_df: pd.DataFrame,
                    label_truth: pd.DataFrame, cust_ids: list[str],
                    bank_ctx: B.BankContext) -> list[dict]:
-    """One row per customer's most recent application attempt.
+    """One row per application ATTEMPT, for every scored customer.
 
-    A customer can have several attempts across months; the export carries the
-    most recent one (highest ``attempt_seq``) per customer — the attempt behind
-    their current drop-off row — rather than every attempt ever made, to keep
-    the export proportioned to the scored population rather than the whole
-    journey history.
+    Not one per customer: the contract's own words are "one row per application
+    ATTEMPT, not per customer", and a lead is about a SPECIFIC attempt — the
+    abandonment it revives, named in ``lead.journey_ref``.  This used to carry
+    only each customer's most recent attempt (highest ``attempt_seq``), which
+    was the wrong attempt for all but a handful of leads and, for 140 of 344,
+    an attempt that was never abandoned at all and carries no ``abandon_ts``;
+    a ``journey_ref`` pointing into that set would have dangled or, worse,
+    resolved to a different application and dated an RM's deadline from it.
+
+    The whole history of the scored population is ~30% more rows than the
+    per-customer pick was, and it is the only version in which every
+    ``journey_ref`` resolves.  The population is still the scored one: attempts
+    by customers outside ``cust_ids`` are not exported.
     """
     keep = set(str(c) for c in cust_ids)
     j = journeys_df[journeys_df["cust_id"].astype(str).isin(keep)].copy()
     if j.empty:
         return []
     j = j.sort_values(["cust_id", "attempt_seq"], kind="stable")
-    j = j.groupby("cust_id", as_index=False, sort=False).tail(1)
 
     truth_key = label_truth.set_index(["cust_id", "month"])["shopper_truth"] \
         if {"cust_id", "month", "shopper_truth"} <= set(label_truth.columns) else None
@@ -486,7 +493,12 @@ def build_leads(leads_internal: list[dict], rm_map: dict,
                               for c in lead.get("negative_chips", [])][:5],
             pitch=pitch, objection=objection, nba=lead["nba"], suppressed=suppressed,
             suppression_reasons=suppression_reasons, assigned_rm_id=assigned_rm_id,
-            journey_ref=None, spark=lead["spark"], provenance=dict(
+            # The abandoned attempt this lead revives (`model.pack.scored_attempts`),
+            # and the row in `journeys[]` the platform joins to for the drawer's
+            # window block.  It was `None` on every lead until 2026-09-21, which
+            # left `window.abandoned_at`, `due_by`, `open` and `expired` null on
+            # every real export while the bank FIXTURE set it and looked fine.
+            journey_ref=lead.get("journey_ref"), spark=lead["spark"], provenance=dict(
                 identity="SIMULATED", casa_behaviour="SIMULATED", cross_bank="SIMULATED",
                 holdings="SIMULATED", digital="SIMULATED", consent="SIMULATED",
                 journey="SIMULATED", model="SIMULATED"),

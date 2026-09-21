@@ -207,6 +207,61 @@ def test_the_export_does_not_rename_hanley_mcneil_to_delong(
                                    "method", "enum"))
 
 
+def test_every_lead_resolves_to_the_abandonment_it_revives(
+        packed_bank: SimpleNamespace) -> None:
+    """The lead-to-journey link, end to end inside the exported file.
+
+    The platform joins `sanket_lead.journey_ref` to `sanket_journey` and builds
+    the RM drawer's `journey` block and its whole `window` block — `abandoned_at`,
+    `due_by`, `open`, `expired` — out of the row it finds. This export sent
+    `journey_ref=None` on every lead from ac35637 until 2026-09-21, so all of
+    that was null on every real export, while the bank fixture (which sets the
+    ref) looked healthy and hid it.
+
+    Three things have to hold before a ref is an improvement on None, because a
+    deadline dated from the wrong application is worse than a missing one: the
+    attempt is IN this file, it is an abandonment BY THIS CUSTOMER, and it is the
+    abandonment the lead's own urgency clock states.
+    """
+    payload = json.loads(packed_bank.export_path.read_text())
+    journeys = {str(j["journey_id"]): j for j in payload["journeys"]}
+    assert payload["leads"]
+    for lead in payload["leads"]:
+        ref = lead["journey_ref"]
+        assert ref, f"{lead['id']} names no attempt — the drawer's window block goes null"
+        assert ref in journeys, f"{lead['id']} references journey {ref}, which is not exported"
+        journey = journeys[ref]
+        assert journey["cust_id"] == lead["id"], \
+            f"{lead['id']} references {ref}, an attempt by {journey['cust_id']}"
+        assert journey["abandoned"] is True, f"{ref} is not an abandonment"
+        assert journey["abandon_ts"], f"{ref} is abandoned but carries no abandon_ts"
+        assert journey["abandon_ts"][:10] == lead["abandoned_at"], (
+            f"{lead['id']} says it abandoned on {lead['abandoned_at']} but {ref} says "
+            f"{journey['abandon_ts']} — the lead and its journey are different applications")
+
+
+def test_journeys_carry_every_attempt_of_a_scored_customer(
+        packed_bank: SimpleNamespace, model_dir) -> None:
+    """One row per ATTEMPT, which is what the contract says journeys[] is.
+
+    It used to be one row per CUSTOMER — their most recent attempt — and that is
+    the set a `journey_ref` has to resolve inside. The attempt a lead revives is
+    usually an earlier one, and on the real book 140 of 344 customers' latest
+    attempts were never abandoned at all, so the per-customer pick could not have
+    held the referenced rows. Attempts by customers who were never scored are
+    still out: the export stays proportioned to the population it is about.
+    """
+    import pandas as pd
+
+    payload = json.loads(packed_bank.export_path.read_text())
+    scored = {c["cust_id"] for c in payload["customers"]}
+    table = pd.read_csv(model_dir / "journeys.csv")
+    expected = set(table.loc[table.cust_id.astype(str).isin(scored), "attempt_id"].astype(str))
+    exported = {str(j["journey_id"]) for j in payload["journeys"]}
+    assert exported == expected
+    assert len(exported) > len(scored), "no customer has a second attempt — the fixture is too thin"
+
+
 def test_every_lead_states_its_three_clocks(packed_bank: SimpleNamespace) -> None:
     """Review §5: abandonment, scoring and the contact deadline are three
     different instants, and `contact_by` runs from the first of them — the same

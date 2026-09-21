@@ -1190,10 +1190,21 @@ byte-for-byte the SM-1–5 pipeline, every family `SIMULATED`. With it:
    endpoints and no consents still yields `cross_bank: FIXTURE`... consent is per customer").
 4. Emit `data/export/sanket_export.json` in `rrsquad-platform/contracts/sanket_export.schema.json`'s
    shape — a different, larger contract than `app/public/sanket_data.json`: it adds `customers[]`
-   (the whole scored snapshot pool, not just the ~320-lead queue), `journeys[]` (the most recent
-   application attempt per exported customer), and `amortisation_schedules{}` (one schedule per
-   product, keyed for reuse across every lead pitching it), and flattens most of `metrics` instead
-   of nesting it under `blended`.
+   (the whole scored snapshot pool, not just the ~320-lead queue), `journeys[]` (**every**
+   application attempt by an exported customer — one row per ATTEMPT, which is what a lead's
+   `journey_ref` points into), and `amortisation_schedules{}` (one schedule per product, keyed
+   for reuse across every lead pitching it), and flattens most of `metrics` instead of nesting
+   it under `blended`.
+
+   `journey_ref` is the abandoned attempt the lead revives — the most recent abandonment visible
+   at `scored_at`, which is the one `journeys.labels.build_population` scored the customer on
+   (`model.pack.scored_attempts`), and the row the platform joins to for the RM drawer's window
+   block. It carried `None` on every lead until 2026-09-21, which left that block null on every
+   real export; `journeys[]` carried only each customer's LATEST attempt, which for 140 of 344
+   leads was never abandoned at all, so there was nothing correct for the ref to point at. Both
+   halves are fixed together, and `abandoned_at` is now read off that attempt's own `abandon_ts`
+   rather than back-computed from the whole-day `days_since_abandon` feature, which rounded the
+   date a day forward on 343 of 344 leads.
 
 **Validated clean against `rrsquad-platform/contracts/validate.py` / the schema directly** (see
 `tests/test_model_export.py`, which skips if the sibling platform repo is absent) — **zero
