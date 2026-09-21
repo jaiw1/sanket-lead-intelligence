@@ -1,41 +1,52 @@
 # SANKET demo — narration transcript
 
 Recorded via `video-autopilot/sanket-autopilot.mjs` against a **live rrsquad-platform
-backend**: `app/` built from `main` (sanket@7e9c53f) with `VITE_API_BASE` unset and a
-same-origin dev-server proxy (`VITE_DEV_API_PROXY`) to a real `uvicorn` process
-(rrsquad-platform@7312ae5) backed by its own local dev Postgres database, migrated,
-seeded with the five real demo users, and loaded with the committed
-`app/public/sanket_data.json` (patched to carry `suppression_reasons` per lead — the
-export's own `suppression_reason` singular field, renamed to the contract's plural array
-— and loaded with `--allow-invalid`, because the contract gained `customers`/
-`journeys`/`amortisation_schedules` blocks this export doesn't carry; every number the
-export carries is unchanged by the patch). Before recording, the hero lead and 15 others
-were assigned to the RM this script signs in as, via a real `POST /sanket/assign`
-(`mode=explicit`) — the seed roster's EINs don't match this run's simulated one by
-default, exactly the mismatch `seeds/users.yaml` warns about, so an unassigned RM would
-sign in to an empty queue. This is a real signed-in session end to end: real cookies,
-real CSRF, a real password change out of band before recording, real role checks, and two
-real writes — a recorded disposition and a CRM-push dry run — both hash-chained into the
-append-only audit log. Recorded 2026-09-21. Every number below is read directly off the
-screen at the timestamp given; none is asserted from memory. **Bold** marks the words the
-on-screen karaoke caption highlights.
+backend**: `app/` built from `main` (sanket@be78a3d — the tier-band fix, see below) with
+`VITE_API_BASE` unset and a same-origin dev-server proxy (`VITE_DEV_API_PROXY`) to a real
+`uvicorn` process (rrsquad-platform@7312ae5) backed by its own local dev Postgres database
+(`rrsquad_video`, inside the existing `rrsquad-pg-dev` container), migrated, seeded with
+the five real demo users, and loaded with the committed `app/public/sanket_data.json`
+(patched at load time only, two field renames — the file on disk is untouched: (1)
+`suppression_reasons` per lead, from the export's own `suppression_reason` singular
+field, to the contract's plural array; (2) `negative_signals` per lead, from the export's
+own `negative_chips` field, to the name the platform's loader and `LeadDrawer.jsx` both
+read — without it every "why it might not close" card falls back to "No window-shopper
+signal on this application" for every lead, hero included. Loaded with `--allow-invalid`,
+because the contract gained `customers`/`journeys`/`amortisation_schedules` blocks this
+export doesn't carry; every number the export carries is unchanged by either patch).
+Reloading superseded the previous (pre-tier-fix) run; the platform's own load-time
+continuity (`reassert_continuity`) carried the hero lead's and 15 others' assignment
+forward from that run onto the RM this script signs in as, and one more lead — this run's
+only gap, since that curated 16 happened to be 15 hot + 1 warm, none cold — was assigned
+on top via a real `POST /sanket/assign` (`mode=explicit`) so the RM's own queue shows all
+three tiers on screen, not just two. This is a real signed-in session end to end: real
+cookies, real CSRF, a real password change out of band before recording, real role
+checks, and two real writes — a recorded disposition and a CRM-push dry run — both
+hash-chained into the append-only audit log. Recorded 2026-09-21. Every number below is
+read directly off the screen at the timestamp given; none is asserted from memory.
+**Bold** marks the words the on-screen karaoke caption highlights.
 
 The recorded file has no spoken audio (no human narrator was available to this
 autonomous run) — the on-screen caption bar carries this exact text, word-synced, burned
 into the video. A presenter can read this transcript aloud over the video, live, during
 the demo slot.
 
-Total run time: **≈2:29** (well inside the 3-minute cap the deck template requires).
+Total run time: **2:29** (148.96s from the raw Playwright capture; well inside the
+3-minute cap the deck template requires).
 
-## Why this replaces the 21 Sep static-demo take
+## Why this replaces the previous live-backend take (f3fd032)
 
-A same-day agent had re-recorded this video against the app's **static demo** mode (no
-login, no backend, "Push to CRM" not even rendered) to hit the 3-minute cap quickly. That
-hid this product's actual differentiators — role-scoped queues, a real audited
-disposition, a real CRM-push dry run with its dedupe verdict, the live validation/audit
-surface — which is exactly what a bank reviewer needs to see. This take goes back to a
-live backend (as the original 17 Sep recording did) but paced to stay under 3 minutes:
-nine scenes, two role switches (RM → manager → admin), no dwell time wasted.
+That take (149s, also live-backend, no separate file kept — this recording replaced it in
+place, same as this one replaces that one) was built from sanket main **before** be78a3d, the fix that turned `tier` back
+into a fixed probability band (`TIER_HOT 0.30`, `TIER_WARM 0.20`) instead of "inside the
+delivered queue". Under the bug every one of the 320 delivered rows came out `hot`, so
+that recording's queue scene was, truthfully, a flat wall of one label — not a
+misrepresentation at the time, but not what the product looks like once fixed. This take
+re-records against the fixed pack (117 hot / 143 warm / 60 cold delivered, 24 more
+suppressed at their own earned band) and adds an explicit, machine-checked requirement
+that the queue scene shows more than one tier — see the new `--verify` targets below.
+Nothing else about the nine-scene arc changed: same RM → manager → admin flow, same real
+writes, same audit trail.
 
 - **Real sign-in, three times.** Scene 1 signs in as `v.rathore` (relationship manager,
   seeing only his own assigned leads — confirmed on screen). Scene 5 switches to
@@ -63,9 +74,10 @@ nine scenes, two role switches (RM → manager → admin), no dwell time wasted.
 **0:00–0:10 — Sign in, live**
 > SANKET, signed in for real — a live rrsquad-platform session, not a frozen bundle.
 
-**0:10–0:24 — Queue: role-scoped**
+**0:10–0:24 — Queue: role-scoped, all three tiers**
 > Vikram Rathore, relationship manager: the server hands him only **his own** assigned
-> leads, ranked by product probability. Capacity is shown, never what ranks the queue.
+> leads. Tier is a real probability band now — **hot, warm and cold** all sit in one
+> queue, not a wall of one label.
 
 **0:24–0:48 — Hero lead: why this one**
 > Why this lead — LB-2006372: one model, a menu of four products, leading with a
@@ -104,7 +116,10 @@ nine scenes, two role switches (RM → manager → admin), no dwell time wasted.
 `sanket-autopilot.mjs --verify` asserts these on every relevant scene and fails loudly if
 any is missing:
 
-- Queue: `Relationship manager`, `your own leads`
+- Queue: `Relationship manager`, `your own leads`, and — new for this take — `Hot`,
+  `Warm`, `Cold` all three, so a re-broken tier band (a return to the pre-be78a3d flat
+  wall of one label) would fail the video's own automated check, not just look wrong on
+  playback.
 - Hero lead: `25.9%`, `₹1,000`, `blank`
 - Disposition: `Recorded`/`Logged`/`outcome`
 - CRM push: `dedupe`
@@ -133,16 +148,18 @@ exists, on the cold load and after each sign-out).
 - **Business Radar.** Exists in the nav, not opened or narrated — an appendix exhibit,
   per the L12 brief, dropped rather than swept past on camera.
 
-## A real bug this recording did not paper over
+## A real bug the previous take did not paper over — now fixed
 
-The Manager Dashboard's "Suppressed" card reads **560% of the book** in **static** mode
-(it divides the full 7,456-row pool's suppression count by this cockpit sample's smaller
-total — a real denominator bug in `funnelFromPack`, `app/src`). This live recording never
-visits that card, so the bug does not appear on screen either way; see Task 2 of this
-same work item for the fix and its test, tracked separately from the video re-record.
+The Manager Dashboard's "Suppressed" card used to read **560% of the book** in **static**
+mode (it divided the full 7,456-row pool's suppression count by this cockpit sample's
+smaller total — a denominator bug in `funnelFromPack`, `app/src`). That live recording
+never visited that card, so the bug did not appear on screen either way. `30ad0e8` fixed
+the denominator ahead of the tier-band fix this take records; this take does not visit
+that card either (out of scene budget), but the fix is real and tested (`app/src` test
+suite), not merely undemonstrated.
 
 ## Superseded
 
-Two earlier recordings are kept for reference: `docs/demo/sanket-demo-2026-09-17.mp4`
-(≈3:53, the original live-backend take, login/role flow, CRM push demo) stays where it
-was. This file replaces the 21 Sep **static-demo** take as the current demo video.
+`docs/demo/sanket-demo-2026-09-17.mp4` (≈3:53, the original live-backend take, login/role
+flow, CRM push demo) stays where it was, kept for reference. This file replaces the
+previous live-backend take (f3fd032, pre-tier-fix) as the current demo video.
