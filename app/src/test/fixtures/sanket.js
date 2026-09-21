@@ -137,7 +137,11 @@ export const PACK = {
       'SK-02': { verdict: 'fail', band: 'precision@10% in [0.25, 0.35]', observed: 0.21 },
       'SK-03': { verdict: 'not_measured', band: 'precision at 5% and 20%' },
     },
-    suppression: { suppressed_count: 83, reasons: { no_marketing_consent: 24 } },
+    // `pool_at_snapshot` is the drop-off population `suppressed_count` was actually
+    // counted over — always far bigger than this fixture's one bundled `leads` row, the
+    // same way it is in a real export (a few hundred delivered rows against a
+    // thousands-strong pool).
+    suppression: { suppressed_count: 83, pool_at_snapshot: 830, reasons: { no_marketing_consent: 24 } },
     excluded_features: ['Credit-bureau score — pulled only at application stage.'],
   },
   leads: [

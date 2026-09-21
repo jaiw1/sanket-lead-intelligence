@@ -37,6 +37,9 @@ export default function ManagerDashboard() {
   const error = isStatic ? pack.error : live.error
   const metrics = useMemo(() => readMetrics(data?.published_metrics), [data])
   const headline = metrics?.headline || null
+  // See the Suppressed `Stat`'s hint below: the denominator for "share of the book
+  // suppressed" has to be the same population `data.suppressed` was counted over.
+  const suppressedPoolTotal = data?.pool ?? data?.leads ?? null
 
   const sourceBadge = isStatic ? 'SIMULATED' : (live.meta?.provenance_mode === 'fixture' ? 'FIXTURE' : 'SIMULATED')
   const sourceDetail = isStatic
@@ -93,7 +96,16 @@ export default function ManagerDashboard() {
             icon={ShieldOff}
             label="Suppressed"
             value={data.suppressed == null ? '—' : num(data.suppressed)}
-            hint={data.leads ? `${pct((data.suppressed || 0) / data.leads, 0)} of the book — never queued` : 'never queued'}
+            // `data.suppressed` is always a full-pool count (live: `lead` rows for this
+            // run; static: `metrics.suppression.suppressed_count`, both counted over the
+            // whole drop-off population). The percentage has to divide by that same
+            // population, not by `data.leads` — in live mode `data.leads` already is that
+            // population (one SQL query counts both), but in static mode `data.leads` is
+            // only the bundled sample's row count (a few hundred, out of thousands), which
+            // used to read a nonsense >100% ("560% suppressed"). `data.pool`, present only
+            // on the static path, carries the real denominator; live mode falls back to
+            // `data.leads`, which is already correct there.
+            hint={suppressedPoolTotal ? `${pct((data.suppressed || 0) / suppressedPoolTotal, 0)} of the book — never queued` : 'never queued'}
             tone="text-signal-rose"
             testId="kpi-suppressed"
           />

@@ -350,6 +350,15 @@ export function funnelFromPack(pack) {
     source: 'pack',
     leads: leads.length,
     suppressed: suppression?.suppressed_count ?? counts.suppressed ?? (leads.some((l) => l.suppressionKnown) ? leads.filter((l) => l.suppressed).length : null),
+    // The drop-off population `suppressed` above was actually counted over — always the
+    // full pool (`metrics.suppression.pool_at_snapshot`), never this bundle's own sample
+    // of `leads`. A screen that divides `suppressed` by `leads.length` instead (a few
+    // hundred delivered rows, not the thousands-strong pool) gets a share over 100%: the
+    // pool's whole suppressed count against a denominator many times smaller than the
+    // pool. Kept separate from `leads` rather than replacing it, because `leads.length`
+    // is still the right count for this bundle's own per-sample stats (product mix, RM
+    // load, stage funnel) — only a suppressed-of-pool share needs the pool figure.
+    pool: suppression?.pool_at_snapshot ?? null,
     unassigned: byRm.size ? leads.filter((l) => !l.assignedRmId).length : null,
     stage_reached: byStage.size ? Object.fromEntries(byStage) : null,
     product_mix: byProduct.size

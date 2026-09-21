@@ -199,6 +199,18 @@ describe('funnelFromPack — the static dashboard', () => {
     expect(f.suppressed).toBe(83) // from metrics.suppression, not recounted from one lead
   })
 
+  it('exposes the pool the suppressed count was measured over, separate from the sample', () => {
+    const f = funnelFromPack(PACK)
+    // The bug this guards: `suppressed` (83) is always a full-pool count, never recounted
+    // from the bundle's own `leads` (1 row here — a few hundred in a real export). A
+    // screen that divided 83 by `f.leads` would get a share over 100%. `f.pool` is the
+    // population that count actually came from, kept separate so `f.leads` stays right
+    // for this bundle's own per-sample stats.
+    expect(f.pool).toBe(830)
+    expect(f.leads).toBe(1)
+    expect(f.suppressed / f.pool).toBeLessThan(1)
+  })
+
   it('reports null — not an empty chart — for what the pack cannot support', () => {
     const f = funnelFromPack(PACK)
     // Dispositions and the server-resolved SLA are platform state, not model output.
@@ -211,6 +223,7 @@ describe('funnelFromPack — the static dashboard', () => {
     expect(f.leads).toBe(1)
     expect(f.suppressed).toBeNull()
     expect(f.suppression_by_reason).toBeNull()
+    expect(f.pool).toBeNull()
   })
 
   it('returns null for no pack at all', () => {

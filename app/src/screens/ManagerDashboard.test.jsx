@@ -128,6 +128,22 @@ describe('ManagerDashboard — static mode', () => {
     expect(screen.getByTestId('kpi-suppressed')).toHaveTextContent('83')
   })
 
+  it('divides the suppressed count by the pool it was measured over, not by the bundled sample size', async () => {
+    // Regression test for a real bug: PACK.metrics.suppression.suppressed_count (83) is a
+    // full-pool figure, but PACK only bundles one bundled lead row. Dividing 83 by the
+    // sample's `leads.length` (1) used to render "8300% of the book" here — in production,
+    // with real numbers, that was the "560%" the Manager Dashboard actually shipped.
+    // `funnelFromPack` now exposes the pool that count was measured over
+    // (`metrics.suppression.pool_at_snapshot`, 830 in this fixture) as its own field, and
+    // this is what the percentage must divide by instead: 83 / 830 = 10%.
+    renderScreen(<ManagerDashboard />, { path: '/dashboard', mode: 'static', user: null, pack: PACK })
+    const suppressedCard = await screen.findByTestId('kpi-suppressed')
+    expect(suppressedCard).toHaveTextContent('83')
+    expect(suppressedCard).toHaveTextContent('10% of the book')
+    expect(suppressedCard).not.toHaveTextContent('560%')
+    expect(suppressedCard).not.toHaveTextContent('8300%')
+  })
+
   it('survives a pre-SM-1 export with none of the new keys', async () => {
     renderScreen(<ManagerDashboard />, { path: '/dashboard', mode: 'static', user: null, pack: LEGACY_PACK })
     await waitFor(() => expect(screen.getAllByTestId('not-in-build').length).toBeGreaterThan(0))
