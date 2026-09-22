@@ -306,8 +306,13 @@ function ConsentDetail({ consentId, onChanged, role }) {
         </div>
 
         {error && <div className="mt-3"><ErrorState title="The action did not complete" error={error} /></div>}
+        {message?.note && (
+          <p className="mt-3 rounded-lg border border-line bg-ink-900 px-3 py-2 text-xs leading-relaxed text-txt-mid" data-testid="consent-action-note">
+            {message.note}
+          </p>
+        )}
         {message && (
-          <pre className="scroll-thin mt-3 max-h-48 overflow-auto rounded-lg border border-line bg-ink-900 p-3 font-mono text-[11px] leading-relaxed text-txt-mid">
+          <pre className="scroll-thin mt-2 max-h-48 overflow-auto rounded-lg border border-line bg-ink-900 p-3 font-mono text-[11px] leading-relaxed text-txt-mid">
             {JSON.stringify(message, null, 2)}
           </pre>
         )}
@@ -319,7 +324,7 @@ function ConsentDetail({ consentId, onChanged, role }) {
           <dt className="text-txt-lo">Requested</dt><dd className="text-txt-mid">{when(c.requested_at)}</dd>
           <dt className="text-txt-lo">Approved</dt><dd className="text-txt-mid">{when(c.approved_at)}</dd>
           <dt className="text-txt-lo">Expires</dt><dd className="text-txt-mid">{when(c.expires_at)}</dd>
-          <dt className="text-txt-lo">Last fetch</dt><dd className="text-txt-mid">{when(c.last_fetch_at)}</dd>
+          <dt className="text-txt-lo">Data last fetched</dt><dd className="text-txt-mid">{when(c.last_fetch_at)}</dd>
           <dt className="text-txt-lo">Data ready</dt><dd className="text-txt-mid">{c.data_ready ? 'yes' : 'no'}</dd>
         </dl>
       </Card>
