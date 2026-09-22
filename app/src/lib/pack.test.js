@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { funnelFromPack, headlineFrom, normaliseLead, pick, pickArray, readMetrics, toNumber } from './pack'
+import { funnelFromPack, headlineFrom, normaliseLead, packAsOf, pick, pickArray, readMetrics, toNumber } from './pack'
 import { LEAD_DETAIL, LEGACY_PACK, PACK, QUEUE_ROW, SUPPRESSED_ROW } from '../test/fixtures/sanket'
+// The bundle the static demo actually serves, read from disk rather than mocked: the
+// numbers on that dashboard are the point of this fix, and a fixture cannot vouch for them.
+import COMMITTED_PACK from '../../public/sanket_data.json'
 
 describe('toNumber / pick — absence is a value', () => {
   it('turns the API’s string decimals into numbers', () => {
@@ -213,9 +216,19 @@ describe('funnelFromPack — the static dashboard', () => {
 
   it('reports null — not an empty chart — for what the pack cannot support', () => {
     const f = funnelFromPack(PACK)
-    // Dispositions and the server-resolved SLA are platform state, not model output.
+    // Dispositions are platform state, not model output. The window split is not: the
+    // pack carries every lead's contact_by and the instant the book was scored at.
     expect(f.dispositions).toBeNull()
-    expect(f.sla).toBeNull()
+  })
+
+  it('splits the window against the pack’s own scoring instant, not today', () => {
+    const f = funnelFromPack(PACK)
+    // contact_by 2026-09-25, scored 2026-09-01: open then, and long shut by any wall
+    // clock this test will ever run under. The static dashboard read "—" for this.
+    expect(f.sla).toEqual(expect.objectContaining({
+      window_open: 1, window_expired: 0, no_window: 0, as_of: '2026-09-01T00:00:00.000Z',
+      as_of_source: 'pack.leads[].scored_at',
+    }))
   })
 
   it('survives the legacy pack', () => {
@@ -224,9 +237,52 @@ describe('funnelFromPack — the static dashboard', () => {
     expect(f.suppressed).toBeNull()
     expect(f.suppression_by_reason).toBeNull()
     expect(f.pool).toBeNull()
+    // No scored_at and no ref_month: nothing to anchor to, so no split. "—" is the
+    // honest answer here, and inventing a clock to fill it would not be.
+    expect(f.sla).toBeNull()
   })
 
   it('returns null for no pack at all', () => {
     expect(funnelFromPack(null)).toBeNull()
+  })
+})
+
+describe('packAsOf — when the bundled book was scored', () => {
+  it('prefers the scored_at every lead agrees on', () => {
+    expect(packAsOf(PACK)).toBe('2026-09-01T00:00:00.000Z')
+  })
+
+  it('falls back to the first of the reference month', () => {
+    const noScoredAt = { ...PACK, leads: PACK.leads.map(({ scored_at: _drop, ...rest }) => rest) }
+    expect(packAsOf(noScoredAt)).toBe('2026-09-01T00:00:00.000Z')
+  })
+
+  it('returns null when the leads disagree about when they were scored', () => {
+    // An anchor a day out silently opens or shuts the one-day products. No anchor is the
+    // honest state, and the reader falls back to the wall clock as it always did.
+    const split = {
+      ...PACK,
+      leads: [{ ...PACK.leads[0], scored_at: '2026-09-01' }, { ...PACK.leads[0], id: 'LB-X', scored_at: '2026-08-01' }],
+    }
+    expect(packAsOf(split)).toBeNull()
+    expect(funnelFromPack(split).sla).toBeNull()
+  })
+
+  it('returns null for a pack that says nothing about either', () => {
+    expect(packAsOf(LEGACY_PACK)).toBeNull()
+    expect(packAsOf(null)).toBeNull()
+  })
+})
+
+describe('funnelFromPack — the committed bundle', () => {
+  // The real numbers the static demo serves. Against the wall clock this reads 0 / 320:
+  // every window in a book scored on 1 September has run out by the time anyone opens it,
+  // which is a statement about the date and not about the book.
+  it('splits the committed book 3 open / 317 closed as of 1 Sep 2026', () => {
+    const f = funnelFromPack(COMMITTED_PACK)
+    expect(f.sla.as_of).toBe('2026-09-01T00:00:00.000Z')
+    expect(f.sla.window_open).toBe(3)
+    expect(f.sla.window_expired).toBe(317)
+    expect(f.sla.no_window).toBe(0)
   })
 })

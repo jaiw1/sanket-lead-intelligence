@@ -39,7 +39,10 @@ export const QUEUE_ROW = {
   abandon_ts: '2026-09-10T18:59:28+00:00',
   window_shopper: true,
   stage_reached: 'fee',
-  window: { days: 1, due_by: '2026-09-11T18:59:28+00:00', open: false, expired: true },
+  // `as_of` is what the server says it judged this window at — the run's scoring
+  // instant, not the reader's clock. The row travels without the envelope, so it carries
+  // its own anchor.
+  window: { days: 1, due_by: '2026-09-11T18:59:28+00:00', open: false, expired: true, as_of: '2026-09-12T00:00:00+00:00' },
 }
 
 // A suppressed lead keeps the tier its probability earned — `tier` is a band on the
@@ -103,7 +106,9 @@ export const FUNNEL = {
   ],
   rm_load: [{ rm_ein: 'EIN-100471', leads: 12, open: 12 }],
   dispositions: {},
-  sla: { window_open: 14, window_expired: 23, no_window: 0, windows_days: { personal: 1, gold: 1, auto: 3, education: 7, home: 14, lap: 14 } },
+  // `as_of` is the instant the split was computed at — the run's own scoring instant,
+  // deliberately well in the past here so the frozen-snapshot wording is exercised.
+  sla: { window_open: 14, window_expired: 23, no_window: 0, windows_days: { personal: 1, gold: 1, auto: 3, education: 7, home: 14, lap: 14 }, as_of: '2026-09-01T00:00:00+00:00', as_of_source: 'export.leads[].scored_at' },
   suppression_by_reason: { contact_fatigue: 73, dnd_registry: 10, no_marketing_consent: 24 },
   counts: { hot: 5, warm: 25, cold: 90, no_consent: 24, suppressed: 83 },
   published_metrics: {
@@ -155,7 +160,7 @@ export const PACK = {
       consent: true, queued: true, suppressed: false, suppression_reason: 'none',
       product: 'home', tier: 'warm', lang: 'hi', intent: 0.71, capacity: 0.66, score: 0.68,
       salary_m: 84000, retained_income: 31000, safe_emi: 15500,
-      window_days: 14, contact_by: '2026-09-25',
+      window_days: 14, contact_by: '2026-09-25', scored_at: '2026-09-01',
       reasons: ['Rent stepped up 18% over two quarters'],
       negative_chips: [{ signal: 'blank_field_ratio', text: 'Left 44% of optional fields blank', impact: -0.31, mentor_signal: true }],
       product_menu: [

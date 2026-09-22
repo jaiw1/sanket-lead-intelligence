@@ -17,11 +17,11 @@ import { roleMatches } from '../auth/roles'
 import useResource from '../data/useResource'
 import { usePack } from '../data/PackContext'
 import { getQueue, postAssign } from '../lib/sanket'
-import { normaliseLead } from '../lib/pack'
+import { normaliseLead, packAsOf } from '../lib/pack'
 import {
   PRODUCTS, SORT_KEYS, STATUSES, TIER, inr, num, productLabel, suppressionLabel,
 } from '../lib/fmt'
-import { WINDOW_FILTERS } from '../lib/window'
+import { asOfLabel, isFrozen, WINDOW_FILTERS } from '../lib/window'
 
 const PAGE = 50
 
@@ -115,6 +115,12 @@ export default function Queue() {
 
   const reload = isStatic ? pack.reload : live.reload
 
+  // The instant this book's windows were judged at. Live it is on the envelope; static it
+  // is the pack's own scoring instant. Every "N days left" on this screen is counted from
+  // it, and the caveat above the table names it when it is not today.
+  const asOf = isStatic ? packAsOf(pack.data) : (meta?.as_of || null)
+  const frozen = isFrozen(asOf)
+
   return (
     <AppShell title="Lead queue" help="queue">
       <div className="space-y-4">
@@ -134,6 +140,13 @@ export default function Queue() {
               disbursement and by how soon their product&rsquo;s contact window closes. Use the
               contact-window filter to see only the ones still inside it. Showing{' '}
               <b className="text-txt-mid">{scope}</b>.
+              {asOf && (
+                <>
+                  {' '}Every window below is judged as of{' '}
+                  <b className="text-txt-mid" data-testid="queue-as-of">{asOfLabel(asOf)}</b>
+                  {frozen ? ', when this book was scored — not today.' : '.'}
+                </>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -167,7 +180,7 @@ export default function Queue() {
 
         {!loading && !error && searched && searched.length > 0 && (
           <>
-            <QueueTable rows={searched} onOpen={(id) => setFilter('lead', id)} />
+            <QueueTable rows={searched} asOf={asOf} onOpen={(id) => setFilter('lead', id)} />
             {!isStatic && (
               <Pager
                 offset={filters.offset}
@@ -263,7 +276,7 @@ function Filters({ filters, setFilter, isStatic }) {
   )
 }
 
-function QueueTable({ rows, onOpen }) {
+function QueueTable({ rows, asOf = null, onOpen }) {
   return (
     <div className="overflow-hidden rounded-xl border border-line bg-ink-700">
       <div className="scroll-thin max-h-[560px] overflow-auto">
@@ -307,7 +320,7 @@ function QueueTable({ rows, onOpen }) {
                       {productLabel(lead.product)}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5"><WindowBadge lead={lead} showDays={false} /></td>
+                  <td className="px-3 py-2.5"><WindowBadge lead={lead} asOf={asOf} showDays={false} /></td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-txt-hi">{lead.intent == null ? '—' : Math.round(lead.intent * 100)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-txt-hi">{lead.capacity == null ? '—' : Math.round(lead.capacity * 100)}</td>
                   <td className={`px-3 py-2.5 text-right font-bold tabular-nums ${tier.text}`}>{lead.score == null ? '—' : Math.round(lead.score * 100)}</td>

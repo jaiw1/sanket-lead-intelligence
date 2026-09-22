@@ -144,6 +144,7 @@ export const SUPPRESSION_REASON = {
   recent_contact: 'Called in the last 7 days',
   contact_fatigue: 'Called too often recently',
   window_closed: 'Contact window has closed',
+  window_expired: 'Contact window has closed',
   negative_uplift: 'Calling would do harm',
   already_holds_product: 'Already holds this product',
   not_in_population: 'Not in the drop-off population',

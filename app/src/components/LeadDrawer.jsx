@@ -19,7 +19,8 @@ import useFocusTrap from '../lib/useFocusTrap'
 import useResource from '../data/useResource'
 import { usePack } from '../data/PackContext'
 import { getLead } from '../lib/sanket'
-import { normaliseLead } from '../lib/pack'
+import { normaliseLead, packAsOf } from '../lib/pack'
+import { asOfLabel, isFrozen, windowStatus } from '../lib/window'
 import {
   LANG_LABEL, STAGE_LABEL, TIER, dispositionLabel, fallbackPitch, inr, num, pct,
   productLabel, suppressionLabel,
@@ -64,6 +65,11 @@ export default function LeadDrawer({ leadId, onClose, onChanged }) {
 
   const canPush = !isStatic && roleMatches(role, ['M', 'A'])
   const tier = TIER[lead?.tier] || TIER.cold
+  // The instant this lead's window was judged at. Live it rides on the payload itself —
+  // `getLead` reads `data` and never sees the envelope — and static it is the pack's own
+  // scoring instant. Either way the drawer counts its days from the same place the queue
+  // badge and the manager's split do.
+  const asOf = isStatic ? packAsOf(pack.data) : (lead?.window?.as_of || null)
 
   return (
     <div className="fixed inset-0 z-40" data-testid="lead-drawer">
@@ -85,7 +91,7 @@ export default function LeadDrawer({ leadId, onClose, onChanged }) {
                   {tier.label.toUpperCase()} · {productLabel(lead.product)}
                 </span>
               )}
-              {lead && <WindowBadge lead={lead} />}
+              {lead && <WindowBadge lead={lead} asOf={asOf} />}
             </div>
             {lead && (
               <p className="mt-0.5 text-xs capitalize text-txt-lo">
@@ -95,6 +101,7 @@ export default function LeadDrawer({ leadId, onClose, onChanged }) {
                 {lead.tenureM ? ` · ${Math.round(lead.tenureM / 12)}y with the bank` : ''}
                 {lead.stageReached ? ` · abandoned at ${STAGE_LABEL[lead.stageReached] || lead.stageReached}` : ''}
                 {lead.abandonTs ? ` on ${new Date(lead.abandonTs).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                {isFrozen(asOf) ? ` · scored ${asOfLabel(asOf)}` : ''}
               </p>
             )}
           </div>
@@ -134,7 +141,7 @@ export default function LeadDrawer({ leadId, onClose, onChanged }) {
                 onDisposition={() => setDispOpen(true)}
               />
 
-              <Contactability lead={lead} />
+              <Contactability lead={lead} asOf={asOf} />
 
               <Section title="The menu of four" subtitle="One model ranks all six products for this customer; these are the four worth a conversation.">
                 <ProductMenu lead={lead} />
@@ -253,11 +260,20 @@ function SuppressedNotice({ lead }) {
  * to support was never on the RM's screen. Suppression already had a notice; consent and
  * the non-suppression blockers (an expired window, for instance) did not.
  */
-function Contactability({ lead }) {
+function Contactability({ lead, asOf = null }) {
   const c = lead.contactability
   if (!c || typeof c !== 'object') return null
   const consent = c.consent && typeof c.consent === 'object' ? c.consent : null
   const blockers = Array.isArray(c.blockers) ? c.blockers : []
+  // "Contact window has closed" is a verdict with a date on it, and the date is the run's
+  // own scoring instant rather than today. An undated one invites the reader to assume
+  // the window shut this morning, which on a published book it did not.
+  const windowStatusForLead = windowStatus(lead, asOf)
+  const blockerLabel = (reason) => (
+    reason === 'window_expired' && windowStatusForLead.asOf
+      ? `${suppressionLabel(reason)} (as of ${asOfLabel(windowStatusForLead.asOf)})`
+      : suppressionLabel(reason)
+  )
   const ok = c.contactable === true && blockers.length === 0
   const Icon = c.contactable === false ? PhoneOff : ok ? ShieldCheck : PhoneCall
   const tone = c.contactable === false
@@ -294,7 +310,7 @@ function Contactability({ lead }) {
         {blockers.length > 0 && (
           <li>
             <span className="text-txt-lo">In the way</span>{' '}
-            <b className="text-txt-hi">{blockers.map(suppressionLabel).join('; ')}</b>
+            <b className="text-txt-hi">{blockers.map(blockerLabel).join('; ')}</b>
           </li>
         )}
       </ul>

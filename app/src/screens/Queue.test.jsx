@@ -177,3 +177,44 @@ describe('Queue — static mode', () => {
     expect(within(rows[0]).getByText('pl')).toBeInTheDocument()
   })
 })
+
+describe('Queue — the days are counted from the run, not from today', () => {
+  // The defect this covers: a book scored on 1 September, read in September of the
+  // following year, badged every row "Closed 372 days ago" — a number that grew by one a
+  // day while nothing in the book changed.
+  const SCORED = '2026-09-01T00:00:00+00:00'
+  const STILL_OPEN = {
+    ...QUEUE_ROW,
+    id: 'LB-3000099',
+    lead_id: 'LB-3000099',
+    product: 'education',
+    abandon_ts: '2026-08-31T00:00:00+00:00',
+    window: { days: 7, due_by: '2026-09-07T00:00:00+00:00', open: true, expired: false, as_of: SCORED },
+  }
+
+  it('reads days LEFT on a lead that was open when the book was scored', async () => {
+    queueRoute([STILL_OPEN], { ...QUEUE_META, total: 1, as_of: SCORED, as_of_source: 'export.leads[].scored_at', as_of_frozen: true })
+    renderScreen(<Queue />, { path: '/queue' })
+    const rows = await screen.findAllByTestId('queue-row')
+    const badge = within(rows[0]).getByTestId('window-badge')
+    expect(badge).toHaveAttribute('data-window-state', 'open')
+    expect(badge).toHaveTextContent('6 days left')
+    expect(badge).toHaveAttribute('data-window-as-of', SCORED)
+  })
+
+  it('says on the screen which day the windows were judged on', async () => {
+    queueRoute([STILL_OPEN], { ...QUEUE_META, total: 1, as_of: SCORED, as_of_source: 'export.leads[].scored_at', as_of_frozen: true })
+    renderScreen(<Queue />, { path: '/queue' })
+    expect(await screen.findByTestId('queue-as-of')).toHaveTextContent('1 Sep 2026')
+    expect(screen.getByText(/when this book was scored — not today/)).toBeInTheDocument()
+  })
+
+  it('anchors the bundled export to its own scoring instant too', async () => {
+    // The static lane is the worst case: no server ruling at all, so every row used to be
+    // compared straight against Date.now(). PACK's one lead was open on 1 September.
+    renderScreen(<Queue />, { path: '/queue', mode: 'static', user: null, pack: PACK })
+    const rows = await screen.findAllByTestId('queue-row')
+    expect(within(rows[0]).getByTestId('window-badge')).toHaveAttribute('data-window-state', 'open')
+    expect(screen.getByTestId('queue-as-of')).toHaveTextContent('1 Sep 2026')
+  })
+})

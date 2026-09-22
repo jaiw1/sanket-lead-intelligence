@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { WINDOW_FILTERS, WINDOW_STATE, windowPhrase, windowStatus, windowTone } from './window'
+import { asOfLabel, asOfSuffix, isFrozen, WINDOW_FILTERS, WINDOW_STATE, windowPhrase, windowStatus, windowTone } from './window'
 
 const NOW = Date.parse('2026-09-16T12:00:00Z')
 
@@ -105,3 +105,56 @@ describe('windowStatus — the camelCase shape every caller actually passes', ()
   })
 })
 
+
+describe('windowStatus — the answer is dated', () => {
+  // A published book is a photograph. Its windows were measured at the instant it was
+  // scored, and re-measuring them against Date.now() ages a fixed answer a day every day:
+  // "3 days left" becomes "closed 372 days ago" without a number in the book changing.
+  const SCORED = '2026-09-01T00:00:00+00:00'
+
+  it('prefers the anchor the payload declares over the wall clock', () => {
+    const lead = { product: 'education', windowDays: 7, contactBy: '2026-09-07T00:00:00Z', window: { as_of: SCORED } }
+    const s = windowStatus(lead)
+    expect(s.state).toBe(WINDOW_STATE.OPEN)
+    expect(s.daysLeft).toBe(6)
+    expect(s.asOf).toBe(SCORED)
+    expect(s.asOfFrozen).toBe(true)
+  })
+
+  it('reads the same anchor off a normalised lead’s windowAsOf', () => {
+    const s = windowStatus({ product: 'education', windowDays: 7, contactBy: '2026-09-07T00:00:00Z', windowAsOf: SCORED })
+    expect(s.state).toBe(WINDOW_STATE.OPEN)
+    expect(s.asOf).toBe(SCORED)
+  })
+
+  it('lets the caller override the payload’s anchor', () => {
+    // The screens pass the run's anchor explicitly; tests pass an epoch. Either wins.
+    const lead = { product: 'personal', windowDays: 1, contactBy: '2026-09-02T00:00:00Z', window: { as_of: SCORED } }
+    expect(windowStatus(lead, NOW).state).toBe(WINDOW_STATE.EXPIRED)
+    expect(windowStatus(lead, '2026-09-01T12:00:00Z').state).toBe(WINDOW_STATE.OPEN)
+  })
+
+  it('falls back to the wall clock, and claims no anchor when it does', () => {
+    // Exactly today's behaviour for a payload that carries no as_of — the fix must not
+    // invent a date for a lead that never declared one.
+    const s = windowStatus({ product: 'home', windowDays: 14, contactBy: '2026-09-20T00:00:00Z' })
+    expect(s.asOf).toBeNull()
+    expect(s.asOfFrozen).toBe(false)
+    expect(s.state).toBe(Date.parse('2026-09-20T00:00:00Z') >= Date.now() ? WINDOW_STATE.OPEN : WINDOW_STATE.EXPIRED)
+  })
+
+  it('calls an anchor frozen only once it is a day or more from now', () => {
+    expect(isFrozen('2026-09-01T00:00:00Z', Date.parse('2026-12-01T00:00:00Z'))).toBe(true)
+    expect(isFrozen('2026-09-01T00:00:00Z', Date.parse('2026-09-01T06:00:00Z'))).toBe(false)
+    expect(isFrozen(null)).toBe(false)
+  })
+
+  it('writes the date the same way everywhere, whatever the browser thinks of en-IN', () => {
+    expect(asOfLabel(SCORED)).toBe('1 Sep 2026')
+    expect(asOfLabel(null)).toBeNull()
+    expect(asOfSuffix(SCORED, { now: Date.parse('2026-12-01T00:00:00Z') }))
+      .toBe(', as of 1 Sep 2026 (frozen snapshot)')
+    expect(asOfSuffix(SCORED, { now: Date.parse('2026-09-01T06:00:00Z') })).toBe(', as of 1 Sep 2026')
+    expect(asOfSuffix(null)).toBe('')
+  })
+})

@@ -75,7 +75,28 @@ describe('ManagerDashboard — the panels', () => {
     funnelRoute()
     renderScreen(<ManagerDashboard />, { path: '/dashboard' })
     expect(await screen.findByText(/window open — call now/i)).toBeInTheDocument()
-    expect(screen.getByText(/38% of the book is still inside its window/)).toBeInTheDocument()
+    expect(screen.getByTestId('sla-share')).toHaveTextContent(/37\.8% of the book is still inside its window/)
+  })
+
+  it('dates the window split, and says it will not move with today', async () => {
+    // A split with no date on it is a number that ages: every day it sits unchanged, the
+    // reader assumes it was recomputed this morning. `as_of` is the run's own scoring
+    // instant, which for a published book is not today.
+    funnelRoute()
+    renderScreen(<ManagerDashboard />, { path: '/dashboard' })
+    await screen.findByTestId('kpi-window-open')
+    expect(screen.getByTestId('kpi-window-open')).toHaveTextContent(/as of 1 Sep 2026/)
+    expect(screen.getByTestId('sla-share')).toHaveTextContent(/as of 1 Sep 2026/)
+    expect(screen.getByTestId('sla-share')).toHaveTextContent(/frozen snapshot/)
+  })
+
+  it('says why so few windows are open, beside the split', async () => {
+    // The number is small and the reason is the scoring cadence, not the scores. A reader
+    // left to guess concludes the model produced nothing worth calling.
+    funnelRoute()
+    renderScreen(<ManagerDashboard />, { path: '/dashboard' })
+    expect(await screen.findByTestId('sla-why')).toHaveTextContent(/scored once a month/)
+    expect(screen.getByTestId('sla-why')).toHaveTextContent(/abandonment event itself/)
   })
 
   it('shows the suppression histogram with a label per reason', async () => {

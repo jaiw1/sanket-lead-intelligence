@@ -32,7 +32,7 @@
    },
    {
     "heading": "SLA against the window",
-    "body": "Each product has a decision window running from the moment the application was abandoned — one day for personal and gold, three for auto, seven for education, fourteen for home and loan-against-property. A lead outside its window is not a lead; it is a customer who has moved on. The split between open and closed is the operational number this screen exists for."
+    "body": "Each product has a decision window running from the moment the application was abandoned — one day for personal and gold, three for auto, seven for education, fourteen for home and loan-against-property. A lead outside its window is not a lead; it is a customer who has moved on. The split between open and closed is the operational number this screen exists for, and it is measured as of the instant the book was scored rather than as of today — a published run's split is a fact about the run. Most windows are already closed at that instant: the book is scored once a month, and a one-day product has shut long before the monthly batch first sees the customer. Scoring on the abandonment event instead of the calendar is the change that would move that number."
    },
    {
     "heading": "The suppressed count",

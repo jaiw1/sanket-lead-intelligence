@@ -18,6 +18,7 @@
 
 import { publicPath } from './basepath'
 import { WINDOW_DAYS, productLabel } from './fmt'
+import { WINDOW_STATE, windowStatus } from './window'
 
 /** Decimal columns cross the wire as strings. Returns null for anything non-numeric. */
 export function toNumber(value) {
@@ -170,6 +171,10 @@ export function normaliseLead(raw) {
     contactBy: pick(raw, 'contact_by'),
     windowDays: toNumber(pick(raw, 'window_days')),
     window: pick(raw, 'window'),
+    // The instant this lead's window state was decided at. Live it rides inside `window`;
+    // a packed lead has no `window` object at all, so the pack's own anchor is attached
+    // here by `withAsOf` below. Flattened either way, so one field answers for both lanes.
+    windowAsOf: pick(raw, 'window_as_of') ?? (raw?.window ? pick(raw.window, 'as_of') : null),
 
     pitch: normaliseBilingual(pick(raw, 'pitch'), lang),
     objection: normaliseBilingual(pick(raw, 'objection'), lang),
@@ -315,6 +320,66 @@ export function readMetrics(source) {
 }
 
 /**
+ * The instant the bundled book was scored at — the anchor every window in it was measured
+ * against, and the one the static lane must answer as of.
+ *
+ * The static bundle is the worst case for a wall clock: it carries no server `window`
+ * object, so with nothing else to go on every row was compared against `Date.now()` and
+ * the whole book read "closed N days ago", N growing by one a day. The pack does carry
+ * the answer — every lead's `scored_at`, and failing that the reference month.
+ *
+ * Leads that disagree about `scored_at` return null, deliberately: an anchor a day out
+ * silently opens or shuts the one-day products, and no anchor at all is the honest state.
+ */
+export function packAsOf(pack) {
+  if (!pack) return null
+  const scored = new Set(
+    (Array.isArray(pack.leads) ? pack.leads : []).map((l) => l?.scored_at).filter(Boolean),
+  )
+  if (scored.size > 1) return null
+  if (scored.size === 1) {
+    const only = String([...scored][0])
+    const t = Date.parse(only)
+    return Number.isNaN(t) ? null : new Date(t).toISOString()
+  }
+  // `ref_month` is the contract's `YYYY-MM`, but a producer that writes a full date means
+  // the same month — take the first of it either way, which is where the scorer anchors.
+  const refMonth = pack.meta?.ref_month
+  const month = typeof refMonth === 'string' ? refMonth.slice(0, 7) : null
+  if (month && /^\d{4}-\d{2}$/.test(month)) return new Date(`${month}-01T00:00:00Z`).toISOString()
+  return null
+}
+
+/** Where `packAsOf` read the anchor from, for the `sla` block to declare. */
+function packAsOfSource(pack) {
+  const scored = new Set(
+    (Array.isArray(pack?.leads) ? pack.leads : []).map((l) => l?.scored_at).filter(Boolean),
+  )
+  if (scored.size === 1) return 'pack.leads[].scored_at'
+  if (scored.size === 0 && pack?.meta?.ref_month) return 'pack.meta.ref_month'
+  return null
+}
+
+/** The window split over the non-suppressed book, as of the pack's own scoring instant. */
+function slaFromPack(leads, asOf, pack) {
+  if (!asOf) return null
+  const counts = { window_open: 0, window_expired: 0, no_window: 0 }
+  for (const lead of leads) {
+    if (lead.suppressed) continue
+    const state = windowStatus(lead, asOf).state
+    if (state === WINDOW_STATE.OPEN) counts.window_open += 1
+    else if (state === WINDOW_STATE.EXPIRED) counts.window_expired += 1
+    else counts.no_window += 1
+  }
+  return {
+    ...counts,
+    windows_days: pack?.metrics?.windows?.per_product_days || { ...WINDOW_DAYS },
+    as_of: asOf,
+    as_of_source: packAsOfSource(pack),
+  }
+}
+
+/**
  * The manager dashboard's numbers, derived from the bundled export when there is no
  * backend to ask. Only what the pack actually carries — anything absent stays null and
  * the corresponding panel says so.
@@ -324,6 +389,7 @@ export function funnelFromPack(pack) {
   const leads = Array.isArray(pack.leads) ? pack.leads.map(normaliseLead) : []
   const counts = pack.counts || {}
   const suppression = pack.metrics?.suppression || null
+  const asOf = packAsOf(pack)
 
   const byProduct = new Map()
   for (const lead of leads) {
@@ -373,10 +439,16 @@ export function funnelFromPack(pack) {
       })).sort((a, b) => b.leads - a.leads)
       : null,
     rm_load: byRm.size ? [...byRm.values()].sort((a, b) => b.leads - a.leads) : null,
-    // The pack has no RM dispositions and no server-resolved windows: both are platform
-    // state, not model output. Saying so beats rendering an empty chart.
+    // The pack has no RM dispositions: that is platform state, not model output. Saying
+    // so beats rendering an empty chart.
     dispositions: null,
-    sla: null,
+    // The window split, on the other hand, the pack CAN answer — it has every lead's
+    // `contact_by` and the instant the book was scored at. What it could not do was
+    // answer it against a defensible clock, and "—" was the honest placeholder for that.
+    // With the anchor in hand the split is the same arithmetic the server does, over the
+    // same non-suppressed population, and it agrees with the badges on the queue because
+    // both go through `windowStatus`.
+    sla: slaFromPack(leads, asOf, pack),
     suppression_by_reason: suppression?.reasons || null,
     counts,
     published_metrics: pack.metrics || null,

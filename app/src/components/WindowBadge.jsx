@@ -1,5 +1,5 @@
 import { Clock } from 'lucide-react'
-import { windowPhrase, windowStatus, windowTone, WINDOW_STATE } from '../lib/window'
+import { asOfSuffix, windowPhrase, windowStatus, windowTone, WINDOW_STATE } from '../lib/window'
 import { WINDOW_DAYS } from '../lib/fmt'
 
 /**
@@ -10,9 +10,15 @@ import { WINDOW_DAYS } from '../lib/fmt'
  * `lap` in a fortnight. The phrase is derived from the SERVER's `open`/`expired` whenever
  * the payload carries them (see lib/window.js) — this component never overrides a ruling
  * the queue filter already made.
+ *
+ * `asOf` is the instant that ruling was made at: the run's own scoring instant, which for
+ * a published book is not today. The phrase ("3 days left", "closed 12 days ago") is
+ * counted from it, and when it is a day or more from the wall clock the badge says so
+ * rather than letting the reader assume today — an undated "closed 12 days ago" beside a
+ * book scored in September is a claim about the calendar, not about the lead.
  */
-export default function WindowBadge({ lead, now, showDays = true, className = '' }) {
-  const status = windowStatus(lead, now)
+export default function WindowBadge({ lead, now, asOf = null, showDays = true, className = '' }) {
+  const status = windowStatus(lead, asOf ?? now)
   const phrase = windowPhrase(status)
   const days = status.days ?? WINDOW_DAYS[lead?.product] ?? null
 
@@ -25,7 +31,7 @@ export default function WindowBadge({ lead, now, showDays = true, className = ''
       days != null ? `${days}-day window for ${lead?.product || 'this product'}` : 'Contact window',
       status.abandonedAt ? `abandoned ${asDate(status.abandonedAt)}` : null,
       status.dueBy ? `due by ${asDate(status.dueBy)}` : null,
-    ].filter(Boolean).join(', ') + '.'
+    ].filter(Boolean).join(', ') + asOfSuffix(status.asOf) + '.'
 
   return (
     <span
@@ -33,6 +39,7 @@ export default function WindowBadge({ lead, now, showDays = true, className = ''
       title={detail}
       data-testid="window-badge"
       data-window-state={status.state}
+      data-window-as-of={status.asOf || undefined}
     >
       <Clock size={10} aria-hidden="true" />
       {phrase}

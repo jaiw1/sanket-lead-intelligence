@@ -282,7 +282,9 @@ describe('Lead drawer — contactability', () => {
     const panel = await screen.findByTestId('contactability')
     expect(within(panel).getByText(/Contactable, with conditions/)).toBeInTheDocument()
     expect(within(panel).getByText('granted')).toBeInTheDocument()
-    expect(within(panel).getByText(/window expired/)).toBeInTheDocument()
+    // Dated, because "the window has closed" is a verdict about a day — the run's scoring
+    // instant, not this morning — and an undated one invites the wrong assumption.
+    expect(within(panel).getByText(/Contact window has closed \(as of 12 Sep 2026\)/)).toBeInTheDocument()
   })
 
   it('says plainly when the customer may not be contacted', async () => {

@@ -17,6 +17,7 @@ import useResource from '../data/useResource'
 import { usePack } from '../data/PackContext'
 import { getFunnel } from '../lib/sanket'
 import { funnelFromPack, readMetrics } from '../lib/pack'
+import { asOfLabel, isFrozen } from '../lib/window'
 import { PRODUCTS, STAGES, STAGE_LABEL, num, pct, productLabel, suppressionLabel } from '../lib/fmt'
 
 /**
@@ -40,6 +41,11 @@ export default function ManagerDashboard() {
   // See the Suppressed `Stat`'s hint below: the denominator for "share of the book
   // suppressed" has to be the same population `data.suppressed` was counted over.
   const suppressedPoolTotal = data?.pool ?? data?.leads ?? null
+  // The instant the window split was computed at. It is the run's own scoring instant, not
+  // today: a published book's split is a fact about the book, and saying which day it is a
+  // fact about is the difference between a number and a number that quietly ages.
+  const asOf = data?.sla?.as_of ?? live.meta?.as_of ?? null
+  const frozen = isFrozen(asOf)
 
   const sourceBadge = isStatic ? 'SIMULATED' : (live.meta?.provenance_mode === 'fixture' ? 'FIXTURE' : 'SIMULATED')
   const sourceDetail = isStatic
@@ -113,7 +119,9 @@ export default function ManagerDashboard() {
             icon={Clock}
             label="Window still open"
             value={data.sla ? num(data.sla.window_open) : '—'}
-            hint={data.sla ? `${num(data.sla.window_expired)} have run out` : 'not computed in this build'}
+            hint={data.sla
+              ? `${num(data.sla.window_expired)} have run out${asOf ? ` · as of ${asOfLabel(asOf)}` : ''}`
+              : 'not computed in this build'}
             tone="text-signal-teal"
             testId="kpi-window-open"
           />
@@ -133,7 +141,7 @@ export default function ManagerDashboard() {
 
         <div className="grid gap-5 lg:grid-cols-2">
           <RmLoad rows={data.rm_load} dispositions={data.dispositions} source={sourceBadge} detail={sourceDetail} />
-          <SlaVsWindow sla={data.sla} source={sourceBadge} detail={sourceDetail} />
+          <SlaVsWindow sla={data.sla} asOf={asOf} frozen={frozen} source={sourceBadge} detail={sourceDetail} />
         </div>
 
         {/*
@@ -421,7 +429,7 @@ function RmLoad({ rows, dispositions, source, detail }) {
 }
 
 /** The mentors' per-product window, as an SLA a manager can be held to. */
-function SlaVsWindow({ sla, source, detail }) {
+function SlaVsWindow({ sla, asOf = null, frozen = false, source, detail }) {
   if (!sla) {
     return (
       <Card title="SLA against the contact window" source="NOT_COLLECTED" labelledBy="sla-title">
@@ -440,7 +448,9 @@ function SlaVsWindow({ sla, source, detail }) {
   return (
     <Card
       title="SLA against the contact window"
-      subtitle="A lead outside its window is not a lead — it is a customer who has moved on."
+      subtitle={`A lead outside its window is not a lead — it is a customer who has moved on.${
+        asOf ? ` Judged as of ${asOfLabel(asOf)}${frozen ? ', when this book was scored.' : '.'}` : ''
+      }`}
       source={source}
       sourceDetail={detail}
       labelledBy="sla-title"
@@ -460,9 +470,25 @@ function SlaVsWindow({ sla, source, detail }) {
         </div>
       </div>
       {total > 0 && (
-        <p className="mt-2 text-xs text-txt-mid">
+        <p className="mt-2 text-xs text-txt-mid" data-testid="sla-share">
           <TrendingUp size={13} className="mr-1 inline text-signal-amber" aria-hidden="true" />
-          {pct((sla.window_open || 0) / total, 0)} of the book is still inside its window.
+          {pct((sla.window_open || 0) / total, 1)} of the book is still inside its window
+          {asOf ? ` as of ${asOfLabel(asOf)}` : ''}
+          {frozen ? ' — this run is a frozen snapshot, and the split does not move with today\u2019s date' : ''}.
+        </p>
+      )}
+      {/*
+        The number above is small, and a reader is owed the reason before they conclude the
+        model produced nothing worth calling. The reason is the scoring cadence, not the
+        scores: a book cut once a month first sees a customer days or weeks after they
+        walked away, and the one-day products are shut by then. That is a decision about
+        WHEN to score, and it is the one lever that would move this number.
+      */}
+      {total > 0 && (
+        <p className="mt-1 text-xs leading-relaxed text-txt-lo" data-testid="sla-why">
+          The book is scored once a month, so most windows have already closed by the time a
+          lead appears — scoring on the abandonment event itself, rather than on the calendar,
+          is what would put these customers in front of an RM while their window is still open.
         </p>
       )}
       {rows.length > 0 && (
