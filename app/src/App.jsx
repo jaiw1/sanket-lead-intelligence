@@ -17,7 +17,7 @@ import { Suspense, lazy } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import RequireAuth from './auth/RequireAuth'
 import RequireRole from './auth/RequireRole'
-import { useAuth } from './auth/AuthContext'
+import { AUTH_STATUS, useAuth } from './auth/AuthContext'
 import ErrorBoundary from './components/ErrorBoundary'
 import RouteAnnouncer from './components/RouteAnnouncer'
 import SkipLink from './components/SkipLink'
@@ -49,10 +49,19 @@ const LEGACY_TAB = { mission: '/dashboard', queue: '/queue', radar: '/radar', tr
 
 function LegacyTabRedirect() {
   const location = useLocation()
-  const { role, isStatic } = useAuth()
+  const { status, role, isStatic } = useAuth()
   const params = new URLSearchParams(location.search)
   const tab = params.get('tab')
-  const target = LEGACY_TAB[tab] || homeFor(role, isStatic)
+  // `?tab=` is an explicit deep link, honoured even for a visitor who turns out to be
+  // signed out — the route guard downstream sends them to sign in with that page as
+  // `?next=`. A bare `/` is not a deep link, but used to be treated as one: it fell
+  // through to `homeFor(role, isStatic)`, which for a signed-out visitor (no role at
+  // all) fell to its own last-resort default and sent them at a specific screen, which
+  // then bounced them to `/login?next=…` — a deep link nobody asked for. Land a signed-in
+  // (or static-demo) role on a screen it can open; land everyone else on a clean
+  // `/login`, no `?next=` attached.
+  const target = LEGACY_TAB[tab]
+    || (isStatic || status === AUTH_STATUS.AUTHENTICATED ? homeFor(role, isStatic) : '/login')
   params.delete('tab')
   params.delete('tour')
   const search = params.toString()
