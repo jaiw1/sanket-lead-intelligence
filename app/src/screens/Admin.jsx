@@ -181,26 +181,37 @@ const AUDIT_FIELDS = [
   { label: 'Request ID', keys: ['request_id'], code: true },
 ]
 
+/** The middleware's whole vocabulary for `payload.outcome`, and what each one means. */
+const REQUEST_VERDICTS = { ok: true, denied: false, not_found: false, rejected: false, error: false }
+
 /**
- * `ok` when the row states it directly; otherwise the platform's own `payload.outcome` —
- * but only on a `request.*` row, where that key is the middleware's verdict on the HTTP
- * call itself ("ok", "denied", "not_found", "rejected", "error").
+ * Did this row's action succeed? `true`, `false`, or `null` for "this row does not say".
  *
- * A domain row (`sanket.disposition.callback_requested`, `admin.user.created`) carries
- * business words in the same key — "callback_requested" is a perfectly successful call —
- * and reading those as a verdict painted a red **Failed** chip on rows that had failed at
- * nothing. Those rows have no pass/fail of their own: they return `null`, and `BoolChip`
+ * Only a `request.*` row has a pass/fail of its own: it describes one HTTP call, and the
+ * platform records both that call's status code and its own word for it. A domain row
+ * (`sanket.disposition.callback_requested`, `admin.user.created`) describes an act, not a
+ * call, and the `outcome` key on it holds a *business* word — "callback_requested" is what
+ * a perfectly successful call looks like. Reading those as a verdict painted a red
+ * **Failed** chip on rows that had failed at nothing; they now return `null` and `BoolChip`
  * renders the honest em dash.
+ *
+ * On a request row the **status code is the fact** and `outcome` is only the word for it,
+ * so the number is read first. That matters for history: the log is append-only, and rows
+ * written before the disposition route stopped passing its own `outcome=` still carry a
+ * business word in that key. Their status code never lied and cannot be edited, so it is
+ * what those rows are judged by. A word outside the vocabulary above, with no status
+ * beside it, is not a verdict either — better an em dash than an accusation.
  */
 export function auditOutcome(row) {
   const direct = pick(row, 'ok')
   if (typeof direct === 'boolean') return direct
   const action = pick(row, 'action')
   if (typeof action !== 'string' || !action.startsWith('request.')) return null
-  const outcome = row?.payload && typeof row.payload === 'object' ? row.payload.outcome : null
-  if (outcome === 'ok') return true
-  if (outcome) return false
-  return null
+  const payload = row?.payload && typeof row.payload === 'object' ? row.payload : null
+  if (!payload) return null
+  if (Number.isFinite(payload.status)) return payload.status < 400
+  const verdict = REQUEST_VERDICTS[payload.outcome]
+  return typeof verdict === 'boolean' ? verdict : null
 }
 
 function renderAuditCell(field, row) {

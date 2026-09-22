@@ -105,6 +105,39 @@ describe('Administration — the audit log’s Outcome column', () => {
     expect(rowFor(table, REQUEST_OK_ROW.id)).toHaveTextContent('OK')
   })
 
+  it('reads the status code on a pre-fix request row whose outcome word was clobbered', async () => {
+    // Row 426 on the sandbox: a 201 written before the route stopped passing its own
+    // `outcome=`. The log is append-only, so that payload cannot be corrected — but the
+    // status beside it never lied, and it is what the row is judged by.
+    routes([{
+      ...REQUEST_OK_ROW,
+      id: 426,
+      payload: { method: 'POST', status: 201, outcome: 'callback_requested' },
+    }])
+    render()
+    const table = await auditTable()
+    const row = rowFor(table, 426)
+
+    expect(row).toHaveTextContent('OK')
+    expect(row).not.toHaveTextContent('Failed')
+  })
+
+  it('says nothing rather than Failed when a request row carries no verdict it knows', async () => {
+    routes([REQUEST_OK_ROW, { ...REQUEST_DENIED_ROW, payload: { method: 'POST', outcome: 'mystery' } }])
+    render()
+    const table = await auditTable()
+
+    expect(rowFor(table, REQUEST_DENIED_ROW.id)).not.toHaveTextContent('Failed')
+  })
+
+  it('still shows Failed for a denied request row with no status beside the word', async () => {
+    routes([REQUEST_OK_ROW, { ...REQUEST_DENIED_ROW, payload: { method: 'POST', outcome: 'denied' } }])
+    render()
+    const table = await auditTable()
+
+    expect(rowFor(table, REQUEST_DENIED_ROW.id)).toHaveTextContent('Failed')
+  })
+
   it('never renders an object as [object Object] in the audit table', async () => {
     routes([{ ...DISPOSITION_ROW, payload: { red_thr: { before: 0.3437, after: 0.25 } } }])
     render()
