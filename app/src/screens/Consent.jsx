@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useId, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Download, Eye, FileKey, Plus, RotateCcw, ShieldCheck,
@@ -48,12 +48,14 @@ export default function Consent() {
   const [params, setParams] = useSearchParams()
   const selected = params.get('id')
   const statusFilter = params.get('status') || ''
+  const [notice, setNotice] = useState(null)
 
   const list = useResource(
     ({ signal }) => getConsents({ status: statusFilter || undefined, limit: 100, signal }),
     [statusFilter],
     { enabled: !isStatic },
   )
+  const { reload } = list
 
   const select = useCallback((id) => {
     setParams((prev) => {
@@ -62,6 +64,21 @@ export default function Consent() {
       return next
     }, { replace: true })
   }, [setParams])
+
+  // A created consent is a real artefact, so the screen shows it as one: the list reloads,
+  // the new row is selected so its state machine and the customer's own view render, and
+  // the confirmation stays on the page rather than inside a dialog the user has to dismiss.
+  const onRequested = useCallback((created) => {
+    const consent = created?.consent
+    if (!consent) return
+    setNotice({
+      handle: consent.consent_handle,
+      custId: consent.cust_id,
+      status: consent.status,
+    })
+    reload()
+    if (consent.consent_handle) select(consent.consent_handle)
+  }, [reload, select])
 
   if (isStatic) {
     return (
@@ -89,8 +106,24 @@ export default function Consent() {
               approves in their own Account Aggregator app.
             </p>
           </div>
-          <RequestConsentButton onDone={list.reload} />
+          <RequestConsentButton onRequested={onRequested} />
         </header>
+
+        {notice && (
+          <div
+            role="status"
+            data-testid="consent-request-notice"
+            className="flex flex-wrap items-start gap-2 rounded-xl border border-signal-teal/40 bg-signal-teal/10 px-3 py-2 text-xs leading-relaxed text-txt-mid"
+          >
+            <ShieldCheck size={15} className="mt-0.5 shrink-0 text-signal-teal" aria-hidden="true" />
+            <span>
+              Consent <span className="font-mono text-txt-hi">{notice.handle}</span> requested for{' '}
+              <span className="font-mono text-txt-hi">{notice.custId}</span> — it is{' '}
+              <b className="text-txt-hi">{notice.status}</b>. It moves only when the customer acts in
+              their own Account Aggregator app and the aggregator calls our webhook.
+            </span>
+          </div>
+        )}
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,420px),1fr]">
           <ConsentList
@@ -415,24 +448,60 @@ function ReplayButton({ consent, busy, onReplay }) {
   )
 }
 
-function RequestConsentButton({ onDone }) {
+/**
+ * Request a consent (API 590).
+ *
+ * The submit is a real form submit and it is never silently inert. It used to be disabled
+ * until the customer id was non-empty, which read as a dead button: the id field shows
+ * `LB-2000002` as a placeholder, so an empty form looks filled in, and a click on the
+ * greyed-out button produced no request, no error and no explanation. A click now always
+ * answers — either with the POST, or with the reason it cannot be sent yet, on the field
+ * that is wrong. The only state that disables it is the request already being in flight.
+ */
+function RequestConsentButton({ onRequested }) {
   const [open, setOpen] = useState(false)
   const [custId, setCustId] = useState('')
   const [purpose, setPurpose] = useState('Loan eligibility assessment')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
-  const [result, setResult] = useState(null)
+  const [invalid, setInvalid] = useState({})
   const firstRef = useRef(null)
+  const purposeRef = useRef(null)
+  const formId = useId()
 
-  const submit = async () => {
-    setBusy(true); setError(null)
-    try {
-      setResult(await postConsentRequest({ custId: custId.trim(), purpose }))
-      onDone?.()
-    } catch (e) { setError(e) } finally { setBusy(false) }
+  const close = () => {
+    setOpen(false); setError(null); setInvalid({}); setCustId('')
   }
 
-  const close = () => { setOpen(false); setResult(null); setError(null); setCustId('') }
+  // The contract's own limits (ConsentRequestBody: cust_id min 1, purpose min 3), checked
+  // here so the customer id is not posted empty just to be told so by a 400.
+  const validate = () => {
+    const next = {}
+    if (!custId.trim()) next.custId = 'Enter the customer id this consent is for — for example LB-2000002.'
+    if (purpose.trim().length < 3) next.purpose = 'Say what the data is for. This is the sentence the customer reads before deciding.'
+    return next
+  }
+
+  const submit = async (event) => {
+    event?.preventDefault()
+    if (busy) return
+    const problems = validate()
+    setInvalid(problems)
+    if (Object.keys(problems).length > 0) {
+      (problems.custId ? firstRef : purposeRef).current?.focus()
+      return
+    }
+    setBusy(true); setError(null)
+    try {
+      const created = await postConsentRequest({ custId: custId.trim(), purpose: purpose.trim() })
+      onRequested?.(created)
+      close()
+    } catch (e) {
+      setError(e)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <>
@@ -446,54 +515,60 @@ function RequestConsentButton({ onDone }) {
         description="API 590. This creates the request and returns what the customer will be shown. Nothing is fetched until they approve."
         initialFocusRef={firstRef}
         testId="consent-request-dialog"
-        footer={result ? (
-          <PrimaryButton onClick={close}>Done</PrimaryButton>
-        ) : (
+        footer={(
           <>
             <SecondaryButton onClick={close} disabled={busy}>Cancel</SecondaryButton>
-            <PrimaryButton onClick={submit} disabled={busy || !custId.trim()} data-testid="consent-request-submit">
+            <PrimaryButton type="submit" form={formId} disabled={busy} data-testid="consent-request-submit">
               {busy ? 'Requesting…' : 'Request consent'}
             </PrimaryButton>
           </>
         )}
       >
-        <div aria-live="polite" className="sr-only">{busy ? 'Requesting.' : result ? 'Consent requested.' : ''}</div>
-        {error && <ErrorState title="The consent was not requested" error={error} />}
-        {result ? (
-          <div className="space-y-2 text-sm">
-            <p className="font-bold text-signal-teal">Requested — {result.consent?.consent_handle}</p>
-            <p className="text-xs leading-relaxed text-txt-mid">
-              The consent is <b className="text-txt-hi">{result.consent?.status}</b>. It moves only when the
-              customer acts and the aggregator calls our webhook.
-            </p>
+        <div aria-live="polite" className="sr-only">{busy ? 'Requesting.' : ''}</div>
+        {error && <div className="mb-3"><ErrorState title="The consent was not requested" error={error} /></div>}
+        <form id={formId} onSubmit={submit} noValidate className="space-y-3">
+          <div>
+            <label htmlFor="consent-cust" className="mb-1 block text-xs font-bold uppercase tracking-wider text-txt-lo">Customer id</label>
+            <input
+              ref={firstRef}
+              id="consent-cust"
+              value={custId}
+              onChange={(e) => { setCustId(e.target.value); setInvalid((p) => ({ ...p, custId: undefined })) }}
+              placeholder="e.g. LB-2000002"
+              required
+              aria-invalid={invalid.custId ? 'true' : undefined}
+              aria-describedby={invalid.custId ? 'consent-cust-error' : undefined}
+              className={`w-full rounded-lg border bg-ink-900 px-3 py-2 text-sm text-txt-hi placeholder:text-txt-lo focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-amber ${
+                invalid.custId ? 'border-signal-rose' : 'border-line-strong'
+              }`}
+            />
+            {invalid.custId && (
+              <p id="consent-cust-error" className="mt-1 text-[11px] text-signal-rose">{invalid.custId}</p>
+            )}
           </div>
-        ) : (
-          <div className="space-y-3">
-            <div>
-              <label htmlFor="consent-cust" className="mb-1 block text-xs font-bold uppercase tracking-wider text-txt-lo">Customer id</label>
-              <input
-                ref={firstRef}
-                id="consent-cust"
-                value={custId}
-                onChange={(e) => setCustId(e.target.value)}
-                placeholder="LB-2000002"
-                className="w-full rounded-lg border border-line-strong bg-ink-900 px-3 py-2 text-sm text-txt-hi placeholder:text-txt-lo focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-amber"
-              />
-            </div>
-            <div>
-              <label htmlFor="consent-purpose" className="mb-1 block text-xs font-bold uppercase tracking-wider text-txt-lo">Purpose shown to the customer</label>
-              <input
-                id="consent-purpose"
-                value={purpose}
-                onChange={(e) => setPurpose(e.target.value)}
-                className="w-full rounded-lg border border-line-strong bg-ink-900 px-3 py-2 text-sm text-txt-hi focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-amber"
-              />
-              <p className="mt-1 text-[11px] text-txt-lo">
+          <div>
+            <label htmlFor="consent-purpose" className="mb-1 block text-xs font-bold uppercase tracking-wider text-txt-lo">Purpose shown to the customer</label>
+            <input
+              ref={purposeRef}
+              id="consent-purpose"
+              value={purpose}
+              onChange={(e) => { setPurpose(e.target.value); setInvalid((p) => ({ ...p, purpose: undefined })) }}
+              required
+              aria-invalid={invalid.purpose ? 'true' : undefined}
+              aria-describedby={invalid.purpose ? 'consent-purpose-error' : 'consent-purpose-hint'}
+              className={`w-full rounded-lg border bg-ink-900 px-3 py-2 text-sm text-txt-hi focus:outline-none focus-visible:ring-2 focus-visible:ring-signal-amber ${
+                invalid.purpose ? 'border-signal-rose' : 'border-line-strong'
+              }`}
+            />
+            {invalid.purpose ? (
+              <p id="consent-purpose-error" className="mt-1 text-[11px] text-signal-rose">{invalid.purpose}</p>
+            ) : (
+              <p id="consent-purpose-hint" className="mt-1 text-[11px] text-txt-lo">
                 This wording is what the customer reads before deciding. Say what the data is for, not what you hope they agree to.
               </p>
-            </div>
+            )}
           </div>
-        )}
+        </form>
       </Modal>
     </>
   )

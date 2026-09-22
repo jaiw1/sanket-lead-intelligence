@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Consent from './Consent'
 import { renderScreen, session } from '../test/render'
-import { jsonResponse } from '../test/http'
+import { errorResponse, jsonResponse } from '../test/http'
 
 const HANDLE = 'RRSQ-536811a3c8b7422ab18e'
 
@@ -39,7 +39,12 @@ const DETAIL = {
   },
 }
 
-function routes({ list = [LIST_ROW], detail = DETAIL, onPost } = {}) {
+/**
+ * `requestResponse` overrides what POST /consent/request answers, for the refusal cases.
+ * Otherwise the created consent is appended to `list`, so a reload after the POST returns
+ * what the server would now return — which is what "the list refreshed" has to mean.
+ */
+function routes({ list = [LIST_ROW], detail = DETAIL, onPost, requestResponse } = {}) {
   const calls = []
   const fetchMock = vi.fn(async (url, init = {}) => {
     const method = (init.method || 'GET').toUpperCase()
@@ -48,10 +53,16 @@ function routes({ list = [LIST_ROW], detail = DETAIL, onPost } = {}) {
     if (method === 'POST' && String(url).includes('/replay')) return jsonResponse(202, { data: { replayed: true, consent: { ...detail, status: 'ACTIVE' } }, meta: {} })
     if (method === 'POST' && String(url).includes('/fetch')) return jsonResponse(202, { data: { accepted: true }, meta: {} })
     if (method === 'POST' && String(url).includes('/consent/request')) {
-      return jsonResponse(201, { data: { consent: { ...LIST_ROW, consent_handle: 'RRSQ-new' }, customer_sees: DETAIL.customer_sees }, meta: {} })
+      if (requestResponse) return requestResponse
+      const created = { ...LIST_ROW, consent_handle: 'RRSQ-new', cust_id: body?.cust_id || LIST_ROW.cust_id }
+      list.push(created)
+      return jsonResponse(201, { data: { consent: created, customer_sees: DETAIL.customer_sees }, meta: {} })
     }
     if (String(url).includes('/consent/list')) return jsonResponse(200, { data: list, meta: { total: list.length, states: [] } })
-    if (String(url).includes('/consent/')) return jsonResponse(200, { data: detail, meta: {} })
+    if (String(url).includes('/consent/')) {
+      const handle = decodeURIComponent(String(url).split('/consent/')[1].split('?')[0])
+      return jsonResponse(200, { data: { ...detail, consent_handle: handle }, meta: {} })
+    }
     if (onPost) return onPost(url, init)
     throw new Error(`no mock route for ${method} ${url}`)
   })
@@ -189,29 +200,99 @@ describe('Consent — the admin-only replay', () => {
 })
 
 describe('Consent — requesting one', () => {
+  /** Open the dialog and wait for the focus trap to land, so no keystroke is lost. */
+  async function openDialog(user) {
+    await user.click(await screen.findByTestId('consent-request-open'))
+    const input = screen.getByLabelText('Customer id')
+    await waitFor(() => expect(input).toHaveFocus())
+    return input
+  }
+
   it('sends the customer id and the purpose the customer will read', async () => {
     const calls = routes({ list: [] })
     const user = userEvent.setup()
     renderScreen(<Consent />, { path: '/consent' })
-    await user.click(await screen.findByTestId('consent-request-open'))
-
-    // The focus trap moves focus into the dialog on a timer. Typing before it lands loses
-    // the first keystrokes — which showed up as a cust_id with its hyphen missing, one run
-    // in four. Waiting for focus is both the fix and a real assertion: a dialog that does
-    // not focus its own first field is broken for a keyboard user.
-    const input = screen.getByLabelText('Customer id')
-    await waitFor(() => expect(input).toHaveFocus())
+    const input = await openDialog(user)
     await user.type(input, 'LB-2000002')
-
-    const submit = screen.getByTestId('consent-request-submit')
-    await waitFor(() => expect(submit).toBeEnabled())
-    await user.click(submit)
+    await user.click(screen.getByTestId('consent-request-submit'))
 
     await waitFor(() => {
       const posted = calls.find((c) => c.url.includes('/consent/request'))
-      expect(posted.body).toMatchObject({ cust_id: 'LB-2000002', purpose: 'Loan eligibility assessment' })
+      expect(posted).toBeTruthy()
+      expect(posted.method).toBe('POST')
+      expect(posted.body).toEqual({ cust_id: 'LB-2000002', purpose: 'Loan eligibility assessment' })
     })
-    expect(await screen.findByText(/Requested — RRSQ-new/)).toBeInTheDocument()
+  })
+
+  // A real form submit, not a click handler: the dialog's footer sits outside the <form>,
+  // so the button is associated back to it by id. That is what makes Enter in a field send
+  // the request in a browser, and what makes the submit path a single one.
+  it('submits the form itself, not just the button', async () => {
+    const calls = routes({ list: [] })
+    const user = userEvent.setup()
+    renderScreen(<Consent />, { path: '/consent' })
+    const input = await openDialog(user)
+    await user.type(input, 'LB-2000002')
+
+    const submit = screen.getByTestId('consent-request-submit')
+    expect(submit).toHaveAttribute('type', 'submit')
+    expect(submit.form).toBe(input.form)
+    fireEvent.submit(input.form)
+
+    await waitFor(() => expect(calls.some((c) => c.url.includes('/consent/request'))).toBe(true))
+  })
+
+  // The bug this screen shipped with: the submit was disabled until the customer id was
+  // non-empty, and the id field's placeholder reads as a value, so the form looked filled
+  // in and the button looked dead — no request, no message, nothing to act on.
+  it('says why it cannot send yet instead of swallowing the click', async () => {
+    const calls = routes({ list: [] })
+    const user = userEvent.setup()
+    renderScreen(<Consent />, { path: '/consent' })
+    await openDialog(user)
+
+    const submit = screen.getByTestId('consent-request-submit')
+    expect(submit).toBeEnabled()
+    await user.click(submit)
+
+    expect(await screen.findByText(/Enter the customer id this consent is for/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Customer id')).toHaveAttribute('aria-invalid', 'true')
+    expect(calls.some((c) => c.url.includes('/consent/request'))).toBe(false)
+    expect(screen.getByTestId('consent-request-dialog')).toBeInTheDocument()
+  })
+
+  it('shows the server\'s own refusal and keeps the dialog open to fix it', async () => {
+    routes({
+      list: [],
+      requestResponse: errorResponse(400, { code: 'validation_error', message: 'No customer LB-9 exists.' }),
+    })
+    const user = userEvent.setup()
+    renderScreen(<Consent />, { path: '/consent' })
+    const input = await openDialog(user)
+    await user.type(input, 'LB-9')
+    await user.click(screen.getByTestId('consent-request-submit'))
+
+    expect(await screen.findByText('No customer LB-9 exists.')).toBeInTheDocument()
+    expect(screen.getByText('The consent was not requested')).toBeInTheDocument()
+    expect(screen.getByTestId('consent-request-dialog')).toBeInTheDocument()
+  })
+
+  it('closes on success and shows the new artefact in the reloaded list', async () => {
+    const calls = routes({ list: [] })
+    const user = userEvent.setup()
+    renderScreen(<Consent />, { path: '/consent' })
+    const input = await openDialog(user)
+    await user.type(input, 'LB-2000002')
+    await user.click(screen.getByTestId('consent-request-submit'))
+
+    await waitFor(() => expect(screen.queryByTestId('consent-request-dialog')).not.toBeInTheDocument())
+
+    const listed = await screen.findByTestId('consent-list')
+    expect(within(listed).getByText('RRSQ-new')).toBeInTheDocument()
+    expect(screen.getByTestId('consent-request-notice')).toHaveTextContent('RRSQ-new')
+
+    const posted = calls.findIndex((c) => c.url.includes('/consent/request'))
+    expect(calls.slice(posted + 1).some((c) => c.method === 'GET' && c.url.includes('/consent/list'))).toBe(true)
   })
 })
 
