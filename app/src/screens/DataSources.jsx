@@ -23,6 +23,7 @@ import Loading from '../components/states/Loading'
 import Empty from '../components/states/Empty'
 import ErrorState from '../components/states/ErrorState'
 import useResource from '../data/useResource'
+import { useAuth } from '../auth/AuthContext'
 import { getSync, getProvenance, getVersion } from '../lib/sanket'
 import { num } from '../lib/fmt'
 
@@ -200,9 +201,17 @@ function FreshnessCard({ freshness, drift }) {
 }
 
 export default function DataSources() {
-  const sync = useResource(({ signal }) => getSync({ signal }), [])
-  const provenance = useResource(({ signal }) => getProvenance({ signal }), [])
-  const version = useResource(({ signal }) => getVersion({ signal }), [])
+  // The frozen bundle has no session. These three reads are the only ones in SANKET with
+  // no snapshot behind them -- a pull manifest is a fact about a running platform, and the
+  // bundled export does not carry one -- so in static mode the screen said so by asking
+  // anyway: `/meta/sync` answered 401, lib/api.js raised the "unauthenticated" event, and
+  // the visitor was signed out of a demo they had never signed in to and dropped on a
+  // login form that cannot work. Do not ask. Say what is missing and why.
+  const { isStatic } = useAuth()
+  const live = !isStatic
+  const sync = useResource(({ signal }) => getSync({ signal }), [], { enabled: live })
+  const provenance = useResource(({ signal }) => getProvenance({ signal }), [], { enabled: live })
+  const version = useResource(({ signal }) => getVersion({ signal }), [], { enabled: live })
 
   const syncRows = useMemo(() => (Array.isArray(sync.data) ? sync.data : []), [sync.data])
   const totalRecords = useMemo(
@@ -247,12 +256,20 @@ export default function DataSources() {
           )}
         </div>
 
-        {sync.loading && <Loading label="Loading sync status…" />}
-        {!sync.loading && sync.error && (
+        {!live && (
+          <NotInBuild
+            what="The live sync ledger"
+            keys={['meta/sync', 'meta/provenance', 'meta/version']}
+            hint="This is the frozen bundle. A pull manifest is a fact about a running platform, and there is no platform to ask — the deployed build carries the real thing."
+          />
+        )}
+
+        {live && sync.loading && <Loading label="Loading sync status…" />}
+        {live && !sync.loading && sync.error && (
           <ErrorState title="Could not load sync status" error={sync.error} onRetry={sync.reload} />
         )}
 
-        {!sync.loading && !sync.error && (
+        {live && !sync.loading && !sync.error && (
           <>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <Stat

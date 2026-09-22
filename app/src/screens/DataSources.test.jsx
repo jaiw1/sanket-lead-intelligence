@@ -111,3 +111,17 @@ describe('Data sources and sync — cached last-good pulls', () => {
     expect(intro).not.toHaveTextContent(/cached last-good pull/)
   })
 })
+
+describe('Data sources — the frozen bundle', () => {
+  // The frozen bundle has no session, and these three reads have no snapshot behind them.
+  // Asking anyway got a 401, which lib/api.js turns into the "unauthenticated" event, which
+  // signed the visitor out of a demo they had never signed into and dropped them on a login
+  // form that cannot work. Say what is missing instead.
+  it('asks the platform for nothing, and says why the ledger is absent', async () => {
+    const fetchMock = mockFetchRoutes({})
+    renderScreen(<DataSources />, { path: '/data-sources', mode: 'static', user: null })
+    expect(await screen.findByTestId('not-in-build')).toHaveTextContent('The live sync ledger is not in this build')
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('state-error')).not.toBeInTheDocument()
+  })
+})
