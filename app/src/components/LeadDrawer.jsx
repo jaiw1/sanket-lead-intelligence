@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  CalendarClock, Check, Copy, Lightbulb, MessageSquareQuote, PhoneCall, PhoneOff, Quote, Send,
-  ShieldCheck, ShieldOff, Wallet, X,
+  AlertTriangle, CalendarClock, Check, Copy, Lightbulb, MessageSquareQuote, PhoneCall, PhoneOff,
+  Quote, Send, ShieldCheck, ShieldOff, Wallet, X,
 } from 'lucide-react'
 import Amortisation from './Amortisation'
 import { NegativeChips, ReasonChips } from './Chips'
@@ -347,7 +347,17 @@ function Actions({ lead, canPush, isStatic, onPush, onDisposition }) {
   )
 }
 
-/** Four products, each with its probability, its reason and its own window. */
+/**
+ * Four products, each with its probability, its reason and its own window.
+ *
+ * The per-item money figure is the bank's **typical** EMI for that product at its reference
+ * ticket — API 433's card rate against API 473's repayment schedule, packed by
+ * `src/model/emi.py`. It is not an affordability number and it is not this customer's. It
+ * was labelled "EMI headroom", which is the name of a different figure entirely: the one at
+ * the top of the capacity panel, `lead.safeEmi`, which is what this customer's own cash
+ * flow can carry. Two unlike numbers under one name, and the bank's was usually the larger
+ * of the two. `Amortisation.jsx` already calls this concept "Typical EMI"; so does this.
+ */
 function ProductMenu({ lead }) {
   if (!lead.productMenu || lead.productMenu.length === 0) {
     return (
@@ -359,6 +369,10 @@ function ProductMenu({ lead }) {
     )
   }
   const top = lead.productMenu[0]?.prob ?? null
+  // The caution belongs to the lead's own ranked product — it is computed against that
+  // product's schedule — so it is shown against that row and nowhere else.
+  const caution = lead.emiCaution
+  const cautionFor = caution?.product || lead.product
   return (
     <ol className="space-y-2">
       {lead.productMenu.map((item, i) => (
@@ -385,10 +399,19 @@ function ProductMenu({ lead }) {
           </div>
           {item.reason && <p className="mt-1 text-xs leading-relaxed text-txt-mid">{item.reason}</p>}
           <p className="mt-1 text-[11px] text-txt-lo">
-            {item.emi != null && <>EMI headroom {inr(item.emi)}</>}
+            {item.emi != null && <>Typical EMI {inr(item.emi)}</>}
             {item.contactBy && <> · contact by {new Date(item.contactBy).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</>}
             {top != null && i > 0 && item.prob != null && <> · {(item.prob / top * 100).toFixed(0)}% as likely as the top product</>}
           </p>
+          {caution?.message && item.product === cautionFor && (
+            <p
+              className="mt-1.5 flex items-start gap-1.5 rounded border border-signal-amber/40 bg-signal-amber/10 px-2 py-1.5 text-[11px] leading-relaxed text-signal-amber"
+              data-testid="menu-emi-caution"
+            >
+              <AlertTriangle size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
+              <span>{caution.message}</span>
+            </p>
+          )}
         </li>
       ))}
     </ol>

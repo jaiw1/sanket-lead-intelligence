@@ -182,6 +182,10 @@ export function normaliseLead(raw) {
     amortisation: pick(raw, 'amortisation'),
     amortisationRef: pick(raw, 'amortisation_ref'),
     emiSource: pick(raw, 'emi_source'),
+    // The bank's typical EMI for this product against this customer's headroom, decided
+    // server-side off the bank's own amortisation schedule. `null` means there is nothing
+    // to caution about; absent means this build does not carry the field at all.
+    emiCaution: pick(raw, 'emi_caution'),
     journey: pick(raw, 'journey'),
     dispositions: pickArray(raw, 'dispositions'),
     consents: pickArray(raw, 'consents'),

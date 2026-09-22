@@ -56,6 +56,55 @@ describe('LeadDrawer — the briefing', () => {
     expect(items[3]).toHaveTextContent('Education Loan')
   })
 
+  /**
+   * Two unlike numbers used to share one name.
+   *
+   * `lead.safeEmi`, at the top of the capacity panel, is this customer's own cash-flow
+   * headroom. `item.emi` on each menu row is the bank's typical EMI for that product at its
+   * reference ticket — API 433's rate against API 473's schedule — and is not an
+   * affordability figure at all. Both were labelled "EMI headroom", and the bank's was
+   * usually the larger of the two, so the drawer read as if the customer could afford more
+   * than their own account says.
+   */
+  it('calls the per-product figure a typical EMI, and keeps one headroom figure', async () => {
+    routes()
+    renderScreen(<LeadDrawer leadId="LB-2000002" onClose={() => {}} />, { path: '/queue' })
+    const items = await screen.findAllByTestId('menu-item')
+    for (const item of items) {
+      expect(item).toHaveTextContent(/Typical EMI/)
+      expect(item).not.toHaveTextContent(/EMI headroom/)
+    }
+    // And exactly one thing on the screen still carries the headroom label: the capacity
+    // figure that is genuinely one.
+    expect(screen.getAllByText(/comfortable EMI headroom/i)).toHaveLength(1)
+  })
+
+  it('renders no caution when the bank’s typical EMI fits inside the headroom', async () => {
+    routes()
+    renderScreen(<LeadDrawer leadId="LB-2000002" onClose={() => {}} />, { path: '/queue' })
+    await screen.findAllByTestId('menu-item')
+    expect(screen.queryByTestId('menu-emi-caution')).not.toBeInTheDocument()
+  })
+
+  it('carries the server’s caution against the ranked product, and only that one', async () => {
+    routes({
+      lead: {
+        ...LEAD_DETAIL,
+        emi_caution: {
+          message: 'EMI ₹32,200 at the typical ticket exceeds headroom ₹8,000 — size down to ≈₹1,24,224',
+          suggested_principal: 124224,
+          product: 'personal',
+        },
+      },
+    })
+    renderScreen(<LeadDrawer leadId="LB-2000002" onClose={() => {}} />, { path: '/queue' })
+    const items = await screen.findAllByTestId('menu-item')
+    const cautions = screen.getAllByTestId('menu-emi-caution')
+    expect(cautions).toHaveLength(1)
+    expect(items[0]).toContainElement(cautions[0])
+    expect(cautions[0]).toHaveTextContent(/size down to ≈₹1,24,224/)
+  })
+
   it('shows the positive reasons AND the negative window-shopper chips', async () => {
     routes()
     renderScreen(<LeadDrawer leadId="LB-2000002" onClose={() => {}} />, { path: '/queue' })

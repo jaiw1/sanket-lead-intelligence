@@ -28,7 +28,12 @@ const VERDICT = {
     tone: 'border-signal-teal/40 bg-signal-teal/10 text-signal-teal',
     icon: CheckCircle2,
     label: 'Clear — no duplicate found',
-    hint: 'API 456 found no existing master record that matches this customer.',
+    // Count-agnostic on purpose. This used to assert "API 456 found no existing master
+    // record that matches this customer", which is only true for a count of ZERO — and
+    // every SANKET lead is already a bank customer, so the usual clear answer is a count
+    // of ONE, the prospect's own record. The static sentence then contradicted the
+    // server's own detail line and the "Matching records: 1" row beneath it.
+    hint: 'This is not treated as a duplicate — pushing will not create a second bank lead for the same person.',
   },
   duplicate: {
     tone: 'border-signal-rose/40 bg-signal-rose/10 text-signal-rose',
