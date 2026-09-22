@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import LeadDrawer from './LeadDrawer'
+import LeadDrawer, { consentSummary } from './LeadDrawer'
 import { renderScreen, session } from '../test/render'
 import { jsonResponse } from '../test/http'
 import { LEAD_DETAIL, LEGACY_PACK, PACK } from '../test/fixtures/sanket'
@@ -313,3 +313,46 @@ describe('Lead drawer — contactability', () => {
   })
 })
 
+
+describe('Lead drawer — the AA consent line', () => {
+  // It used to be a list of consent handles and raw status words. An RM about to dial
+  // needs one fact — may we pull this customer's data — so it is one line. The
+  // contactability panel above it, which carries the marketing-consent verdict and the
+  // blockers, is untouched.
+  it('reduces a stack of artefacts to one word', () => {
+    expect(consentSummary([{ status: 'EXPIRED' }, { status: 'ACTIVE' }])).toBe('active')
+    expect(consentSummary([{ status: 'REVOKED' }])).toBe('withdrawn')
+    expect(consentSummary([{ status: 'EXPIRED' }])).toBe('expired')
+    expect(consentSummary([])).toBe('not on file')
+  })
+
+  // `null` means the payload carries no `consents` key at all, which is "this build does
+  // not say", not "none on file". The line is left off rather than guessed.
+  it('says nothing when the payload does not carry consents', () => {
+    expect(consentSummary(null)).toBe(null)
+    expect(consentSummary(undefined)).toBe(null)
+  })
+
+  it('renders one line on the drawer, not a list of handles', async () => {
+    routes({
+      lead: {
+        ...LEAD_DETAIL,
+        consents: [
+          { consent_handle: 'CH-0001', status: 'EXPIRED' },
+          { consent_handle: 'CH-0002', status: 'ACTIVE' },
+        ],
+      },
+    })
+    renderScreen(<LeadDrawer leadId={LEAD_DETAIL.lead_id} onClose={() => {}} />, { session: session('manager') })
+    const line = await screen.findByTestId('lead-consent-line')
+    expect(line).toHaveTextContent('Consent: active')
+    expect(screen.queryByText('CH-0001')).not.toBeInTheDocument()
+    expect(screen.queryByText('CH-0002')).not.toBeInTheDocument()
+  })
+
+  it('says "not on file" when the lead carries no consent at all', async () => {
+    routes({ lead: { ...LEAD_DETAIL, consents: [] } })
+    renderScreen(<LeadDrawer leadId={LEAD_DETAIL.lead_id} onClose={() => {}} />, { session: session('manager') })
+    expect(await screen.findByTestId('lead-consent-line')).toHaveTextContent('Consent: not on file')
+  })
+})

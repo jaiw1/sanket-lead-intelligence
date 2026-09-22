@@ -17,26 +17,36 @@ export const NAV = [
   { to: '/queue', label: 'Lead queue', short: 'Queue', roles: ['A', 'M', 'RM'] },
   { to: '/consent', label: 'Consent & AA', short: 'Consent', roles: ['A', 'M', 'RM'] },
   { to: '/trust', label: 'Model & trust', short: 'Trust', roles: ['M', 'A'] },
-  // A credit officer is DRISHTi's role, not SANKET's: the contract gives CO no sanket/*
-  // operation at all. They are not locked out of the product, though — meta/sync and
-  // meta/provenance are theirs, so the two screens that read them are on their navigation
-  // and one of them is where they land.
-  { to: '/radar', label: 'Business radar', short: 'Radar', roles: ['A', 'M', 'RM', 'CO'], badge: 'REAL' },
-  { to: '/sources', label: 'Data sources', short: 'Sources', roles: ['A', 'M', 'CO', 'RM'] },
+  // Business radar screens public company filings. It is an appendix exhibit outside this
+  // track's scope — the track is existing-customer prospects — so it is kept for reference
+  // and shown to administrators only, with a label on the screen saying as much.
+  { to: '/radar', label: 'Business radar', short: 'Radar', roles: ['A'], badge: 'REAL' },
+  // metaSync / metaProvenance narrowed to A and M: Data sources is a disclosure surface
+  // about the platform's own plumbing, not a screen an RM works from.
+  { to: '/sources', label: 'Data sources', short: 'Sources', roles: ['A', 'M'] },
   { to: '/admin', label: 'Administration', short: 'Admin', roles: ['A'] },
 ]
 
-/** Routes the frozen bundle cannot honestly render: they need a session and a backend. */
-export const STATIC_HIDDEN = new Set(['/admin'])
+/**
+ * What the frozen bundle does not show.
+ *
+ * Static mode has no session and therefore no role, so it needs a rule of its own: it
+ * shows **what a manager sees, minus the screens that are an administrator's alone**.
+ * Administration needs a session and a backend; Business radar is admin-only.
+ *
+ * `RequireRole` reads the same set, so a typed URL and the menu agree.
+ */
+export const STATIC_HIDDEN = new Set(['/admin', '/radar'])
 
 /** The landing route for a role: an RM has no dashboard, so they start on their queue. */
 export function homeFor(role, isStatic = false) {
   if (isStatic) return '/dashboard'
   if (roleMatches(role, ['M', 'A'])) return '/dashboard'
   if (roleMatches(role, ['RM'])) return '/queue'
-  // A credit officer has no SANKET queue to land on. Sending them to /queue would put a
-  // permission-denied panel in front of a legitimate user on every sign-in.
-  if (roleMatches(role, ['CO'])) return '/sources'
+  // A credit officer is DRISHTi's role, not SANKET's: the contract gives CO no sanket/*
+  // operation, and Data sources — the one screen that used to be theirs here — is now a
+  // manager's. They land on the queue and are told plainly that it is not their screen,
+  // which is the truth; there is no door left to point them at.
   return '/queue'
 }
 
@@ -54,11 +64,14 @@ function useRovingTabindex(count) {
   const refs = useRef([])
 
   const onKeyDown = useCallback((event) => {
+    // A role with no screen of its own in SANKET (a credit officer) renders an empty bar.
+    // `% 0` is NaN, so the wrap-around needs a floor of one.
+    const span = Math.max(count, 1)
     const keys = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }
     let next = null
-    if (event.key in keys) next = (active + keys[event.key] + count) % count
+    if (event.key in keys) next = (active + keys[event.key] + span) % span
     else if (event.key === 'Home') next = 0
-    else if (event.key === 'End') next = count - 1
+    else if (event.key === 'End') next = span - 1
     if (next === null) return
     event.preventDefault()
     setActive(next)

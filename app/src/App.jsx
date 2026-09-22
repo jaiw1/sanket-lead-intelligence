@@ -9,8 +9,8 @@
 //   /queue       sanketQueue, sanketLead              A, M, RM   (+ assign/crm-push: M, A)
 //   /consent     consentList/Get/Request/Fetch        A, M, RM   (+ replay: A)
 //   /trust       sanketFunnel.published_metrics       M, A       <- see the note in ModelTrust
-//   /radar       bundled radar_data.json              any signed-in user
-//   /sources     metaSync, metaProvenance             A, M, CO, RM
+//   /radar       bundled radar_data.json              A          <- appendix, out of scope
+//   /sources     metaSync, metaProvenance             A, M
 //   /admin       admin/*                              A
 
 import { Suspense, lazy } from 'react'
@@ -95,8 +95,8 @@ export default function App() {
                 <Route path="/queue" element={<RequireRole allow={['A', 'M', 'RM']}><Queue /></RequireRole>} />
                 <Route path="/consent" element={<RequireRole allow={['A', 'M', 'RM']}><Consent /></RequireRole>} />
                 <Route path="/trust" element={<RequireRole allow={['M', 'A']}><ModelTrust /></RequireRole>} />
-                <Route path="/radar" element={<RequireAuth><Radar /></RequireAuth>} />
-                <Route path="/sources" element={<RequireAuth><DataSources /></RequireAuth>} />
+                <Route path="/radar" element={<RequireRole allow={['A']}><Radar /></RequireRole>} />
+                <Route path="/sources" element={<RequireRole allow={['A', 'M']}><DataSources /></RequireRole>} />
                 <Route path="/admin" element={<RequireRole allow={['A']}><Admin /></RequireRole>} />
 
                 <Route

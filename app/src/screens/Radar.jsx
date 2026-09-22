@@ -18,6 +18,17 @@ export default function Radar() {
   return (
     <AppShell title="Business radar" help="radar">
       <div className="space-y-5">
+        {/* Said once, at the top, before anything on the screen can be mistaken for part
+            of the submission: this is an appendix, and it is about a different population
+            from the one the track is about. */}
+        <p
+          className="rounded-lg border border-signal-amber/40 bg-signal-amber/10 px-4 py-2.5 text-sm leading-relaxed text-signal-amber"
+          data-testid="radar-scope-note"
+        >
+          Exploratory exhibit on public company data — outside this track&rsquo;s scope
+          (existing-customer prospects); kept for reference.
+        </p>
+
         <div>
           <h2 className="text-lg font-bold text-txt-hi">Business radar</h2>
           <p className="mt-1 max-w-3xl text-sm leading-relaxed text-txt-mid">

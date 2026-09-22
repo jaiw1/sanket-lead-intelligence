@@ -568,11 +568,40 @@ function Journey({ lead }) {
   )
 }
 
+/**
+ * The Account Aggregator consent state in one word.
+ *
+ * A lead can carry several artefacts — a request that expired, a re-request that was
+ * granted — and the drawer used to print the handle and the raw status of each. An RM
+ * about to dial needs one fact: may we pull this customer's data or not. `null` means the
+ * payload carries no `consents` key at all, which is "this build does not say", not "none
+ * on file", so the line is left off entirely rather than guessed.
+ */
+const CONSENT_PRECEDENCE = ['ACTIVE', 'PENDING', 'REQUESTED', 'REVOKED', 'EXPIRED', 'REJECTED', 'FAILED']
+const CONSENT_WORD = {
+  ACTIVE: 'active',
+  PENDING: 'pending',
+  REQUESTED: 'requested',
+  REVOKED: 'withdrawn',
+  EXPIRED: 'expired',
+  REJECTED: 'refused',
+  FAILED: 'failed',
+}
+
+export function consentSummary(consents) {
+  if (!Array.isArray(consents)) return null
+  if (consents.length === 0) return 'not on file'
+  const states = consents.map((c) => String(c?.status ?? '').toUpperCase())
+  const best = CONSENT_PRECEDENCE.find((state) => states.includes(state))
+  return best ? CONSENT_WORD[best] : (states.find(Boolean)?.toLowerCase() ?? 'not on file')
+}
+
 /** What has already been done to this customer, by us. */
 function History({ lead }) {
   const disp = lead.dispositions
   const consents = lead.consents
   if (disp === null && consents === null) return null
+  const consentLine = consentSummary(consents)
   return (
     <Section title="What we have already done" subtitle="Calls recorded against this lead, and any Account Aggregator consent on file.">
       {disp && disp.length > 0 ? (
@@ -588,15 +617,11 @@ function History({ lead }) {
       ) : (
         <p className="text-xs text-txt-lo">No call has been recorded against this lead yet.</p>
       )}
-      {consents && consents.length > 0 && (
-        <ul className="mt-2 space-y-1 text-xs">
-          {consents.map((c, i) => (
-            <li key={c.consent_handle ?? i} className="flex items-center gap-2">
-              <span className="font-mono text-txt-lo">{c.consent_handle}</span>
-              <span className="font-semibold text-txt-mid">{c.status}</span>
-            </li>
-          ))}
-        </ul>
+      {consentLine && (
+        <p className="mt-2 text-xs" data-testid="lead-consent-line">
+          <span className="text-txt-lo">Consent:</span>{' '}
+          <b className="text-txt-hi">{consentLine}</b>
+        </p>
       )}
     </Section>
   )

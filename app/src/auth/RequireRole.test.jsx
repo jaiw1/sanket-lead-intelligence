@@ -22,6 +22,7 @@ function renderAt(path, { user = null, mode = 'live' } = {}) {
           <Route path="/threshold" element={<RequireRole allow={['M', 'A']}><p>Threshold editor</p></RequireRole>} />
           <Route path="/admin" element={<RequireRole allow={['admin']}><p>Administration</p></RequireRole>} />
           <Route path="/any" element={<RequireRole allow={[]}><p>Any signed-in user</p></RequireRole>} />
+          <Route path="/radar" element={<RequireRole allow={['A']}><p>Business radar screen</p></RequireRole>} />
         </Routes>
       </MemoryRouter>
     </AuthProvider>,
@@ -81,5 +82,28 @@ describe('RequireRole', () => {
   it('still requires a session', () => {
     renderAt('/admin')
     expect(screen.getByText('Sign-in screen')).toBeInTheDocument()
+  })
+
+  // A role with no SANKET screen of its own — a credit officer, now that Data sources is
+  // A/M and the radar is A — lands on a refusal. A bare panel on an empty page would
+  // strand them there with no way to sign out, so the refusal is rendered in the shell.
+  it('renders the refusal inside the app shell, so there is still a way out', () => {
+    renderAt('/threshold', { user: SESSION('credit_officer') })
+    expect(screen.getByTestId('state-denied')).toBeInTheDocument()
+    expect(screen.getByTestId('session-bar')).toBeInTheDocument()
+    expect(screen.getByRole('toolbar', { name: 'Screens' })).toBeInTheDocument()
+  })
+
+  // Static mode has no session and therefore no role, so it cannot be gated by one. It is
+  // gated by the same STATIC_HIDDEN set the static navigation is built from.
+  it('refuses a static-hidden screen in static mode rather than rendering it', () => {
+    renderAt('/radar', { mode: 'static' })
+    expect(screen.queryByText('Business radar screen')).not.toBeInTheDocument()
+    expect(screen.getByTestId('state-empty')).toHaveTextContent('not in the static demo')
+  })
+
+  it('still passes a screen the static demo does carry straight through', () => {
+    renderAt('/any', { mode: 'static' })
+    expect(screen.getByText('Any signed-in user')).toBeInTheDocument()
   })
 })
