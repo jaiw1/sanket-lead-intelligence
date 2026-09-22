@@ -41,6 +41,10 @@ export default function ManagerDashboard() {
   // See the Suppressed `Stat`'s hint below: the denominator for "share of the book
   // suppressed" has to be the same population `data.suppressed` was counted over.
   const suppressedPoolTotal = data?.pool ?? data?.leads ?? null
+  // Two different denominators reach that percentage, so the sentence has to say which one
+  // it used: the whole scored pool (static/pack, `suppression.pool_at_snapshot`) or this
+  // book's own leads (live, where the same query counts both). "of the book" named neither.
+  const suppressedPoolNoun = data?.pool != null ? 'customers scored' : 'leads in this book'
   // The instant the window split was computed at. It is the run's own scoring instant, not
   // today: a published book's split is a fact about the book, and saying which day it is a
   // fact about is the difference between a number and a number that quietly ages.
@@ -111,7 +115,9 @@ export default function ManagerDashboard() {
             // used to read a nonsense >100% ("560% suppressed"). `data.pool`, present only
             // on the static path, carries the real denominator; live mode falls back to
             // `data.leads`, which is already correct there.
-            hint={suppressedPoolTotal ? `${pct((data.suppressed || 0) / suppressedPoolTotal, 0)} of the book — never queued` : 'never queued'}
+            hint={suppressedPoolTotal
+              ? `${pct((data.suppressed || 0) / suppressedPoolTotal, 0)} of the ${num(suppressedPoolTotal)} ${suppressedPoolNoun} — never queued`
+              : 'never queued'}
             tone="text-signal-rose"
             testId="kpi-suppressed"
           />
@@ -237,7 +243,8 @@ function FunnelPanel({ data, source, detail }) {
         stage: r.stage,
         name: STAGE_LABEL[r.stage] || r.stage,
         n: r.n,
-        dropPct: r.drop_rate == null ? null : +(r.drop_rate * 100).toFixed(1),
+        // A fixed-1dp string, so the column does not slide between "12%" and "12.4%".
+        dropPct: r.drop_rate == null ? null : (r.drop_rate * 100).toFixed(1),
       }))
     }
     const reached = data.stage_reached
@@ -249,12 +256,30 @@ function FunnelPanel({ data, source, detail }) {
     }))
   }, [published, data.stage_reached])
 
+  // The bars are a histogram of abandoned applications, and the reader's first question is
+  // how many that is in total and whether it is the same book as the lead count two cards
+  // up. Say both, in the same words a person would use.
+  const stoppedSubtitle = useMemo(() => {
+    const lead = 'How many abandoned applications stopped at each stage.'
+    const tail = 'Not a cumulative funnel — a stage with more applications than the one before it simply lost more people.'
+    if (!rows) return `${lead} ${tail}`
+    const total = rows.reduce((sum, r) => sum + (Number(r.n) || 0), 0)
+    const book = Number(data.leads)
+    let middle = `The bars add up to ${num(total)} abandoned applications.`
+    if (Number.isFinite(book) && book > 0) {
+      if (total === book) middle = `The bars add up to ${num(total)} abandoned applications — one for each of the ${num(book)} leads in this book.`
+      else if (total > book) middle = `The bars add up to ${num(total)} abandoned applications across the ${num(book)} leads in this book, because one customer can walk away from more than one application.`
+      else middle = `The bars add up to ${num(total)} abandoned applications out of the ${num(book)} leads in this book; the rest stopped somewhere this run did not record.`
+    }
+    return `${lead} ${middle} ${tail}`
+  }, [rows, data.leads])
+
   return (
     <Card
       title="Where the application stopped"
       subtitle={isFunnel
         ? 'Start → Eligibility → KYC → Documents → ₹1,000 fee → Offer → Accept → Disburse, with the drop at each step.'
-        : 'How many abandoned applications stopped at each stage. Not a cumulative funnel — a stage with more applications than the one before it simply lost more people.'}
+        : stoppedSubtitle}
       source={source}
       sourceDetail={detail}
       labelledBy="funnel-title"
@@ -268,10 +293,14 @@ function FunnelPanel({ data, source, detail }) {
             summary={`${isFunnel ? 'Applications surviving each stage' : 'Applications by the stage they stopped at'}: ${rows.map((r) => `${r.name} ${r.n}`).join(', ')}.`}
             height={240}
             rows={rows}
+            // A drop rate is only defined on a survivor funnel. `stage_reached` counts
+            // where applications STOPPED, so there is no such rate to compute and the
+            // column used to print "not measured" down every row — which reads as data
+            // that went missing rather than a figure that does not exist here.
             columns={[
               { key: 'name', label: 'Stage' },
               { key: 'n', label: isFunnel ? 'Reached this stage' : 'Stopped here' },
-              { key: 'dropPct', label: 'Drop rate %', format: (v) => (v == null ? 'not measured' : `${v}%`) },
+              ...(isFunnel ? [{ key: 'dropPct', label: 'Drop rate %', format: (v) => (v == null ? 'not measured' : `${v}%`) }] : []),
             ]}
           >
             <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 40, left: 4, bottom: 0 }}>
@@ -310,7 +339,9 @@ function ProductMix({ mix, source, detail }) {
         leads: r.leads,
         suppressed: r.suppressed ?? 0,
         queueable: Math.max(0, (r.leads || 0) - (r.suppressed || 0)),
-        meanScore: r.mean_score == null ? null : +(r.mean_score * 100).toFixed(1),
+        // Fixed 1dp as a string. Coerced back to a number, `+(10).toFixed(1)` is `10`, so
+        // the column printed "10%" beside "15.2%" — two precisions in one column.
+        meanScore: r.mean_score == null ? null : (r.mean_score * 100).toFixed(1),
       }))
   }, [mix])
 

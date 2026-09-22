@@ -4,6 +4,7 @@ import ManagerDashboard from './ManagerDashboard'
 import { renderScreen, session } from '../test/render'
 import { jsonResponse, mockFetchRoutes } from '../test/http'
 import { FUNNEL, LEGACY_PACK, PACK } from '../test/fixtures/sanket'
+import sanketData from '../../public/sanket_data.json'
 
 const funnelRoute = (data = FUNNEL, meta = { model_run_id: 'run-1', provenance_mode: 'fixture' }) =>
   mockFetchRoutes({ '/api/v1/sanket/funnel': jsonResponse(200, { data, meta }) })
@@ -55,7 +56,9 @@ describe('ManagerDashboard — the panels', () => {
     renderScreen(<ManagerDashboard />, { path: '/dashboard' })
     expect(await screen.findByTestId('kpi-leads')).toHaveTextContent('120')
     expect(screen.getByTestId('kpi-suppressed')).toHaveTextContent('83')
-    expect(screen.getByTestId('kpi-suppressed')).toHaveTextContent('69% of the book')
+    // The hint names the population it divided by, not "the book" — live mode's
+    // denominator is this book's own 120 leads.
+    expect(screen.getByTestId('kpi-suppressed')).toHaveTextContent('69% of the 120 leads in this book')
     expect(screen.getByTestId('kpi-window-open')).toHaveTextContent('14')
   })
 
@@ -160,7 +163,8 @@ describe('ManagerDashboard — static mode', () => {
     renderScreen(<ManagerDashboard />, { path: '/dashboard', mode: 'static', user: null, pack: PACK })
     const suppressedCard = await screen.findByTestId('kpi-suppressed')
     expect(suppressedCard).toHaveTextContent('83')
-    expect(suppressedCard).toHaveTextContent('10% of the book')
+    // ...and it says so: the denominator here is the scored pool, not this bundle's leads.
+    expect(suppressedCard).toHaveTextContent('10% of the 830 customers scored')
     expect(suppressedCard).not.toHaveTextContent('560%')
     expect(suppressedCard).not.toHaveTextContent('8300%')
   })
@@ -181,5 +185,88 @@ describe('ManagerDashboard — static mode', () => {
     await waitFor(() => expect(screen.getAllByTestId('not-in-build').length).toBeGreaterThan(0))
     // A missing suppressed count is an em dash, never a confident zero.
     expect(screen.getByTestId('kpi-suppressed')).toHaveTextContent('—')
+  })
+})
+
+describe('ManagerDashboard — the stopped-at panel says what it is counting', () => {
+  it('adds the bars up and relates the total to the lead book, in plain words', async () => {
+    // FUNNEL.stage_reached sums to 120, which is exactly FUNNEL.leads — a reader who
+    // cannot tell whether these are the same applications as the KPI above is being asked
+    // to take the panel on trust.
+    funnelRoute()
+    renderScreen(<ManagerDashboard />, { path: '/dashboard' })
+    await screen.findByTestId('kpi-leads')
+    expect(screen.getByText(/The bars add up to 120 abandoned applications — one for each of the 120 leads in this book/)).toBeInTheDocument()
+  })
+
+  it('says plainly when there are more attempts than leads', async () => {
+    funnelRoute({ ...FUNNEL, leads: 100 })
+    renderScreen(<ManagerDashboard />, { path: '/dashboard' })
+    await screen.findByTestId('kpi-leads')
+    expect(screen.getByText(/120 abandoned applications across the 100 leads in this book/)).toBeInTheDocument()
+    expect(screen.getByText(/walk away from more than one application/)).toBeInTheDocument()
+  })
+
+  it('says plainly when some leads never recorded a stage', async () => {
+    funnelRoute({ ...FUNNEL, stage_reached: { start: 40, fee: 30 } })
+    renderScreen(<ManagerDashboard />, { path: '/dashboard' })
+    await screen.findByTestId('kpi-leads')
+    expect(screen.getByText(/70 abandoned applications out of the 120 leads in this book/)).toBeInTheDocument()
+  })
+
+  it('drops the Drop rate % column when no drop rate exists to put in it', async () => {
+    // `stage_reached` is a stopped-at histogram: a drop rate is not computable from it, and
+    // a column of "not measured" reads as data that went missing rather than a figure that
+    // does not exist here.
+    funnelRoute()
+    renderScreen(<ManagerDashboard />, { path: '/dashboard' })
+    const table = await screen.findByRole('table', { name: /applications by the stage they stopped at/i })
+    expect([...table.querySelectorAll('thead th')].map((th) => th.textContent)).toEqual(['Stage', 'Stopped here'])
+    expect(table).not.toHaveTextContent('Drop rate')
+    expect(table).not.toHaveTextContent('not measured')
+  })
+
+  it('keeps the Drop rate % column — at one fixed precision — on a real published funnel', async () => {
+    funnelRoute({
+      ...FUNNEL,
+      published_metrics: {
+        ...FUNNEL.published_metrics,
+        funnel: [
+          { stage: 'start', n: 120, drop_rate: 0.1 },
+          { stage: 'kyc', n: 108, drop_rate: 0.125 },
+        ],
+      },
+    })
+    renderScreen(<ManagerDashboard />, { path: '/dashboard' })
+    const table = await screen.findByRole('table', { name: /applications surviving each stage/i })
+    expect([...table.querySelectorAll('thead th')].map((th) => th.textContent)).toEqual(['Stage', 'Reached this stage', 'Drop rate %'])
+    // 10.0%, not 10% — one place, every row.
+    expect(table).toHaveTextContent('10.0%')
+    expect(table).toHaveTextContent('12.5%')
+  })
+
+  it('renders the mean-score column at one fixed precision', async () => {
+    funnelRoute({
+      ...FUNNEL,
+      product_mix: [
+        { product: 'personal', leads: 10, suppressed: 2, mean_score: 0.1 },
+        { product: 'gold', leads: 10, suppressed: 2, mean_score: 0.152 },
+      ],
+    })
+    renderScreen(<ManagerDashboard />, { path: '/dashboard' })
+    const table = await screen.findByRole('table', { name: /leads by product/i })
+    expect(table).toHaveTextContent('10.0%')
+    expect(table).toHaveTextContent('15.2%')
+  })
+})
+
+describe('ManagerDashboard — the numbers the shipped bundle actually prints', () => {
+  it('names the real populations on the committed export, not "the book"', async () => {
+    // The static deploy is what a reviewer opens. 1,927 suppressed is a count over the
+    // 7,456 customers scored at the snapshot, not over the 344 leads this pack delivers.
+    renderScreen(<ManagerDashboard />, { path: '/dashboard', mode: 'static', user: null, pack: sanketData })
+    expect(await screen.findByTestId('kpi-leads')).toHaveTextContent('344')
+    expect(screen.getByTestId('kpi-suppressed')).toHaveTextContent('26% of the 7,456 customers scored')
+    expect(screen.getByText(/The bars add up to 344 abandoned applications — one for each of the 344 leads in this book/)).toBeInTheDocument()
   })
 })

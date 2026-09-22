@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DISPOSITIONS, NEGATIVE_SIGNAL, PITCH_EN, PITCH_HI, PRODUCTS, SORT_KEYS, TIER, WINDOW_DAYS,
-  dispositionLabel, fallbackPitch, inr, inrExact, num, pct, productLabel, productShort,
+  dispositionLabel, dwell, fallbackPitch, inr, inrExact, num, pct, productLabel, productShort,
   suppressionLabel,
 } from './fmt'
 
@@ -165,5 +165,34 @@ describe('fmt — negative signals', () => {
   it('does not show contact fatigue as a vague answer', () => {
     expect(NEGATIVE_SIGNAL.contact_fatigue).not.toBe(NEGATIVE_SIGNAL.vague_answers)
     expect(NEGATIVE_SIGNAL.contact_fatigue).toMatch(/fatigue/i)
+  })
+})
+
+describe('fmt — dwell time in the unit a person would say it in', () => {
+  it('keeps minutes under an hour', () => {
+    expect(dwell(0)).toBe('0 min')
+    expect(dwell(219)).toBe('4 min')
+    expect(dwell(3540)).toBe('59 min')
+  })
+
+  it('switches to hours for anything an hour or longer', () => {
+    expect(dwell(3600)).toBe('1.0 h')
+    expect(dwell(9000)).toBe('2.5 h')
+  })
+
+  it('switches to days rather than printing four-figure minutes', () => {
+    // The export schema puts no upper bound on `dwell_seconds`: a customer who opened a
+    // stage and came back two days later used to render as "2880 min".
+    expect(dwell(172800)).toBe('2.0 d')
+    expect(dwell(86400 * 2.5)).toBe('2.5 d')
+    expect(dwell(172800)).not.toMatch(/min/)
+  })
+
+  it('never invents a duration it was not given', () => {
+    expect(dwell(null)).toBe('—')
+    expect(dwell(undefined)).toBe('—')
+    expect(dwell('')).toBe('—')
+    expect(dwell('nonsense')).toBe('—')
+    expect(dwell(-60)).toBe('—')
   })
 })

@@ -171,7 +171,11 @@ function PerProductAuc({ metrics, source, detail }) {
     const order = new Map(PRODUCTS.map((p, i) => [p, i]))
     return [...metrics.perProduct]
       .sort((a, b) => (order.get(a.product) ?? 99) - (order.get(b.product) ?? 99))
-      .map((r) => ({ ...r, aucRounded: r.auc == null ? null : +r.auc.toFixed(3) }))
+      // A fixed 2dp *string*, not a rounded number: `+(0.85).toFixed(3)` is `0.85`, so a
+      // numeric column drifts between 2dp and 3dp row to row, and sat beside a CI that is
+      // always 2dp. Both columns now read at the same precision, the one the published
+      // Hanley–McNeil intervals are quoted at.
+      .map((r) => ({ ...r, aucLabel: r.auc == null ? null : r.auc.toFixed(2) }))
   }, [metrics.perProduct])
 
   return (
@@ -193,7 +197,7 @@ function PerProductAuc({ metrics, source, detail }) {
             rows={rows}
             columns={[
               { key: 'label', label: 'Product' },
-              { key: 'aucRounded', label: 'AUC', format: (v) => (v == null ? 'not measured' : v) },
+              { key: 'aucLabel', label: 'AUC', format: (v) => (v == null ? 'not measured' : v) },
               { key: 'ci', label: '95% CI (Hanley–McNeil)', format: (v) => (v?.lo == null ? 'not measured' : `${v.lo.toFixed(2)}–${v.hi.toFixed(2)}`) },
               { key: 'nPos', label: 'Positives in test', format: (v) => (v == null ? 'not reported' : v) },
             ]}
@@ -502,7 +506,14 @@ function SuppressionExhibit({ metrics, source, detail }) {
       ) : (
         <>
           <p className="text-3xl font-bold tabular-nums text-signal-rose">{num(total)}</p>
-          <p className="mb-3 text-xs text-txt-lo">customers scored and then not queued</p>
+          {/* Name the population this count came out of. A bare "customers scored and then
+              not queued" leaves the reader to guess whether the denominator is the whole
+              scored pool or the handful of leads this build delivered. */}
+          <p className="mb-3 text-xs text-txt-lo">
+            {s?.pool_at_snapshot != null
+              ? `of the ${num(s.pool_at_snapshot)} customers scored at this snapshot — held back, never queued`
+              : 'customers scored and then not queued'}
+          </p>
           <ul className="space-y-1.5">
             {rows.map((r) => (
               <li key={r.reason} className="flex items-center gap-2 text-xs">
@@ -743,6 +754,11 @@ function ValidationTable({ metrics, live, packError, packLoading, acceptance }) 
           {tally.seedMeanFail ? <> · <b className="text-signal-rose">{tally.seedMeanFail} fail{tally.seedMeanFail === 1 ? '' : 's'} on 5-seed mean</b></> : null}
           {tally.report ? <> · <b className="text-signal-amber">{tally.report} report-only</b></> : null}
           {tally.not_measured ? <> · {tally.not_measured} not measured</> : null}
+          {/* `not_run` is a verdict the export really emits (SK-19 and SK-22 are reported
+              with no band), and the reduce above has always counted it. Without a branch
+              here the chip silently dropped two criteria and the numbers it did show did
+              not add up to the table underneath it. */}
+          {tally.not_run ? <> · {tally.not_run} not run</> : null}
         </span>
       )}
     >

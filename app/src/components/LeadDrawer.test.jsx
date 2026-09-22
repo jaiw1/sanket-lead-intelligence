@@ -405,3 +405,34 @@ describe('Lead drawer — the AA consent line', () => {
     expect(await screen.findByTestId('lead-consent-line')).toHaveTextContent('Consent: not on file')
   })
 })
+
+describe('LeadDrawer — how long they spent on a stage', () => {
+  const withDwell = (seconds) => ({
+    ...LEAD_DETAIL,
+    journey: {
+      ...LEAD_DETAIL.journey,
+      stages: [{ stage: 'start', outcome: 'advanced', dwell_seconds: seconds, blank_fields: 0 }],
+    },
+  })
+
+  it('reads a short stage in minutes', async () => {
+    routes({ lead: withDwell(219) })
+    renderScreen(<LeadDrawer leadId="LB-2000002" onClose={() => {}} />, { path: '/queue' })
+    expect(await screen.findByText('· 4 min')).toBeInTheDocument()
+  })
+
+  it('reads a long stage in hours, not three-figure minutes', async () => {
+    routes({ lead: withDwell(9000) })
+    renderScreen(<LeadDrawer leadId="LB-2000002" onClose={() => {}} />, { path: '/queue' })
+    expect(await screen.findByText('· 2.5 h')).toBeInTheDocument()
+  })
+
+  it('reads a customer who came back days later in days', async () => {
+    // `dwell_seconds` has no upper bound in the export schema; this used to print
+    // "2880 min", which nobody reads as two days.
+    routes({ lead: withDwell(172800) })
+    renderScreen(<LeadDrawer leadId="LB-2000002" onClose={() => {}} />, { path: '/queue' })
+    expect(await screen.findByText('· 2.0 d')).toBeInTheDocument()
+    expect(screen.queryByText(/2880 min/)).not.toBeInTheDocument()
+  })
+})

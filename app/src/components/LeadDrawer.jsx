@@ -22,7 +22,7 @@ import { getLead } from '../lib/sanket'
 import { normaliseLead, packAsOf } from '../lib/pack'
 import { asOfLabel, isFrozen, windowStatus } from '../lib/window'
 import {
-  LANG_LABEL, STAGE_LABEL, TIER, dispositionLabel, fallbackPitch, inr, num, pct,
+  LANG_LABEL, STAGE_LABEL, TIER, dispositionLabel, dwell, fallbackPitch, inr, num, pct,
   productLabel, suppressionLabel,
 } from '../lib/fmt'
 
@@ -569,7 +569,7 @@ function Journey({ lead }) {
               <span className={`h-2 w-2 shrink-0 rounded-full ${s.outcome === 'abandoned' ? 'bg-signal-rose' : 'bg-signal-teal'}`} aria-hidden="true" />
               <span className="w-28 shrink-0 font-semibold text-txt-mid">{STAGE_LABEL[s.stage] || s.stage}</span>
               <span className="text-txt-lo">{s.outcome}</span>
-              {s.dwell_seconds != null && <span className="text-txt-lo">· {Math.round(s.dwell_seconds / 60)} min</span>}
+              {s.dwell_seconds != null && <span className="text-txt-lo">· {dwell(s.dwell_seconds)}</span>}
               {s.blank_fields > 0 && <span className="text-signal-amber">· {s.blank_fields} fields left blank</span>}
             </li>
           ))}

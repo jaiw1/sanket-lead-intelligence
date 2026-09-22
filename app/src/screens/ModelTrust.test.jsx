@@ -235,3 +235,57 @@ describe('ModelTrust — panels the published run does not carry', () => {
   })
 })
 
+
+describe('ModelTrust — the tally accounts for every criterion', () => {
+  it('counts the "not run" bands the committed pack really carries', async () => {
+    // SK-19 and SK-22 are `verdict: "not_run"` in the shipped export. The reduce always
+    // bucketed them; the chip had no branch to print them, so it silently described 24 of
+    // 26 criteria and its numbers did not add up to the table underneath it.
+    renderScreen(<ModelTrust />, { path: '/trust', mode: 'static', user: null, pack: sanketData })
+
+    const chip = (await screen.findByText('17 pass')).closest('span')
+    expect(chip).toHaveTextContent('2 not run')
+
+    const text = chip.textContent
+    const pass = Number(text.match(/(\d+) pass/)[1])
+    // "1 fail on 5-seed mean" is a second, separate disclosure of the same criterion, not
+    // a verdict bucket of its own — it must not be counted here.
+    const fail = Number(text.match(/(\d+) fail(?! on)/)[1])
+    const report = Number(text.match(/(\d+) report-only/)[1])
+    const notRun = Number(text.match(/(\d+) not run/)[1])
+    expect(pass + fail + report + notRun).toBe(Object.keys(sanketData.metrics.bands).length)
+  })
+})
+
+describe('ModelTrust — the suppression exhibit names its population', () => {
+  it('says which pool the suppressed count came out of', async () => {
+    renderScreen(<ModelTrust />, { path: '/trust', mode: 'static', user: null, pack: sanketData })
+    const pool = sanketData.metrics.suppression.pool_at_snapshot
+    expect(await screen.findByText(new RegExp(`of the ${pool.toLocaleString('en-IN')} customers scored at this snapshot`))).toBeInTheDocument()
+    expect(screen.queryByText('customers scored and then not queued')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the unqualified caption when no pool was published', async () => {
+    const packNoPool = {
+      ...PACK,
+      metrics: { ...PACK.metrics, suppression: { suppressed_count: 83, reasons: { no_marketing_consent: 24 } } },
+    }
+    renderScreen(<ModelTrust />, { path: '/trust', mode: 'static', user: null, pack: packNoPool })
+    expect(await screen.findByText('customers scored and then not queued')).toBeInTheDocument()
+  })
+})
+
+describe('ModelTrust — one precision per column in the per-product AUC table', () => {
+  it('prints the AUC and its interval at the same number of places', async () => {
+    renderScreen(<ModelTrust />, { path: '/trust', mode: 'static', user: null, pack: sanketData })
+    const table = await screen.findByRole('table', { name: /auc by product/i })
+    const cells = [...table.querySelectorAll('tbody tr')].map((tr) => [...tr.children].map((td) => td.textContent))
+    const auc = cells.map((row) => row[1]).filter((v) => v !== 'not measured')
+    expect(auc.length).toBeGreaterThan(0)
+    // Every AUC reads at two places, the precision the Hanley–McNeil intervals beside them
+    // are published at — never 0.93 in one row and 0.847 in the next.
+    for (const v of auc) expect(v).toMatch(/^\d\.\d{2}$/)
+    const ci = cells.map((row) => row[2]).filter((v) => v !== 'not measured')
+    for (const v of ci) expect(v).toMatch(/^\d\.\d{2}–\d\.\d{2}$/)
+  })
+})

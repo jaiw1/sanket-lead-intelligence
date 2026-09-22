@@ -145,3 +145,15 @@ describe('Administration — the audit log’s Outcome column', () => {
     expect(screen.queryByText('[object Object]')).not.toBeInTheDocument()
   })
 })
+
+describe('Admin — the users panel introduces itself in English', () => {
+  it('explains the missing columns without quoting the contract at the reader', async () => {
+    routes([])
+    render()
+    expect(await screen.findByText(/The platform does not promise exactly which details it returns for a user account/)).toBeInTheDocument()
+    expect(screen.getByText(/leaves out any of those this platform did not send/)).toBeInTheDocument()
+    // The operation id and the contract's own vocabulary are not end-user copy.
+    expect(screen.queryByText(/adminUsersList/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/x-response-shapes/)).not.toBeInTheDocument()
+  })
+})

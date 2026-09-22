@@ -49,9 +49,13 @@ export default function SessionBar({ className = '' }) {
 
   return (
     <div className={`flex items-center gap-2 ${className}`} data-testid="session-bar">
-      <div className="hidden items-center gap-2 rounded-lg bg-slate-100 px-3 py-1.5 text-xs sm:flex">
-        <UserRound size={13} className="text-slate-400" aria-hidden="true" />
-        <span className="font-semibold text-slate-700">{fullName || username}</span>
+      {/* `min-w-0` on the row and `truncate` on the name: the header clips this chip
+          (AppShell's `overflow-hidden`), and a clipped name with no ellipsis reads as a
+          different, shorter name rather than as a name that did not fit. Tailwind's
+          `truncate` only takes effect on a flex item that is allowed to shrink. */}
+      <div className="hidden min-w-0 items-center gap-2 rounded-lg bg-slate-100 px-3 py-1.5 text-xs sm:flex">
+        <UserRound size={13} className="shrink-0 text-slate-400" aria-hidden="true" />
+        <span className="max-w-[140px] truncate font-semibold text-slate-700" title={fullName || username}>{fullName || username}</span>
         {role && <span className="text-slate-400">·</span>}
         {role && <span className="text-slate-500">{role}</span>}
         {scope?.length > 0 && (

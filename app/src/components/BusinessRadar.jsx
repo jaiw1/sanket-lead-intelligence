@@ -137,8 +137,11 @@ export default function BusinessRadar({ radar }) {
                   <td className="px-4 py-2.5 font-semibold text-txt-hi">{e.id}</td>
                   <td className="px-4 py-2.5 text-txt-mid">{e.sector}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-signal-teal">+{Math.round(e.income_cagr * 100)}%/yr</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{e.interest_cover ?? '—'}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{e.borrow_to_income}</td>
+                  {/* Printed straight from JSON these drifted precision row to row —
+                      28.0 arrived as "28" next to "23.2", and 0.20 as "0.2" next to
+                      "0.18". One fixed number of places per column. */}
+                  <td className="px-4 py-2.5 text-right tabular-nums">{Number.isFinite(e.interest_cover) ? e.interest_cover.toFixed(1) : '—'}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{Number.isFinite(e.borrow_to_income) ? e.borrow_to_income.toFixed(2) : '—'}</td>
                   <td className="px-4 py-2.5 text-right font-bold text-signal-amber tabular-nums">{Math.round(e.score * 100)}</td>
                   <td className="px-4 py-2.5 text-txt-mid max-w-[260px] truncate">{e.reasons?.[0]}</td>
                 </tr>

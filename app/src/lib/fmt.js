@@ -39,6 +39,26 @@ export const num = (n) => {
   return Number.isFinite(v) ? v.toLocaleString('en-IN') : '—'
 }
 
+/**
+ * A dwell time, in the unit a person would actually say it in.
+ *
+ * `dwell_seconds` is unbounded in the export schema (sanket_export.schema.json only
+ * constrains it to >= 0), so a customer who opened a stage and came back two days later
+ * is a perfectly valid row — and dividing by 60 renders that as "2880 min". Same ladder
+ * as the Data sources screen's age label: minutes below an hour, hours below a day, days
+ * above it.
+ */
+export const dwell = (seconds) => {
+  if (blank(seconds)) return '—'
+  const v = Number(seconds)
+  if (!Number.isFinite(v) || v < 0) return '—'
+  const minutes = v / 60
+  if (minutes < 60) return `${Math.round(minutes)} min`
+  const hours = minutes / 60
+  if (hours < 24) return `${hours.toFixed(1)} h`
+  return `${(hours / 24).toFixed(1)} d`
+}
+
 export const TIER = {
   hot: { label: 'Hot', text: 'text-signal-teal', chip: 'bg-signal-teal/15 text-signal-teal border-signal-teal/40', bar: 'bg-signal-teal' },
   warm: { label: 'Warm', text: 'text-signal-amber', chip: 'bg-signal-amber/15 text-signal-amber border-signal-amber/40', bar: 'bg-signal-amber' },

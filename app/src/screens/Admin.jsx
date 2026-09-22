@@ -124,10 +124,10 @@ function UsersPanel({ users }) {
       labelledBy="admin-users-title"
     >
       <p className="mb-3 text-[11px] leading-relaxed text-txt-lo">
-        <code className="font-mono">adminUsersList</code>&apos;s row shape is not pinned by the contract&apos;s{' '}
-        <code className="font-mono">x-response-shapes</code>. This table prefers username, full name, role, EIN,
-        branch, scope, active, must-change-password and last-login, and quietly omits any of those that this
-        response does not carry.
+        The platform does not promise exactly which details it returns for a user account. This table
+        shows the username, full name, role, EIN, branch, portfolio scope, whether the account is active,
+        whether a password change is still due and when the person last signed in — and leaves out any of
+        those this platform did not send.
       </p>
 
       {users.loading && <Loading label="Loading users…" />}
@@ -247,10 +247,9 @@ function AuditPanel({ audit, offset, onPrev, onNext }) {
       labelledBy="admin-audit-title"
     >
       <p className="mb-3 text-[11px] leading-relaxed text-txt-lo">
-        <code className="font-mono">adminAudit</code>&apos;s row shape is not pinned by{' '}
-        <code className="font-mono">x-response-shapes</code> either. This table prefers id, time, actor, action,
-        entity and request id (and the aliases the live platform actually uses for them), and reads whatever
-        this response actually carries.
+        The same is true of an audit entry. This table shows the entry number, time, who acted, what they did,
+        what they acted on and the request id — under whichever names this platform sends them — and reads
+        whatever else the entry happens to carry.
       </p>
 
       {audit.loading && <Loading label="Loading audit log…" />}
