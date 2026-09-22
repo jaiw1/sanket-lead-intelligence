@@ -1,5 +1,5 @@
 import { Clock } from 'lucide-react'
-import { asOfSuffix, windowPhrase, windowStatus, windowTone, WINDOW_STATE } from '../lib/window'
+import { asOfLabel, asOfSuffix, windowPhrase, windowStatus, windowTone, WINDOW_STATE } from '../lib/window'
 import { WINDOW_DAYS } from '../lib/fmt'
 
 /**
@@ -22,7 +22,9 @@ export default function WindowBadge({ lead, now, asOf = null, showDays = true, c
   const phrase = windowPhrase(status)
   const days = status.days ?? WINDOW_DAYS[lead?.product] ?? null
 
-  const asDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : null)
+  // Every date in this tooltip goes through the same spelling, so "due by 7 Sep 2026" and
+  // "as of 1 Sep 2026" cannot end up in two different dialects of September in one line.
+  const asDate = (v) => asOfLabel(v)
   // Both ends of the window, not just the far one: the due date only means something
   // beside the abandonment it is measured from.
   const detail = status.state === WINDOW_STATE.UNKNOWN
