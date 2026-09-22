@@ -24,13 +24,12 @@ cookies, real CSRF, a real password change out of band before recording, real ro
 checks, and two real writes — a recorded disposition and a CRM-push dry run — both
 hash-chained into the append-only audit log. Recorded 2026-09-21. Every number below is
 read directly off the screen at the timestamp given; none is asserted from memory.
-**Bold** marks the words the on-screen karaoke caption highlights.
 
-The recorded file has no spoken audio — the on-screen caption bar carries this exact
-text, word-synced, burned into the video. A presenter can read this transcript aloud
-over the video, live, during the demo slot.
+The recorded file carries a spoken voiceover — Microsoft neural text-to-speech
+(`en-IN-NeerjaNeural`) reading this exact transcript, timed to the on-screen action. No
+caption bar, no karaoke highlighting.
 
-Total run time: **2:29** (well inside the 3-minute cap the deck template requires).
+Total run time: **≈2:54** (well inside the 3-minute cap the deck template requires).
 
 ## Why this replaces the previous live-backend take (f3fd032)
 
@@ -70,40 +69,42 @@ writes, same audit trail.
 ---
 
 **0:00–0:10 — Sign in, live**
-> SANKET, signed in for real — a live rrsquad-platform session, not a frozen bundle.
+> This is SANKET, signed in for real on a live backend — not a frozen demo bundle.
 
 **0:10–0:24 — Queue: role-scoped, all three tiers**
-> Vikram Rathore, relationship manager: the server hands him only **his own** assigned
-> leads. Tier is a real probability band now — **hot, warm and cold** all sit in one
-> queue, not a wall of one label.
+> Vikram Rathore, relationship manager: the server hands him only his own assigned leads.
+> Tier is a real probability band now — hot, warm and cold all sit in one queue, not a
+> wall of one label.
 
-**0:24–0:48 — Hero lead: why this one**
-> Why this lead — LB-2006372: one model, a menu of four products, leading with a
-> personal loan at **25.9%**. The case against the call, shown, not hidden: **balked at
-> the ₹1,000 fee**, left half the form blank.
+**0:24–0:50 — Hero lead: why this one**
+> Switching to the manager's whole-book view for this lead — LB-2006372: one model, a
+> menu of four products, leading with a personal loan at twenty-five point nine percent,
+> priced with a typical EMI, not a guess. The case against the call, shown, not hidden:
+> balked at the one-thousand-rupee fee, left half the form blank.
 
-**0:48–1:04 — A real recorded disposition**
+**0:50–1:18 — A real recorded disposition**
 > Recording a call outcome is a real, audited write here — one click, hash-chained.
 
-**1:04–1:22 — Switch to manager: CRM push dry run**
-> Now the manager: a live **CRM push dry run** — the exact payload that would go, and the
-> dedupe verdict the bank's own check returned, before anything is sent.
+**1:18–1:40 — Switch to manager: CRM push dry run**
+> Now the dedupe check: a live CRM push dry run — the exact payload that would go, and
+> the verdict the bank's own check returned, before anything is sent.
 
-**1:22–1:38 — Manager dashboard**
-> The manager's dashboard: a random call into this population disburses at **9.5%**; the
-> model's top 10% disburses at **29.1%** — roughly **3 times** the random list, on
-> held-out customers.
+**1:40–2:02 — Manager dashboard**
+> The manager's dashboard: three hundred forty-four leads scored, twenty-four suppressed
+> and shown why, never silently dropped. A random call into this population disburses at
+> nine point five percent; the model's top ten percent disburses at twenty-nine point one
+> percent — roughly three times the random list, on held-out customers.
 
-**1:38–1:56 — Model & trust: SK-04 dual verdict**
-> Model & trust: SK-04 doubles up — **passes** on the packed seed, **fails** on the
-> five-seed mean, its own row, disclosed, not folded in.
+**2:02–2:20 — Model & trust: SK-04 dual verdict**
+> Model and trust: SK-04 doubles up — passes on the packed seed, fails on the five-seed
+> mean, its own row, disclosed, not folded in.
 
-**1:56–2:18 — Audit trail (as admin)**
+**2:20–2:42 — Audit trail (as admin)**
 > And the evidence trail behind both writes: signed in now as the admin, the same
 > append-only, hash-chained audit log — the disposition and the CRM push, exactly as
 > recorded.
 
-**2:18–2:28 — Sign-off**
+**2:42–2:52 — Sign-off**
 > What this supports: a ranked, disclosed call list with an audited action on every lead
 > — never a promise of who converts. SANKET advises. The relationship manager decides.
 
