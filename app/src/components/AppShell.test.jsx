@@ -120,3 +120,61 @@ describe('AppShell — the primary navigation is one tab stop', () => {
     expect(STATIC_HIDDEN).toEqual(new Set(['/admin', '/radar']))
   })
 })
+
+/**
+ * The phone bar carries the same screens as the toolbar, for every role.
+ *
+ * jsdom does no layout: `hidden sm:block` hides nothing here, `scrollWidth` is 0, and a
+ * clipped label is invisible to it. Which of the two bars a viewport shows is therefore an
+ * e2e question (`e2e/nav-responsive.spec.js`, at real widths in a real browser), and what
+ * is checked here is the thing that would silently break role scoping and no browser test
+ * would notice quickly: that the two bars are built from ONE filtered list. Rebuilding the
+ * mobile bar from `NAV` would put Administration on an RM's phone.
+ */
+describe('AppShell — the phone bar and the toolbar show one set of screens', () => {
+  const bars = () => {
+    const toolbar = screen.getByRole('toolbar', { name: 'Screens' })
+    const bottom = screen.getByRole('navigation', { name: 'Screens' })
+    const names = (el) => within(el).getAllByRole('link').map((l) => l.getAttribute('href'))
+    return { toolbar, bottom, toolbarHrefs: names(toolbar), bottomHrefs: names(bottom) }
+  }
+
+  for (const role of ['manager', 'admin', 'relationship_manager']) {
+    it(`gives a ${role} the same screens in both bars`, () => {
+      renderScreen(<AppShell title="Test"><p>body</p></AppShell>, { path: '/queue', user: session(role) })
+      const { toolbarHrefs, bottomHrefs } = bars()
+      expect(bottomHrefs).toEqual(toolbarHrefs)
+      expect(bottomHrefs).toEqual(navFor({ manager: 'M', admin: 'A', relationship_manager: 'RM' }[role]))
+    })
+  }
+
+  it('gives the frozen bundle the same screens in both bars', () => {
+    renderScreen(<AppShell title="Test"><p>body</p></AppShell>, { path: '/queue', mode: 'static', user: null })
+    const { toolbarHrefs, bottomHrefs } = bars()
+    expect(bottomHrefs).toEqual(toolbarHrefs)
+    expect(bottomHrefs).not.toContain('/admin')
+    expect(bottomHrefs).not.toContain('/radar')
+  })
+
+  it('renders no phone bar at all for a role with no screen of its own', () => {
+    renderScreen(<AppShell title="Test"><p>body</p></AppShell>, { path: '/queue', user: session('credit_officer') })
+    expect(screen.queryByRole('navigation', { name: 'Screens' })).not.toBeInTheDocument()
+  })
+
+  // The toolbar's roving tabindex is sized for the toolbar. The phone bar is an ordinary
+  // set of tab stops; wiring it into the same refs array would have the two fighting over
+  // one active index, and arrow keys on a desktop would move a link nobody can see.
+  it('leaves the phone bar out of the toolbar’s roving tabindex', () => {
+    renderScreen(<AppShell title="Test"><p>body</p></AppShell>, { path: '/queue', user: session('manager') })
+    const bottom = screen.getByRole('navigation', { name: 'Screens' })
+    for (const link of within(bottom).getAllByRole('link')) {
+      expect(link).not.toHaveAttribute('tabindex')
+    }
+  })
+
+  it('leaves room under the page for the bar to sit over', () => {
+    renderScreen(<AppShell title="Test"><p>body</p></AppShell>, { path: '/queue', user: session('manager') })
+    expect(document.getElementById('main-content').className).toContain('pb-20')
+    expect(document.getElementById('main-content').className).toContain('sm:pb-5')
+  })
+})

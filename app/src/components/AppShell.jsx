@@ -104,8 +104,10 @@ export default function AppShell({ title, help, children, wide = false }) {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-30 border-b border-line bg-ink-800/95 backdrop-blur">
-        <div className={`mx-auto flex h-14 items-center gap-3 px-4 sm:px-6 ${wide ? '' : 'max-w-[1400px]'}`}>
-          <div className="flex h-full shrink-0 items-center gap-2.5 border-r border-line pr-3 sm:pr-4">
+        {/* `min-h-14`, not `h-14`: a fixed height clips the toolbar's second row the moment
+            it wraps, which is a new clipping bug in place of the old one. */}
+        <div className={`mx-auto flex min-h-14 items-center gap-3 px-4 py-2 sm:px-6 ${wide ? '' : 'max-w-[1400px]'}`}>
+          <div className="flex shrink-0 items-center gap-2.5 self-stretch border-r border-line pr-3 sm:pr-4">
             <div className="grid h-8 w-8 place-items-center rounded-lg bg-signal-amber text-ink-900" aria-hidden="true">
               <Antenna size={17} />
             </div>
@@ -116,13 +118,18 @@ export default function AppShell({ title, help, children, wide = false }) {
             </div>
           </div>
 
-          <nav aria-label="Primary" className="min-w-0 flex-1">
+          {/* Hidden below 640px, where the bottom bar below carries the same items: a
+              seven-item toolbar sharing one header row with a logo and a session chip has
+              ~170px to render in, and five of the seven sit past the visible edge with
+              nothing but a scrollbar to say so. Above 640px it WRAPS rather than scrolls —
+              a second row is reachable, an off-screen strip is not. */}
+          <nav aria-label="Primary" className="hidden min-w-0 flex-1 sm:block">
             <div
               role="toolbar"
               aria-label="Screens"
               aria-orientation="horizontal"
               onKeyDown={roving.onKeyDown}
-              className="scroll-thin flex items-center gap-1 overflow-x-auto"
+              className="flex flex-wrap items-center gap-1 py-1"
             >
               {items.map((item, i) => (
                 <NavLink
@@ -135,8 +142,7 @@ export default function AppShell({ title, help, children, wide = false }) {
                     isActive ? 'bg-ink-600 text-txt-hi' : 'text-txt-mid hover:bg-ink-700 hover:text-txt-hi'
                   }`}
                 >
-                  <span className="hidden sm:inline">{item.label}</span>
-                  <span className="sm:hidden">{item.short}</span>
+                  {item.label}
                   {item.badge && (
                     <span className="rounded bg-signal-teal/20 px-1.5 py-0.5 text-[9px] font-extrabold text-signal-teal">
                       {item.badge}
@@ -156,9 +162,40 @@ export default function AppShell({ title, help, children, wide = false }) {
         </div>
       </header>
 
+      {/* DRISHTi's pattern, for the same reason its own comment gives: an administrator
+          sees seven sections, and squashing seven labels into 390px makes every one of
+          them unreadable, so the bar scrolls instead of shrinking. Built from the SAME
+          role-filtered `items` as the toolbar — never from NAV — so `roleMatches` and
+          STATIC_HIDDEN cannot say one thing up there and another down here. These are
+          ordinary links: `useRovingTabindex` is sized for the desktop toolbar, and wiring
+          a second set of refs into it would have the two bars fighting over one index. */}
+      {items.length > 0 && (
+        <nav
+          aria-label="Screens"
+          className="scroll-thin fixed inset-x-0 bottom-0 z-30 flex overflow-x-auto border-t border-line bg-ink-800 pb-[env(safe-area-inset-bottom)] sm:hidden"
+        >
+          {items.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) => `flex min-w-[64px] flex-1 shrink-0 flex-col items-center justify-center gap-0.5 whitespace-nowrap px-2 py-2.5 text-center text-[11px] font-semibold leading-tight transition ${
+                isActive ? 'bg-ink-600 text-txt-hi' : 'text-txt-mid'
+              }`}
+            >
+              {item.short}
+              {item.badge && (
+                <span className="rounded bg-signal-teal/20 px-1 text-[8px] font-extrabold text-signal-teal">
+                  {item.badge}
+                </span>
+              )}
+            </NavLink>
+          ))}
+        </nav>
+      )}
+
       <main
         id="main-content"
-        className={`mx-auto w-full flex-1 px-4 py-5 sm:px-6 ${wide ? '' : 'max-w-[1400px]'}`}
+        className={`mx-auto w-full flex-1 px-4 py-5 pb-20 sm:px-6 sm:pb-5 ${wide ? '' : 'max-w-[1400px]'}`}
       >
         {title && <h1 className="sr-only">{title}</h1>}
         {children}
